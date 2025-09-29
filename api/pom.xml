@@ -6,7 +6,8 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>3.4.5</version>
-		<relativePath/> <!-- lookup parent from repository -->
+		<relativePath/>
+		<!-- lookup parent from repository -->
 	</parent>
 	<groupId>xyz.ezsky</groupId>
 	<artifactId>ani-link-service</artifactId>
@@ -74,17 +75,10 @@
 			<artifactId>lombok</artifactId>
 			<scope>provided</scope>
 		</dependency>
-	   </dependencies>
-
-	   <build>
-		   <finalName>${project.artifactId}</finalName>
-		   <resources>
-			   <resource>
-				   <directory>src/main/resources</directory>
-				   <filtering>true</filtering>
-			   </resource>
-		   </resources>
-		   <plugins>
+	</dependencies>
+	<build>
+		<finalName>${project.artifactId}</finalName>
+		<plugins>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
@@ -97,22 +91,6 @@
 				<artifactId>maven-resources-plugin</artifactId>
 				<version>3.1.0</version>
 				<configuration>
-					<resources>
-						<resource>
-							<directory>src/main/resources</directory>
-							<filtering>true</filtering>
-							<excludes>
-								<exclude>static/fonts/**</exclude>
-							</excludes>
-						</resource>
-						<resource>
-							<directory>src/main/resources</directory>
-							<filtering>false</filtering>
-							<includes>
-								<include>static/fonts/**</include>
-							</includes>
-						</resource>
-					</resources>
 					<nonFilteredFileExtensions>
 						<nonFilteredFileExtension>ttf</nonFilteredFileExtension>
 						<nonFilteredFileExtension>woff</nonFilteredFileExtension>
@@ -133,5 +111,4 @@
 			</plugin>
 		</plugins>
 	</build>
-
 </project>
