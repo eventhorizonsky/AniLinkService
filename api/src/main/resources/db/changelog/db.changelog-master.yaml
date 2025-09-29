@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - include:
+      file: common/db.changelog-common-init.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: h2/db.changelog-h2-init.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: pgsql/db.changelog-pgsql-init.yaml
+      relativeToChangelogFile: true

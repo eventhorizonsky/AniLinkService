@@ -1,0 +1,29 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1-create-user-table-h2
+      author: copilot
+      changes:
+        - createTable:
+            tableName: my_custom_user
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT AUTO_INCREMENT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: username
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: password
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: email
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: true
