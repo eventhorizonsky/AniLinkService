@@ -42,11 +42,18 @@ jobs:
     - name: Login to Docker Hub
       run: echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
 
+
+    - name: Set Docker image tag (date+commit)
+      id: vars
+      run: |
+        TAG=$(date +'%Y%m%d-%H%M%S')-$(git rev-parse --short HEAD)
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+
     - name: Build Docker image
-      run: docker build -t ezsky333/anilinkserver .
+      run: docker build -t ezsky333/anilinkserver:${{ steps.vars.outputs.tag }} .
 
     - name: Push Docker image to Docker Hub
-      run: docker push ezsky333/anilinkserver
+      run: docker push ezsky333/anilinkserver:${{ steps.vars.outputs.tag }}
 
     - name: Logout of Docker Hub
       run: docker logout
