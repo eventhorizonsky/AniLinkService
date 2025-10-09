@@ -11,5 +11,6 @@ class AniLinkServiceApplicationTests {
     @Test
     void contextLoads() {
         // Spring Boot 应用上下文能否正常加载
+        System.out.println("Context loads successfully");
     }
 }

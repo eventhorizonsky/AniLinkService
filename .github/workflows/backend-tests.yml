@@ -2,11 +2,12 @@ name: Run Backend Unit Tests
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
   pull_request:
-    paths:
-      - 'api/**'
-      - '.github/workflows/backend-tests.yml'
-
+    branches:
+      - master
 jobs:
   test:
     runs-on: ubuntu-latest
