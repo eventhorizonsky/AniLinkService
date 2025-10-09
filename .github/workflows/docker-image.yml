@@ -49,11 +49,15 @@ jobs:
         TAG=$(date +'%Y%m%d-%H%M%S')-$(git rev-parse --short HEAD)
         echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-    - name: Build Docker image
-      run: docker build -t ezsky333/anilinkserver:${{ steps.vars.outputs.tag }} .
+    - name: Build Docker image with tags
+      run: |
+        docker build -t ezsky333/anilinkserver:${{ steps.vars.outputs.tag }} -t ezsky333/anilinkserver:latest .
 
-    - name: Push Docker image to Docker Hub
+    - name: Push Docker image with tag
       run: docker push ezsky333/anilinkserver:${{ steps.vars.outputs.tag }}
+
+    - name: Push Docker image with latest tag
+      run: docker push ezsky333/anilinkserver:latest
 
     - name: Logout of Docker Hub
       run: docker logout
