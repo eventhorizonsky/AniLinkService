@@ -27,3 +27,82 @@ databaseChangeLog:
                   type: VARCHAR(128)
                   constraints:
                     nullable: true
+  - changeSet:
+      id: 2-create-media-library-table
+      author: copilot
+      changes:
+        - createTable:
+            tableName: media_library
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: path
+                  type: VARCHAR(1024)
+                  constraints:
+                    nullable: false
+  - changeSet:
+      id: 3-create-media-file-table
+      author: copilot
+      changes:
+        - createTable:
+            tableName: media_file
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: library_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_media_file_library
+                    references: media_library(id)
+              - column:
+                  name: file_path
+                  type: VARCHAR(2048)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: file_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_modified
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: size
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: media_file
+            columnNames: library_id, file_path
+            constraintName: uc_media_file_library_path
