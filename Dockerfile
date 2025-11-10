@@ -1,4 +1,4 @@
-FROM openjdk:17
+FROM openjdk:17-ea
 #创建响应文件夹
 RUN mkdir -p /app/config
 # 设置环境变量，用于用户指定媒体目录和配置目录
