@@ -1,34 +1,6 @@
 databaseChangeLog:
   - changeSet:
-      id: 1-create-user-table-h2
-      author: copilot
-      changes:
-        - createTable:
-            tableName: my_custom_user
-            columns:
-              - column:
-                  name: id
-                  type: BIGINT AUTO_INCREMENT
-                  constraints:
-                    primaryKey: true
-                    nullable: false
-              - column:
-                  name: username
-                  type: VARCHAR(64)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: password
-                  type: VARCHAR(128)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: email
-                  type: VARCHAR(128)
-                  constraints:
-                    nullable: true
-  - changeSet:
-      id: 2-create-media-library-table
+      id: 1-create-media-library-table
       author: copilot
       changes:
         - createTable:
@@ -51,7 +23,7 @@ databaseChangeLog:
                   constraints:
                     nullable: false
   - changeSet:
-      id: 3-create-media-file-table
+      id: 2-create-media-file-table
       author: copilot
       changes:
         - createTable:
@@ -106,3 +78,16 @@ databaseChangeLog:
             tableName: media_file
             columnNames: library_id, file_path
             constraintName: uc_media_file_library_path
+  - changeSet:
+      id: 3-add-media-library-status-column
+      author: copilot
+      changes:
+        - addColumn:
+            tableName: media_library
+            columns:
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: "OK"
+                  constraints:
+                    nullable: false
