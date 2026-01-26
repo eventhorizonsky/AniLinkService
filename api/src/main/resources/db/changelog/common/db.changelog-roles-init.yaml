@@ -1,0 +1,88 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-roles-table
+      author: anilink
+      changes:
+        - createTable:
+            tableName: roles
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: role_code
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: role_name
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: text
+              - column:
+                  name: is_active
+                  type: boolean
+                  defaultValue: true
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: create-user-roles-table
+      author: anilink
+      changes:
+        - createTable:
+            tableName: user_roles
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_roles_user_id
+                    references: users(id)
+              - column:
+                  name: role_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_roles_role_id
+                    references: roles(id)
+              - column:
+                  name: created_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: user_roles
+            columnNames: user_id, role_id
+            constraintName: uk_user_role
+
+  - changeSet:
+      id: insert-test-roles
+      author: anilink
+      preConditions:
+        - onFail: MARK_RAN
+      changes:
+        - sql:
+            sql: |
+              INSERT INTO roles (role_code, role_name, description, is_active)
+              VALUES 
+                ('admin', '管理员', '系统管理员，拥有所有权限', true),
+                ('user', '普通用户', '普通用户，拥有基础权限', true),
+                ('super-admin', '超级管理员', '超级管理员，拥有最高权限', true)
+            dbms: h2,postgresql

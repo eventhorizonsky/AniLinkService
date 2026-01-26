@@ -1,0 +1,51 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-site-config-table
+      author: anilink
+      changes:
+        - createTable:
+            tableName: site_config
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: config_key
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: config_value
+                  type: text
+              - column:
+                  name: description
+                  type: varchar(500)
+              - column:
+                  name: created_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: timestamp
+
+  - changeSet:
+      id: insert-initial-site-config
+      author: anilink
+      preConditions:
+        - onFail: MARK_RAN
+      changes:
+        - sql:
+            sql: |
+              INSERT INTO site_config (config_key, config_value, description, created_at, updated_at)
+              VALUES 
+                ('site_name', 'AniLink Service', '站点名称', NOW(), NOW()),
+                ('site_description', '番剧识别与弹幕播放服务', '站点描述', NOW(), NOW()),
+                ('site_url', 'http://localhost:8081', '站点URL', NOW(), NOW()),
+                ('installed', 'false', '安装标记', NOW(), NOW())
+            dbms: h2,postgresql

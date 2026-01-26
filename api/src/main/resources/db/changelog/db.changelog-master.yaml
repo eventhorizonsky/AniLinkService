@@ -3,8 +3,18 @@ databaseChangeLog:
       file: common/db.changelog-common-init.yaml
       relativeToChangelogFile: true
   - include:
+      file: common/db.changelog-users-init.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-roles-init.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-site-config-init.yaml
+      relativeToChangelogFile: true
+  - include:
       file: h2/db.changelog-h2-init.yaml
       relativeToChangelogFile: true
   - include:
       file: pgsql/db.changelog-pgsql-init.yaml
+      relativeToChangelogFile: true
       relativeToChangelogFile: true
