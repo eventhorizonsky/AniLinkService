@@ -7,6 +7,7 @@ import '@mdi/font/css/materialdesignicons.css'
 import router from './router'
 import './style.css'
 import App from './App.vue'
+import { md3 } from 'vuetify/blueprints'
 
 const vuetify = createVuetify({
   components,
@@ -14,6 +15,7 @@ const vuetify = createVuetify({
   theme: {
     defaultTheme: 'light',
   },
+  blueprint: md3,
   icons: {
     defaultSet: 'mdi',
   },
