@@ -17,16 +17,51 @@ const loginForm = ref({
   password: ''
 })
 
+// 配置axios请求拦截器，自动添加token
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers['satoken'] = token
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// 获取当前用户信息
+const fetchUserInfo = async () => {
+  try {
+    const res = await axios.post(`${API_BASE}/auth/currentUser`)
+    if (res.data?.code === 200 && res.data?.data) {
+      const userData = res.data.data
+      localStorage.setItem('userInfo', JSON.stringify(userData))
+      isLoggedIn.value = true
+      userInfo.value = userData
+    }
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    // 如果获取失败，清除登录状态
+    handleLogout()
+  }
+}
+
 const checkLoginStatus = () => {
   const token = localStorage.getItem('token')
   const user = localStorage.getItem('userInfo')
-  if (token && user) {
+  if (token) {
     isLoggedIn.value = true
-    try {
-      userInfo.value = JSON.parse(user)
-    } catch (e) {
-      console.error('解析用户信息失败:', e)
+    if (user) {
+      try {
+        userInfo.value = JSON.parse(user)
+      } catch (e) {
+        console.error('解析用户信息失败:', e)
+      }
     }
+    // 获取最新的用户信息
+    fetchUserInfo()
   }
 }
 
@@ -53,11 +88,10 @@ const handleLogin = async () => {
   try {
     const res = await axios.post(`${API_BASE}/auth/login`, loginForm.value)
     if (res.data?.code === 200 && res.data?.data) {
-      const { tokenValue, loginId } = res.data.data
+      const { tokenValue } = res.data.data
       localStorage.setItem('token', tokenValue)
-      localStorage.setItem('userInfo', JSON.stringify({ username: loginForm.value.username, loginId }))
-      isLoggedIn.value = true
-      userInfo.value = { username: loginForm.value.username, loginId }
+      // 登录成功后获取用户信息
+      await fetchUserInfo()
       closeLoginDialog()
     } else {
       errorMessage.value = res.data?.msg || '登录失败'
@@ -103,7 +137,14 @@ onMounted(() => {
         <v-list>
           <v-list-item v-if="isLoggedIn && userInfo">
             <v-list-item-title class="font-weight-medium">{{ userInfo.username }}</v-list-item-title>
-            <v-list-item-subtitle class="text-caption">{{ userInfo.loginId }}</v-list-item-subtitle>
+            <v-list-item-subtitle class="text-caption">
+              {{ userInfo.email || '暂无邮箱' }}
+              <template v-if="userInfo.roleCodeList && userInfo.roleCodeList.length > 0">
+                <v-chip size="x-small" class="ml-2" color="primary">
+                  {{ userInfo.roleCodeList.join(', ') }}
+                </v-chip>
+              </template>
+            </v-list-item-subtitle>
           </v-list-item>
           <v-divider v-if="isLoggedIn && userInfo" />
           <v-list-item v-if="isLoggedIn" @click="goToAdmin">

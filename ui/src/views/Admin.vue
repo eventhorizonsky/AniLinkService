@@ -1,7 +1,9 @@
 <script setup>
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 
+const API_BASE = '/api'
 const router = useRouter()
 
 const drawer = ref(true)
@@ -20,6 +22,21 @@ const menuItems = [
 const userInfo = ref(null)
 const userMenu = ref(false)
 
+// 获取当前用户信息
+const fetchUserInfo = async () => {
+  try {
+    const res = await axios.post(`${API_BASE}/auth/currentUser`)
+    if (res.data?.code === 200 && res.data?.data) {
+      const userData = res.data.data
+      localStorage.setItem('userInfo', JSON.stringify(userData))
+      userInfo.value = userData
+    }
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    handleLogout()
+  }
+}
+
 const checkLoginStatus = () => {
   const token = localStorage.getItem('token')
   const user = localStorage.getItem('userInfo')
@@ -29,6 +46,8 @@ const checkLoginStatus = () => {
   }
   try {
     userInfo.value = JSON.parse(user)
+    // 获取最新的用户信息
+    fetchUserInfo()
   } catch (e) {
     console.error('解析用户信息失败:', e)
     router.push('/')
@@ -63,8 +82,14 @@ onMounted(() => {
         <v-list-item
           prepend-avatar="https://cdn.vuetifyjs.com/images/john.png"
           :title="userInfo?.username || 'Admin'"
-          :subtitle="userInfo?.loginId || ''"
-        ></v-list-item>
+          :subtitle="userInfo?.email || '暂无邮箱'"
+        >
+          <template v-if="userInfo?.roleCodeList && userInfo.roleCodeList.length > 0" v-slot:append>
+            <v-chip size="x-small" color="primary">
+              {{ userInfo.roleCodeList[0] }}
+            </v-chip>
+          </template>
+        </v-list-item>
       </v-list>
 
       <v-divider></v-divider>
@@ -108,7 +133,14 @@ onMounted(() => {
         <v-list>
           <v-list-item>
             <v-list-item-title class="font-weight-medium">{{ userInfo?.username }}</v-list-item-title>
-            <v-list-item-subtitle class="text-caption">{{ userInfo?.loginId }}</v-list-item-subtitle>
+            <v-list-item-subtitle>
+              {{ userInfo?.email || '暂无邮箱' }}
+              <template v-if="userInfo?.roleCodeList && userInfo.roleCodeList.length > 0">
+                <v-chip size="x-small" class="ml-2" color="primary">
+                  {{ userInfo.roleCodeList.join(', ') }}
+                </v-chip>
+              </template>
+            </v-list-item-subtitle>
           </v-list-item>
           <v-divider />
           <v-list-item @click="router.push('/')">

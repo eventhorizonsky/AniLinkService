@@ -9,8 +9,10 @@ import xyz.ezsky.anilink.model.entity.UserRole;
 import xyz.ezsky.anilink.repository.UserRepository;
 import xyz.ezsky.anilink.repository.RoleRepository;
 import xyz.ezsky.anilink.repository.UserRoleRepository;
+import xyz.ezsky.anilink.model.vo.UserInfoVO;
 
 import java.util.Optional;
+import java.util.List;
 
 /**
  * 用户服务类
@@ -115,6 +117,29 @@ public class UserService {
      */
     public String encodePassword(String password) {
         return SecureUtil.md5(password);
+    }
+
+    /**
+     * 根据用户ID获取用户信息（包含角色代码列表）
+     * @param userId 用户ID
+     * @return 用户信息
+     */
+    public UserInfoVO getUserInfoById(Long userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return null;
+        }
+
+        List<String> roleCodes = userRoleRepository.findRoleCodesByUserId(userId);
+
+        UserInfoVO userInfoVO = new UserInfoVO();
+        userInfoVO.setId(user.getId());
+        userInfoVO.setUsername(user.getUsername());
+        userInfoVO.setEmail(user.getEmail());
+        userInfoVO.setRoleCodeList(roleCodes);
+        userInfoVO.setIsActive(user.getIsActive());
+
+        return userInfoVO;
     }
 }
 
