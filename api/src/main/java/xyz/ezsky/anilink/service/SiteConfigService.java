@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import xyz.ezsky.anilink.model.vo.SiteConfigVO;
 import xyz.ezsky.anilink.model.dto.SetSiteConfigRequest;
+import xyz.ezsky.anilink.model.dto.UpdateSiteConfigRequest;
 import xyz.ezsky.anilink.model.entity.SiteConfig;
 import xyz.ezsky.anilink.model.entity.User;
 import xyz.ezsky.anilink.repository.SiteConfigRepository;
@@ -58,7 +59,7 @@ public class SiteConfigService {
     }
     
     /**
-     * 设置站点配置和管理员账号
+     * 设置站点配置和管理员账号（初始化用）
      */
     public void setSiteConfig(SetSiteConfigRequest request) {
         // 设置站点名称
@@ -75,6 +76,21 @@ public class SiteConfigService {
         
         // 创建管理员账号
         userService.createAdminUser(request.getAdminUsername(), request.getAdminPassword(), "example@example.com");
+    }
+    
+    /**
+     * 更新站点配置
+     */
+    public void updateSiteConfig(UpdateSiteConfigRequest request) {
+        if (request.getSiteName() != null) {
+            saveOrUpdateConfig(SITE_NAME, request.getSiteName(), "站点名称");
+        }
+        if (request.getSiteDescription() != null) {
+            saveOrUpdateConfig(SITE_DESCRIPTION, request.getSiteDescription(), "站点描述");
+        }
+        if (request.getSiteUrl() != null) {
+            saveOrUpdateConfig(SITE_URL, request.getSiteUrl(), "站点URL");
+        }
     }
     
     /**

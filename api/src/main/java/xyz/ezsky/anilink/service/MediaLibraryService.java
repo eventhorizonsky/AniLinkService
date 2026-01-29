@@ -41,6 +41,8 @@ public class MediaLibraryService {
         mediaScannerService.scanLibrary(savedLibrary);
         MediaLibraryVO mediaLibraryVO = new MediaLibraryVO();
         BeanUtils.copyProperties(savedLibrary, mediaLibraryVO);
+        // 将 Long ID 转换为 String
+        mediaLibraryVO.setId(savedLibrary.getId().toString());
         return mediaLibraryVO;
     }
 
@@ -53,6 +55,8 @@ public class MediaLibraryService {
         return mediaLibraryRepository.findAll().stream().map(mediaLibrary -> {
             MediaLibraryVO mediaLibraryVO = new MediaLibraryVO();
             BeanUtils.copyProperties(mediaLibrary, mediaLibraryVO);
+            // 将 Long ID 转换为 String
+            mediaLibraryVO.setId(mediaLibrary.getId().toString());
             return mediaLibraryVO;
         }).collect(Collectors.toList());
     }

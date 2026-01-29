@@ -2,9 +2,11 @@ package xyz.ezsky.anilink.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import cn.dev33.satoken.annotation.SaCheckRole;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import xyz.ezsky.anilink.model.dto.SetSiteConfigRequest;
+import xyz.ezsky.anilink.model.dto.UpdateSiteConfigRequest;
 import xyz.ezsky.anilink.model.vo.SiteConfigVO;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.service.SiteConfigService;
@@ -24,6 +26,7 @@ public class SiteConfigController {
      * 获取站点配置信息
      */
     @GetMapping("config")
+    @SaCheckRole("super-admin")
     @Operation(summary = "获取站点配置", description = "获取站点名称、描述、URL等配置信息")
     public ApiResponseVO<SiteConfigVO> getSiteConfig() {
         SiteConfigVO config = siteConfigService.getSiteConfig();
@@ -31,13 +34,13 @@ public class SiteConfigController {
     }
     
     /**
-     * 设置站点配置和管理员账号
-     * 用于安装引导
+     * 更新站点配置
      */
-    @PostMapping("config")
-    @Operation(summary = "设置站点配置", description = "设置站点信息和管理员账号密码，用于安装引导")
-    public ApiResponseVO<String> setSiteConfig(@RequestBody SetSiteConfigRequest request) {
-        siteConfigService.setSiteConfig(request);
-        return ApiResponseVO.success("设置成功", "站点配置已更新");
+    @PutMapping("config")
+    @SaCheckRole("super-admin")
+    @Operation(summary = "更新站点配置", description = "更新站点名称、描述、URL等配置信息")
+    public ApiResponseVO<String> updateSiteConfig(@RequestBody UpdateSiteConfigRequest request) {
+        siteConfigService.updateSiteConfig(request);
+        return ApiResponseVO.success("更新成功", "站点配置已更新");
     }
 }
