@@ -18,8 +18,7 @@ public interface MediaSubtitleRepository extends BaseRepository<MediaSubtitle, L
             SELECT s FROM MediaSubtitle s
             JOIN FETCH s.mediaFile m
             JOIN FETCH m.library l
-        WHERE (:keyword IS NULL
-           OR LOWER(s.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+        WHERE (LOWER(s.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
            OR LOWER(s.trackName) LIKE LOWER(CONCAT('%', :keyword, '%'))
            OR LOWER(m.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
            OR LOWER(COALESCE(m.animeTitle, '')) LIKE LOWER(CONCAT('%', :keyword, '%')))
@@ -29,8 +28,7 @@ public interface MediaSubtitleRepository extends BaseRepository<MediaSubtitle, L
             SELECT COUNT(s) FROM MediaSubtitle s
             JOIN s.mediaFile m
             JOIN m.library l
-            WHERE (:keyword IS NULL
-               OR LOWER(s.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
+            WHERE (LOWER(s.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
                OR LOWER(s.trackName) LIKE LOWER(CONCAT('%', :keyword, '%'))
                OR LOWER(m.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
                OR LOWER(COALESCE(m.animeTitle, '')) LIKE LOWER(CONCAT('%', :keyword, '%')))

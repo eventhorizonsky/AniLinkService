@@ -54,10 +54,7 @@ public class MediaSubtitleService {
 
     public PageVO<MediaSubtitleAdminDTO> getSubtitlePage(int page, int pageSize, String keyword, String sourceType) {
         Pageable pageable = PageRequest.of(page, pageSize, Sort.by(Sort.Direction.DESC, "id"));
-        String normalizedKeyword = keyword == null ? null : keyword.trim();
-        if (normalizedKeyword != null && normalizedKeyword.isEmpty()) {
-            normalizedKeyword = null;
-        }
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
 
         String normalizedSourceType = sourceType == null ? null : sourceType.trim();
         if (normalizedSourceType != null && normalizedSourceType.isEmpty()) {

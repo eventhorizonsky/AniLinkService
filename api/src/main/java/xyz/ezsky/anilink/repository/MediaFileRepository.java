@@ -49,7 +49,7 @@ public interface MediaFileRepository extends BaseRepository<MediaFile, Long> {
         @Query("""
             SELECT m FROM MediaFile m
             WHERE (:libraryId IS NULL OR m.library.id = :libraryId)
-              AND (:keyword IS NULL OR LOWER(m.fileName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+              AND LOWER(m.fileName) LIKE LOWER(CONCAT('%', :keyword, '%'))
               AND (:matchStatuses IS NULL OR m.matchStatus IN :matchStatuses)
             """)
         Page<MediaFile> searchMediaFiles(

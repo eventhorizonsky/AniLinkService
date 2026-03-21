@@ -76,10 +76,7 @@ public class MediaFileService {
     public PageVO<MediaFileDTO> getMediaFiles(Long libraryId, int page, int pageSize, String keyword, Boolean matched) {
         Pageable pageable = PageRequest.of(page, pageSize);
 
-        String normalizedKeyword = keyword == null ? null : keyword.trim();
-        if (normalizedKeyword != null && normalizedKeyword.isEmpty()) {
-            normalizedKeyword = null;
-        }
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
 
         List<MatchStatus> matchStatuses = resolveMatchStatuses(matched);
         Page<MediaFile> result = mediaFileRepository.searchMediaFiles(libraryId, normalizedKeyword, matchStatuses, pageable);
