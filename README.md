@@ -1,6 +1,6 @@
 <div align="center">
   <h1>
-    <img src="doc/img/README/icon.png" alt="AniLinkService icon" width="56" valign="middle" />
+    <img src="doc/img/README/icon.png" alt="AniLinkService icon" width="96" valign="middle" />
     <span valign="middle">AniLinkService</span>
   </h1>
 </div>
