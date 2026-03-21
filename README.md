@@ -1,73 +1,210 @@
-# AniLinkService
+<div align="center">
+  <img src="doc/img/README/icon.png" alt="AniLinkService icon" width="120" />
+  <h1>AniLinkService</h1>
+</div>
 
-基于弹弹play开放平台的本地动漫媒体服务，提供媒体库扫描、番剧匹配、弹幕播放与后台管理。
+基于弹弹play开放平台的本地追番服务，面向有 NAS、家用服务器或轻量云主机的用户，提供媒体库扫描、番剧匹配、弹幕播放、RSS 自动下载、追番通知和后台管理等能力。
 
-![AniLinkService](https://socialify.git.ci/eventhorizonsky/AniLinkService/image?description=1&font=Bitter&issues=1&language=1&logo=&name=1&owner=1&pulls=1&stargazers=1&theme=Auto)
+![AniLinkService](https://socialify.git.ci/eventhorizonsky/AniLinkService/image?description=1&forks=1&issues=1&language=1&name=1&owner=1&pattern=Circuit+Board&pulls=1&stargazers=1&theme=Light)
 
-## 当前已实现功能
 
-以下为当前代码中已经落地的能力：
 
-- 安装与初始化
-   - 首次安装向导（系统信息检查、站点配置、管理员账号、媒体库配置）
-   - 安装完成后自动切换到正常站点路由
-- 认证与用户体系
-   - 用户登录、当前用户信息获取
-   - 注册流程（图形验证码 + 邮箱验证码）
-   - 基于 Sa-Token 的鉴权与角色控制（管理接口使用 `super-admin` 保护）
-- 媒体库与扫描
-   - 添加/删除媒体库，手动扫描单库或全库
-   - 服务端目录浏览（选择媒体库路径）
-   - 应用启动自动全库扫描
-   - 目录监听文件新增/修改/删除
-- 媒体文件索引与元数据
-   - 扫描常见视频格式（`mp4/mkv/avi/mov`）
-   - 通过 `ffprobe` 提取技术信息（分辨率、帧率、编码、HDR、时长等）
-   - 文件 Hash 计算
-   - 元数据/匹配异步队列与进度状态查询
-- 动漫匹配与动漫库
-   - 按文件信息调用弹弹匹配接口，自动回填 `animeId/episodeId`
-   - 支持重匹配（自动候选 + 手动搜索）
-   - 拉取番剧详情入库，封面本地缓存与静态访问
-   - 动漫分页、搜索、详情、剧集列表、新番时间表
-- 追番、播放历史与消息通知
-   - 追番增删改查（含按状态筛选）
-   - 播放进度同步与播放历史管理
-   - 站内消息中心（未读统计、标记已读、按类型查询）
-   - 新剧集匹配成功后自动向追番用户推送更新消息
-- 播放、字幕与弹幕
-   - 视频流接口支持 HTTP Range（支持拖拽进度播放）
-   - 前端 Artplayer 播放 + `artplayer-plugin-danmuku`
-   - 弹幕代理 `/api/v2/comment/{episodeId}`，30 分钟数据库缓存，支持 `withRelated=true`
-   - 本地字幕管理：列表、上传、下载、删除、时间偏移、重新扫描
-- 资源搜索与下载
-   - 资源搜索代理（字幕组/类型/关键词）
-   - 磁链下载任务创建、取消、重试、删除、绑定状态查询
-   - 下载任务 SSE 实时进度推送
-   - RSS 订阅下载（增删改查、手动触发、最近抓取内容查看）
-- 远程访问
-   - 远程访问入口与站点级开关控制
-   - 可选令牌访问模式，支持用户远程访问密钥查看与重置
-- 管理后台
-   - 系统信息、服务配置、用户管理
-   - 队列进度、媒体库管理、视频文件管理、字幕管理
-   - 资源搜索下载、RSS 订阅下载、下载任务进度与下载器配置
+完整文档站点：https://eventhorizonsky.github.io/ani-link-doc/
 
-## 技术栈
+## 项目定位
 
-- 后端：Spring Boot 3.4.x, Spring Data JPA, Liquibase, Sa-Token, SpringDoc OpenAPI
-- 数据库：H2（默认）/ PostgreSQL
-- 前端：Vue 3, Vite, Vuetify, Vue Router, Axios
-- 播放器：Artplayer + artplayer-plugin-danmuku
-- 媒体分析：FFprobe（容器镜像内已安装 FFmpeg 工具集）
-- BT 下载：jlibtorrent（含 Windows/Linux 平台依赖）
+AniLinkService 适合这类场景：
 
-## 目录结构
+- 你有一台可以持续运行的 NAS 或家用服务器
+- 你希望把本地番剧文件、弹幕、追番和自动下载整合到一个服务里
+- 你可以使用 Docker，或具备基本的 Java / Node 本地开发环境
+- 你的环境可以访问 `ghcr.io`
+- 你已经申请到弹弹开放平台的 `AppId` 和 `AppSecret`
+
+如果你只有一台电脑或手机，希望直接开箱即用，弹弹官方客户端通常会更合适：
+https://www.dandanplay.com/
+
+
+
+## 界面预览
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="doc/img/README/image-20260321230025996.png" alt="首页" />
+      <br />
+      <sub>首页：新番时间表与常用入口</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="doc/img/README/image-20260321230139361.png" alt="播放页" />
+      <br />
+      <sub>播放页：视频、弹幕与字幕联动</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="doc/img/README/image-20260321230119368.png" alt="番剧详情" />
+      <br />
+      <sub>番剧详情：海报、剧集与追番信息</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="doc/img/README/image-20260321230218519.png" alt="评论区" />
+      <br />
+      <sub>评论区：聚合 Bangumi 讨论内容</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="doc/img/README/image-20260321230254549.png" alt="资源搜索和下载" />
+      <br />
+      <sub>后台：资源搜索、下载和管理</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="doc/img/README/image-20260321231041588.png" alt="字幕管理" />
+      <br />
+      <sub>后台：内封、外挂字幕管理</sub>
+    </td>
+  </tr>
+</table>
+
+
+
+## 核心能力
+
+- 首次安装向导，初始化站点信息、管理员账号和媒体库
+- 本地媒体库扫描，支持常见视频格式，自动监听文件变化
+- 基于弹弹接口进行番剧与剧集匹配，支持重匹配
+- 播放页集成弹幕、字幕与播放进度记录
+- 番剧详情页展示新番时间表、剧集、评论和追番状态
+- RSS 订阅下载，支持代理、立即检查和自动入库匹配
+- 后台管理包含媒体库、视频文件、字幕、下载任务、RSS 和系统配置
+- 支持 H2 快速启动，也支持 PostgreSQL 部署
+
+## 快速开始
+
+### 前置条件
+
+启动前建议先确认：
+
+1. 服务器已安装 Docker，并且你知道如何创建和管理容器
+2. 机器可以拉取 `ghcr.io/eventhorizonsky/anilinkserver:latest`
+3. 你已拿到弹弹开放平台的 `AppId` 和 `AppSecret`
+
+开放平台申请指引：
+https://doc.dandanplay.com/open/#_3-申请-appid-和-appsecret
+
+### 1. 拉取镜像
+
+```bash
+docker pull ghcr.io/eventhorizonsky/anilinkserver:latest
+```
+
+### 2. 使用 H2 快速启动
+
+先进入你希望持久化数据和媒体文件的目录：
+
+```bash
+mkdir -p ./anilink/data ./anilink/media
+```
+
+然后启动容器：
+
+```bash
+docker run -d \
+  --name anilink \
+  -p 8081:8081 \
+  -e DB_PROFILE=h2 \
+  -v ./anilink/data:/data \
+  -v ./anilink/media:/media/anime \
+  --restart unless-stopped \
+  ghcr.io/eventhorizonsky/anilinkserver:latest
+```
+
+说明：
+
+- `./anilink/data` 用于持久化 H2 数据库、缓存和临时文件
+- `./anilink/media` 是示例媒体目录，会挂载到容器内的 `/media/anime`
+- `-p 8081:8081` 左侧是宿主机端口，可改；右侧容器端口固定为 `8081`
+
+### 3. 完成初始化
+
+容器启动后，浏览器访问：
 
 ```text
-api/   后端服务（Spring Boot）
-ui/    前端界面（Vue 3 + Vite）
-data/  默认数据目录（H2 文件库等）
+http://<你的主机IP>:8081
+```
+
+按照安装向导依次完成：
+
+1. 站点标题、描述和管理员账号配置
+2. 弹弹开放平台 `AppId` / `AppSecret` 配置
+3. 媒体库路径配置
+
+如果你使用的是上面的 Docker 命令，媒体库路径应填写：
+
+```text
+/media/anime
+```
+
+初始化完成后，首页应能正常显示新番时间表；如果数据异常，优先检查 `AppId` 和 `AppSecret` 是否填写正确。
+
+### 4. 配置自动下载
+
+如果你的媒体库中已经有视频文件，这一步可以跳过。
+
+进入后台管理后，可以在 RSS 订阅中添加订阅地址，例如：
+
+```text
+https://acg.rip/team/173.xml
+```
+
+支持的典型流程：
+
+- 新增 RSS 订阅
+- 按需配置 HTTP 代理
+- 点击“立即检查”触发抓取
+- 自动下载到媒体库并完成匹配
+
+回到首页的“发现”页后，应能看到刚刚匹配成功的番剧。
+
+## 部署说明
+
+### PostgreSQL
+
+默认数据库为 H2。如需切换 PostgreSQL，可设置：
+
+```bash
+-e DB_PROFILE=pgsql
+-e DB_HOST=127.0.0.1
+-e DB_PORT=5432
+-e DB_NAME=anilink
+-e DB_USER=postgres
+-e DB_PASS=yourpassword
+```
+
+示例：
+
+```bash
+docker run -d \
+  --name anilink \
+  -p 8081:8081 \
+  -e DB_PROFILE=pgsql \
+  -e DB_HOST=192.168.1.100 \
+  -e DB_PORT=5432 \
+  -e DB_NAME=anilink \
+  -e DB_USER=postgres \
+  -e DB_PASS=yourpassword \
+  -v ./anilink/media:/media/anime \
+  --restart unless-stopped \
+  ghcr.io/eventhorizonsky/anilinkserver:latest
+```
+
+### 自建镜像
+
+如果你希望从源码构建镜像：
+
+```bash
+docker build -t anilink-service .
 ```
 
 ## 本地开发
@@ -78,20 +215,16 @@ data/  默认数据目录（H2 文件库等）
 - Maven 3.8+
 - Node.js 18+
 - pnpm
-- 本地运行后端时建议安装 `ffprobe`（Docker 镜像中已内置）
+- `ffprobe` 可执行文件
 
 ### 启动后端
-
-在项目根目录执行：
 
 ```bash
 cd api
 mvn spring-boot:run
 ```
 
-默认使用 H2 配置（`DB_PROFILE=h2`）。
-
-如需 PostgreSQL：
+默认使用 H2。如需 PostgreSQL：
 
 ```bash
 cd api
@@ -106,77 +239,39 @@ pnpm install
 pnpm dev
 ```
 
-## Docker 部署
+### 目录结构
 
-### 构建镜像
-
-```bash
-docker build -t anilink-service .
+```text
+api/   Spring Boot 后端
+ui/    Vue 3 + Vite 前端
+data/  默认数据目录
 ```
 
-### 运行示例
+## 文档
 
-```bash
-docker run -d \
-   --name anilink \
-   -p 8081:8081 \
-   -e DB_PROFILE=h2 \
-   -e CONFIG_DIR=/app/config \
-   -e SUBTITLE_DIR=/app/subtitles \
-   -v ./config:/app/config \
-   -v ./subtitles:/app/subtitles \
-   anilink-service
-```
+- 完整文档站点：https://eventhorizonsky.github.io/ani-link-doc/
+- 弹弹开放平台文档：https://doc.dandanplay.com/open/
+- Swagger UI：服务启动后访问 `http://localhost:8081/swagger-ui/index.html`
 
+README 只保留项目概览和常用启动方式；更详细的部署、配置和界面引导建议查看完整文档站点。
 
-## 主要接口示例
+## 故障排查
 
-- 安装相关
-   - `GET /api/init/system-info`
-   - `POST /api/init/site-config`
-   - `POST /api/init/media-library`
-- 认证
-   - `POST /api/auth/login`
-   - `POST /api/auth/register`
-   - `POST /api/auth/send-register-email-code`
-   - `POST /api/auth/currentUser`
-- 资源下载
-   - `GET /api/resource-search/list`
-   - `POST /api/resource-search/download`
-   - `GET /api/resource-search/download-tasks`
-   - `GET /api/resource-search/download-tasks/stream`
-   - `GET /api/resource-search/rss-subscriptions`
-- 动漫与弹幕
-   - `GET /api/animes`
-   - `GET /api/animes/{animeId}/raw-json`
-   - `GET /api/animes/{animeId}/episodes`
-   - `GET /api/animes/shin/raw-json`
-   - `GET /api/v2/comment/{episodeId}?withRelated=true`
-- 用户功能
-   - `GET /api/follows`
-   - `POST /api/play-history/progress`
-   - `GET /api/messages/unread-count`
-- 播放
-   - `GET /api/media-files/stream/{id}`
-   - `GET /api/media-files/{id}/subtitles`
-- 字幕管理
-   - `GET /api/subtitles`
-   - `POST /api/subtitles/upload`
-   - `PUT /api/subtitles/{id}/offset`
-   - `POST /api/subtitles/rescan/{mediaFileId}`
-- 远程访问
-   - `GET /api/remote-access/credential`
-   - `POST /api/remote-access/credential/regenerate`
+- 无法访问页面：检查 `-p 8081:8081` 映射和服务器防火墙
+- 扫描不到视频：确认媒体目录已正确挂载，且安装向导中填写的是容器内路径
+- 启动失败：先查看容器日志 `docker logs anilink`
+- 新番时间表或基础功能异常：优先检查弹弹开放平台 `AppId` / `AppSecret`
 
-## API 文档
+## 技术栈
 
-启动后访问：
+- 后端：Spring Boot 3.4.x、Spring Data JPA、Liquibase、Sa-Token、SpringDoc OpenAPI
+- 数据库：H2 / PostgreSQL
+- 前端：Vue 3、Vite、Vuetify、Vue Router、Axios
+- 播放器：Artplayer、artplayer-plugin-danmuku
+- 媒体分析：FFmpeg / ffprobe
+- 下载组件：jlibtorrent
 
-- `http://localhost:8081/swagger-ui/index.html`
-
-## 鸣谢
-
-本项目的实现离不开以下优秀开源项目与平台支持：
+## 致谢
 
 - Sa-Token: https://sa-token.cc/
 - FFmpeg: https://ffmpeg.org/
