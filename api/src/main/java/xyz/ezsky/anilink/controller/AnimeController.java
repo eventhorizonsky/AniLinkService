@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import xyz.ezsky.anilink.model.vo.AnimeVO;
@@ -22,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Tag(name = "动漫管理", description = "用于获取动漫信息和剧集列表")
 @RestController
 @RequestMapping("/api/animes")
+@Log4j2
 public class AnimeController {
 
     @Autowired
@@ -124,6 +126,7 @@ public class AnimeController {
             Object json = new ObjectMapper().readValue(rawJson, Object.class);
             return ApiResponseVO.success(json);
         } catch (JsonProcessingException e) {
+            log.error("Failed to parse raw anime JSON for animeId={}", animeId, e);
             return ApiResponseVO.fail(500, "原始JSON数据解析失败");
         }
     }

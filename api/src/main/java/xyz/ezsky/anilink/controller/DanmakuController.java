@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
@@ -16,6 +17,7 @@ import xyz.ezsky.anilink.service.DanmakuService;
 @Tag(name = "弹幕管理", description = "用于获取弹幕数据")
 @RestController
 @RequestMapping("/api/v2")
+@Log4j2
 public class DanmakuController {
 
     @Autowired
@@ -51,6 +53,7 @@ public class DanmakuController {
             Object json = new ObjectMapper().readValue(rawJson, Object.class);
             return ApiResponseVO.success(json);
         } catch (JsonProcessingException e) {
+            log.error("Failed to parse danmaku JSON for episodeId={}, withRelated={}", episodeId, withRelated, e);
             return ApiResponseVO.fail(500, "弹幕数据解析失败");
         }
     }
@@ -76,6 +79,7 @@ public class DanmakuController {
             Object json = new ObjectMapper().readValue(rawJson, Object.class);
             return ApiResponseVO.success(json);
         } catch (IllegalArgumentException e) {
+            log.warn("Invalid search episodes request: anime={}, episode={}, tmdbId={}", anime, episode, tmdbId, e);
             return ApiResponseVO.fail(400, e.getMessage());
         } catch (JsonProcessingException e) {
             return ApiResponseVO.fail(500, "搜索结果解析失败");

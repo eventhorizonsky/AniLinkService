@@ -54,17 +54,19 @@ public class DanmakuService {
 
         // 检查有效缓存
         Optional<ApiCache> validCache = apiCacheRepository.findByCacheKeyAndExpireTimeAfter(cacheKey, now);
-        if (validCache.isPresent()) {
+        String validCacheValue = extractUsableJsonCacheValue(validCache, cacheKey);
+        if (validCacheValue != null) {
             log.debug("返回缓存的弹幕数据: episodeId={}", episodeId);
-            return validCache.get().getCacheValue();
+            return validCacheValue;
         }
 
         // 检查过期缓存：存在则立即返回，并异步刷新（防重入）。
         Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
-        if (staleCache.isPresent() && StringUtils.hasText(staleCache.get().getCacheValue())) {
+        String staleCacheValue = extractUsableJsonCacheValue(staleCache, cacheKey);
+        if (staleCacheValue != null) {
             refreshCommentCacheAsync(cacheKey, episodeId, withRelated);
             log.debug("返回过期缓存并触发异步刷新: episodeId={}, withRelated={}", episodeId, withRelated);
-            return staleCache.get().getCacheValue();
+            return staleCacheValue;
         }
 
         // 首次请求（无缓存）同步请求上游。
@@ -75,6 +77,25 @@ public class DanmakuService {
             return freshBody;
         }
 
+        return null;
+    }
+
+    private String extractUsableJsonCacheValue(Optional<ApiCache> cacheOpt, String cacheKey) {
+        if (cacheOpt.isEmpty()) {
+            return null;
+        }
+
+        String value = cacheOpt.get().getCacheValue();
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return value;
+        }
+
+        log.warn("Ignoring invalid api cache payload for cacheKey={}, preview={}", cacheKey, trimmed);
         return null;
     }
 

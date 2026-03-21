@@ -1,0 +1,96 @@
+databaseChangeLog:
+  - changeSet:
+      id: 24-pgsql-text-column-fixes
+      author: anilink
+      dbms: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+              BEGIN
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_file' AND column_name = 'file_name' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_file ALTER COLUMN file_name TYPE VARCHAR(255) USING convert_from(file_name, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_file' AND column_name = 'file_path' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_file ALTER COLUMN file_path TYPE VARCHAR(2048) USING convert_from(file_path, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_file' AND column_name = 'episode_id' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_file ALTER COLUMN episode_id TYPE VARCHAR(255) USING convert_from(episode_id, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_file' AND column_name = 'anime_title' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_file ALTER COLUMN anime_title TYPE VARCHAR(500) USING convert_from(anime_title, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_file' AND column_name = 'episode_title' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_file ALTER COLUMN episode_title TYPE VARCHAR(500) USING convert_from(episode_title, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'track_name' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN track_name TYPE VARCHAR(255) USING convert_from(track_name, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'file_name' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN file_name TYPE VARCHAR(255) USING convert_from(file_name, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'file_path' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN file_path TYPE VARCHAR(2048) USING convert_from(file_path, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'language' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN language TYPE VARCHAR(32) USING convert_from(language, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'codec_name' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN codec_name TYPE VARCHAR(64) USING convert_from(codec_name, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'subtitle_format' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN subtitle_format TYPE VARCHAR(16) USING convert_from(subtitle_format, ''UTF8'')';
+                END IF;
+
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema() AND table_name = 'media_subtitle' AND column_name = 'source_type' AND data_type = 'bytea'
+                ) THEN
+                  EXECUTE 'ALTER TABLE media_subtitle ALTER COLUMN source_type TYPE VARCHAR(32) USING convert_from(source_type, ''UTF8'')';
+                END IF;
+              END $$;

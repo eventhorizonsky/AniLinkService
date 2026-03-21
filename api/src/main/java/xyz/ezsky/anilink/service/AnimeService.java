@@ -168,8 +168,9 @@ public class AnimeService {
         LocalDateTime now = LocalDateTime.now();
 
         Optional<ApiCache> validCache = apiCacheRepository.findByCacheKeyAndExpireTimeAfter(cacheKey, now);
-        if (validCache.isPresent()) {
-            return validCache.get().getCacheValue();
+        String validCacheValue = extractUsableJsonCacheValue(validCache, cacheKey);
+        if (validCacheValue != null) {
+            return validCacheValue;
         }
 
         Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
@@ -187,9 +188,10 @@ public class AnimeService {
             log.error("Dandan bangumi request failed for animeId={}", animeId, ex);
         }
 
-        if (staleCache.isPresent()) {
+        String staleCacheValue = extractUsableJsonCacheValue(staleCache, cacheKey);
+        if (staleCacheValue != null) {
             log.warn("Returning stale api cache for animeId={} due to upstream failure", animeId);
-            return staleCache.get().getCacheValue();
+            return staleCacheValue;
         }
 
         // 最后退避到本地已存 raw_json，兼容历史数据。
@@ -214,8 +216,9 @@ public class AnimeService {
     private String getWithDbCache(String cacheKey, String path) {
         LocalDateTime now = LocalDateTime.now();
         Optional<ApiCache> validCache = apiCacheRepository.findByCacheKeyAndExpireTimeAfter(cacheKey, now);
-        if (validCache.isPresent()) {
-            return validCache.get().getCacheValue();
+        String validCacheValue = extractUsableJsonCacheValue(validCache, cacheKey);
+        if (validCacheValue != null) {
+            return validCacheValue;
         }
 
         Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
@@ -232,11 +235,30 @@ public class AnimeService {
             log.error("Dandan request failed for path={}", path, ex);
         }
 
-        if (staleCache.isPresent()) {
+        String staleCacheValue = extractUsableJsonCacheValue(staleCache, cacheKey);
+        if (staleCacheValue != null) {
             log.warn("Returning stale api cache for path={} due to upstream failure", path);
-            return staleCache.get().getCacheValue();
+            return staleCacheValue;
         }
 
+        return null;
+    }
+
+    private String extractUsableJsonCacheValue(Optional<ApiCache> cacheOpt, String cacheKey) {
+        if (cacheOpt.isEmpty()) {
+            return null;
+        }
+        String value = cacheOpt.get().getCacheValue();
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return value;
+        }
+
+        log.warn("Ignoring invalid api cache payload for cacheKey={}, preview={}", cacheKey, trimmed);
         return null;
     }
 

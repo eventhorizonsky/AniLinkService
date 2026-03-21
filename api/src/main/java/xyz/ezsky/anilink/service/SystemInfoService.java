@@ -10,6 +10,7 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.OperatingSystemMXBean;
 import java.net.InetAddress;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.text.SimpleDateFormat;
@@ -79,14 +80,10 @@ public class SystemInfoService {
                     liquibaseLastExecuted = getLastExecutedTime(connection);
                     // 检查是否有执行记录
                     liquibaseInitialized = liquibaseChangeSets > 0;
-                } else {
-                    liquibaseEnabled = false;
                 }
             } catch (Exception e) {
-                liquibaseEnabled = false;
+                liquibaseInitialized = false;
             }
-        } else {
-            liquibaseEnabled = false;
         }
         
         return new SystemInfoVO(
@@ -102,8 +99,36 @@ public class SystemInfoService {
      * 检查表是否存在
      */
     private boolean isTableExists(Connection connection, String tableName) throws Exception {
-        java.sql.DatabaseMetaData metaData = connection.getMetaData();
-        try (ResultSet rs = metaData.getTables(null, null, tableName.toUpperCase(), null)) {
+        DatabaseMetaData metaData = connection.getMetaData();
+
+        if (tableExists(metaData, null, null, tableName)) {
+            return true;
+        }
+        if (tableExists(metaData, null, null, tableName.toLowerCase())) {
+            return true;
+        }
+        if (tableExists(metaData, null, null, tableName.toUpperCase())) {
+            return true;
+        }
+
+        String currentSchema = connection.getSchema();
+        if (currentSchema != null && !currentSchema.isBlank()) {
+            if (tableExists(metaData, null, currentSchema, tableName)) {
+                return true;
+            }
+            if (tableExists(metaData, null, currentSchema, tableName.toLowerCase())) {
+                return true;
+            }
+            if (tableExists(metaData, null, currentSchema, tableName.toUpperCase())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean tableExists(DatabaseMetaData metaData, String catalog, String schema, String tableName) throws Exception {
+        try (ResultSet rs = metaData.getTables(catalog, schema, tableName, new String[]{"TABLE"})) {
             return rs.next();
         }
     }

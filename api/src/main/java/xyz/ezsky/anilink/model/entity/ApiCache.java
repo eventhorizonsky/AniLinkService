@@ -19,7 +19,6 @@ public class ApiCache {
     @Column(name = "cache_key", length = 255, nullable = false, unique = true)
     private String cacheKey;
 
-    @Lob
     @Column(name = "cache_value", columnDefinition = "TEXT", nullable = false)
     private String cacheValue;
 
