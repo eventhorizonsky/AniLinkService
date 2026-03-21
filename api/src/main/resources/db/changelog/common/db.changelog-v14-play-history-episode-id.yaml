@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 23-play-history-episode-id
+      author: anilink
+      changes:
+        - addColumn:
+            tableName: play_history
+            columns:
+              - column:
+                  name: episode_id
+                  type: VARCHAR(255)

@@ -240,6 +240,7 @@ const goToPlayer = (item) => {
     params: { videoId: String(item.videoId) },
     query: {
       animeId: String(item.animeId || ''),
+      episodeId: String(item.episodeId || ''),
     },
   })
 }

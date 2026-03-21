@@ -46,6 +46,7 @@ public class PlayHistoryService {
             history.setAnimeTitle(dto.getAnimeTitle());
             history.setVideoId(dto.getVideoId());
             history.setVideoName(dto.getVideoName());
+            history.setEpisodeId(dto.getEpisodeId());
             history.setDurationSeconds(dto.getDurationSeconds());
             history.setProgressSeconds(dto.getProgressSeconds());
             history.setProgressPercentage(calculatePercentage(dto.getProgressSeconds(), dto.getDurationSeconds()));
@@ -58,6 +59,7 @@ public class PlayHistoryService {
             history.setVideoName(dto.getVideoName());
             history.setAnimeId(dto.getAnimeId());
             history.setAnimeTitle(dto.getAnimeTitle());
+            history.setEpisodeId(dto.getEpisodeId());
             history.setDurationSeconds(dto.getDurationSeconds());
             history.setProgressSeconds(dto.getProgressSeconds());
             history.setProgressPercentage(calculatePercentage(dto.getProgressSeconds(), dto.getDurationSeconds()));

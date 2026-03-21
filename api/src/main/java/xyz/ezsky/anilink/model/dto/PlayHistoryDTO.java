@@ -21,6 +21,8 @@ public class PlayHistoryDTO {
     private Long animeId;
     
     private String animeTitle;
+
+    private String episodeId;
     
     /**
      * 播放进度（秒）

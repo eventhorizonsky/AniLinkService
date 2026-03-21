@@ -27,6 +27,8 @@ public class PlayHistoryVO {
     private Long videoId;
     
     private String videoName;
+
+    private String episodeId;
     
     /**
      * 当前播放进度（秒）

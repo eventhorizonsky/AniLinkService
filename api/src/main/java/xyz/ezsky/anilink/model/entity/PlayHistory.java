@@ -46,6 +46,9 @@ public class PlayHistory {
      */
     @Column(name = "video_name", length = 1000)
     private String videoName;
+
+    @Column(name = "episode_id", length = 255)
+    private String episodeId;
     
     /**
      * 当前播放进度（秒）

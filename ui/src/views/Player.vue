@@ -557,6 +557,7 @@ const savePlayProgress = async () => {
       videoId: videoId.value,
       videoName: `Episode ${episodeId.value || ''}`,
       animeId: animeId.value,
+      episodeId: String(episodeId.value || ''),
       animeTitle: animeData.value?.titles?.[0]?.title || '未知',
       progressSeconds: currentTime,
       durationSeconds: duration,

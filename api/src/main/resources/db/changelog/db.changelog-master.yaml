@@ -1,5 +1,5 @@
 databaseChangeLog:
-  # 综合初始化脚本：包含所有表的第一次初始化
+  # Common schema changelogs
   - include:
       file: common/db.changelog-v1-init.yaml
       relativeToChangelogFile: true
@@ -39,7 +39,10 @@ databaseChangeLog:
   - include:
       file: common/db.changelog-v13-bangumi-binding.yaml
       relativeToChangelogFile: true
-  # 数据库特定的初始化脚本（如果需要）
+  - include:
+      file: common/db.changelog-v14-play-history-episode-id.yaml
+      relativeToChangelogFile: true
+  # Database-specific changelogs
   - include:
       file: h2/db.changelog-h2-init.yaml
       relativeToChangelogFile: true
