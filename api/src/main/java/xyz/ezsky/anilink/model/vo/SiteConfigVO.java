@@ -32,6 +32,9 @@ public class SiteConfigVO {
     @Schema(description = "Dandan 应用密钥是否已配置", example = "true")
     private Boolean dandanAppSecretConfigured;
 
+    @Schema(description = "Dandan API 地址", example = "https://api.dandanplay.net")
+    private String dandanBaseUrl;
+
     @Schema(description = "资源搜索节点地址", example = "http://127.0.0.1:9000")
     private String resourceNodeBaseUrl;
 
@@ -100,4 +103,12 @@ public class SiteConfigVO {
 
     @Schema(description = "SMTP 密码是否已配置", example = "true")
     private Boolean smtpPasswordConfigured;
+
+    public String getDandanBaseUrl() {
+        return dandanBaseUrl;
+    }
+
+    public void setDandanBaseUrl(String dandanBaseUrl) {
+        this.dandanBaseUrl = dandanBaseUrl;
+    }
 }

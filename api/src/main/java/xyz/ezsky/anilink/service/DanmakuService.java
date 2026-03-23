@@ -29,7 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Log4j2
 public class DanmakuService {
 
-    private static final String DANDAN_BASE = "https://api.dandanplay.net";
     // 弹幕缓存时间：30分钟
     private static final long COMMENT_CACHE_TTL_MINUTES = 30;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -40,6 +39,9 @@ public class DanmakuService {
 
     @Autowired
     private DandanClientUtil dandanClientUtil;
+
+    @Autowired
+    private SiteConfigService siteConfigService;
 
     /**
      * 获取指定弹幕库的弹幕（带缓存）
@@ -127,7 +129,7 @@ public class DanmakuService {
                 : null;
 
         try {
-            ResponseEntity<String> response = dandanClientUtil.get(DANDAN_BASE, path, queryParams);
+            ResponseEntity<String> response = dandanClientUtil.get(siteConfigService.getDandanBaseUrl(), path, queryParams);
             String responseBody = response.getBody();
             if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(responseBody)) {
                 return responseBody;
@@ -211,7 +213,7 @@ public class DanmakuService {
             throw new IllegalArgumentException("anime 和 tmdbId 至少提供一个");
         }
 
-        ResponseEntity<String> response = dandanClientUtil.get(DANDAN_BASE, path, queryParams);
+        ResponseEntity<String> response = dandanClientUtil.get(siteConfigService.getDandanBaseUrl(), path, queryParams);
         if (!response.getStatusCode().is2xxSuccessful() || !StringUtils.hasText(response.getBody())) {
             return null;
         }

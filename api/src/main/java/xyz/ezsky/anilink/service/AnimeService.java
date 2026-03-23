@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
 @Log4j2
 public class AnimeService {
 
-    private static final String DANDAN_BASE = "https://api.dandanplay.net";
     private static final long BANGUMI_CACHE_TTL_MINUTES = 360;
 
     @Autowired
@@ -48,6 +47,9 @@ public class AnimeService {
 
     @Autowired
     private DandanClientUtil dandanClientUtil;
+
+    @Autowired
+    private SiteConfigService siteConfigService;
 
     // setter used by unit tests
     public void setMediaFileRepository(MediaFileRepository mediaFileRepository) {
@@ -176,7 +178,7 @@ public class AnimeService {
         Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
         String path = "/api/v2/bangumi/" + animeId;
         try {
-            ResponseEntity<String> response = dandanClientUtil.get(DANDAN_BASE, path);
+            ResponseEntity<String> response = dandanClientUtil.get(siteConfigService.getDandanBaseUrl(), path);
             String responseBody = response.getBody();
             if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(responseBody)) {
                 upsertCache(cacheKey, responseBody, now.plusMinutes(BANGUMI_CACHE_TTL_MINUTES));
@@ -223,7 +225,7 @@ public class AnimeService {
 
         Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
         try {
-            ResponseEntity<String> response = dandanClientUtil.get(DANDAN_BASE, path);
+            ResponseEntity<String> response = dandanClientUtil.get(siteConfigService.getDandanBaseUrl(), path);
             String responseBody = response.getBody();
             if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(responseBody)) {
                 upsertCache(cacheKey, responseBody, now.plusMinutes(BANGUMI_CACHE_TTL_MINUTES));

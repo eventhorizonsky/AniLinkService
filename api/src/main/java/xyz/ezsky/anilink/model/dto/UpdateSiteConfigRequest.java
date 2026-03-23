@@ -29,6 +29,9 @@ public class UpdateSiteConfigRequest {
     @Schema(description = "Dandan 应用密钥", example = "your_app_secret")
     private String dandanAppSecret;
 
+    @Schema(description = "Dandan API 地址", example = "https://api.dandanplay.net")
+    private String dandanBaseUrl;
+
     @Schema(description = "资源搜索节点地址", example = "http://127.0.0.1:9000")
     private String resourceNodeBaseUrl;
 
@@ -97,4 +100,12 @@ public class UpdateSiteConfigRequest {
 
     @Schema(description = "是否启用 STARTTLS", example = "false")
     private Boolean smtpStarttlsEnabled;
+
+    public String getDandanBaseUrl() {
+        return dandanBaseUrl;
+    }
+
+    public void setDandanBaseUrl(String dandanBaseUrl) {
+        this.dandanBaseUrl = dandanBaseUrl;
+    }
 }

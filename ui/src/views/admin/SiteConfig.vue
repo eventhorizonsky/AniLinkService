@@ -4,6 +4,7 @@ import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
 
 const API_BASE = '/api'
+const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -34,6 +35,7 @@ const form = ref({
 // Dandan 字段
 form.value.dandanAppId = ''
 form.value.dandanAppSecret = ''
+form.value.dandanBaseUrl = DEFAULT_DANDAN_BASE_URL
 form.value.dandanAppSecretConfigured = false
 form.value.smtpPasswordConfigured = false
 
@@ -62,6 +64,7 @@ const fetchConfig = async () => {
         siteUrl: res.data.data.siteUrl || '',
         dandanAppId: res.data.data.dandanAppId || '',
         dandanAppSecret: '',
+        dandanBaseUrl: res.data.data.dandanBaseUrl || DEFAULT_DANDAN_BASE_URL,
         dandanAppSecretConfigured: !!res.data.data.dandanAppSecretConfigured,
         authRegisterEnabled: !!res.data.data.authRegisterEnabled,
         remoteAccessEnabled: !!res.data.data.remoteAccessEnabled,
@@ -102,6 +105,7 @@ const saveConfig = async () => {
         ,
         dandanAppId: form.value.dandanAppId,
         dandanAppSecret: form.value.dandanAppSecret || null,
+        dandanBaseUrl: form.value.dandanBaseUrl,
         authRegisterEnabled: form.value.authRegisterEnabled,
         remoteAccessEnabled: form.value.remoteAccessEnabled,
         remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
@@ -367,6 +371,16 @@ onMounted(() => {
                 prepend-inner-icon="mdi-lock"
                 variant="outlined"
                 color="primary"
+                class="mb-4"
+              />
+              <v-text-field
+                v-model="form.dandanBaseUrl"
+                label="Dandan API 地址"
+                prepend-inner-icon="mdi-web"
+                variant="outlined"
+                color="primary"
+                hint="默认 https://api.dandanplay.net"
+                persistent-hint
                 class="mb-4"
               />
             </v-window-item>

@@ -34,6 +34,7 @@ public class SiteConfigService {
     private static final String INSTALLED = "installed";
     private static final String DANDAN_APP_ID = "dandan_app_id";
     private static final String DANDAN_APP_SECRET = "dandan_app_secret";
+    private static final String DANDAN_BASE_URL = "dandan_base_url";
     private static final String RESOURCE_NODE_BASE_URL = "resource_node_base_url";
     private static final String RESOURCE_DOWNLOAD_TEMP_DIR = "resource_download_temp_dir";
     private static final String RESOURCE_DOWNLOAD_MAX_CONCURRENCY = "resource_download_max_concurrency";
@@ -62,6 +63,7 @@ public class SiteConfigService {
     private static final String MAIL_SEND_DAILY_LIMIT_PER_IP = "mail_send_daily_limit_per_ip";
     private static final String MAIL_SEND_DAILY_LIMIT_PER_EMAIL = "mail_send_daily_limit_per_email";
     private static final String REGISTER_DAILY_LIMIT_PER_IP = "register_daily_limit_per_ip";
+    private static final String DEFAULT_DANDAN_BASE_URL = "https://api.dandanplay.net";
 
     // 简单内存缓存，避免每次请求都访问数据库
     private volatile String cachedDandanAppId;
@@ -94,6 +96,7 @@ public class SiteConfigService {
             .ifPresent(config -> vo.setDandanAppId(config.getConfigValue()));
         String dandanAppSecret = getConfigValue(DANDAN_APP_SECRET);
         vo.setDandanAppSecretConfigured(dandanAppSecret != null && !dandanAppSecret.isBlank());
+        vo.setDandanBaseUrl(getDandanBaseUrl());
         siteConfigRepository.findByConfigKey(RESOURCE_NODE_BASE_URL)
             .ifPresent(config -> vo.setResourceNodeBaseUrl(config.getConfigValue()));
         siteConfigRepository.findByConfigKey(RESOURCE_DOWNLOAD_TEMP_DIR)
@@ -153,6 +156,7 @@ public class SiteConfigService {
             saveOrUpdateConfig(DANDAN_APP_SECRET, request.getDandanAppSecret(), "Dandan 应用密钥");
             cachedDandanAppSecret = request.getDandanAppSecret();
         }
+        saveOrUpdateConfig(DANDAN_BASE_URL, normalizeDandanBaseUrl(request.getDandanBaseUrl()), "Dandan API 地址");
 
         saveOrUpdateConfig(
             AUTH_REGISTER_ENABLED,
@@ -228,6 +232,9 @@ public class SiteConfigService {
         if (request.getDandanAppSecret() != null && !request.getDandanAppSecret().isBlank()) {
             saveOrUpdateConfig(DANDAN_APP_SECRET, request.getDandanAppSecret(), "Dandan 应用密钥");
             cachedDandanAppSecret = request.getDandanAppSecret();
+        }
+        if (request.getDandanBaseUrl() != null) {
+            saveOrUpdateConfig(DANDAN_BASE_URL, normalizeDandanBaseUrl(request.getDandanBaseUrl()), "Dandan API 地址");
         }
         if (request.getResourceNodeBaseUrl() != null) {
             saveOrUpdateConfig(RESOURCE_NODE_BASE_URL, request.getResourceNodeBaseUrl(), "资源搜索节点地址");
@@ -443,6 +450,13 @@ public class SiteConfigService {
         }
         return roleCode.trim();
     }
+
+    private String normalizeDandanBaseUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return DEFAULT_DANDAN_BASE_URL;
+        }
+        return baseUrl.trim();
+    }
     
     /**
      * 保存或更新配置
@@ -495,6 +509,10 @@ public class SiteConfigService {
             }
         }
         return cachedDandanAppSecret;
+    }
+
+    public String getDandanBaseUrl() {
+        return normalizeDandanBaseUrl(getConfigValue(DANDAN_BASE_URL));
     }
     
     /**

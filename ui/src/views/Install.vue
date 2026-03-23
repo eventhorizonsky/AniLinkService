@@ -7,6 +7,7 @@ import InstallStep2 from '../components/InstallStep2.vue'
 import InstallStep3 from '../components/InstallStep3.vue'
 
 const API_BASE = '/api'
+const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 const router = useRouter()
 
 const currentStep = ref(1)
@@ -19,7 +20,8 @@ const form = ref({
   siteDescription: '',
   siteUrl: window.location.origin,
   adminUsername: '',
-  adminPassword: ''
+  adminPassword: '',
+  dandanBaseUrl: DEFAULT_DANDAN_BASE_URL
 })
 
 // 增加 Dandan 字段
@@ -97,7 +99,8 @@ const submitInstallation = async () => {
       adminPassword: form.value.adminPassword
         ,
         dandanAppId: form.value.dandanAppId,
-        dandanAppSecret: form.value.dandanAppSecret
+        dandanAppSecret: form.value.dandanAppSecret,
+        dandanBaseUrl: form.value.dandanBaseUrl
     })
 
     if (res.data?.code === 200) {

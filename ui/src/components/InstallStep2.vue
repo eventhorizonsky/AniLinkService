@@ -96,6 +96,14 @@ const updateField = (field, value) => {
           type="password"
           placeholder="例如：your_app_secret"
           prepend-inner-icon="mdi-lock"
+          class="mb-2"
+        />
+        <v-text-field
+          :model-value="form.dandanBaseUrl"
+          @update:model-value="updateField('dandanBaseUrl', $event)"
+          label="Dandan API 地址"
+          placeholder="例如：https://api.dandanplay.net"
+          prepend-inner-icon="mdi-web"
         />
       </v-col>
     </v-row>

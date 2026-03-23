@@ -26,14 +26,17 @@ public class DandanMatchService {
     private final DandanClientUtil client;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // 默认弹弹 play API 地址
-    private static final String DANDAN_BASE = "https://api.dandanplay.net";
-
     private final AnimeRepository animeRepository;
+    private final SiteConfigService siteConfigService;
 
-    public DandanMatchService(DandanClientUtil client, AnimeRepository animeRepository) {
+    public DandanMatchService(
+            DandanClientUtil client,
+            AnimeRepository animeRepository,
+            SiteConfigService siteConfigService
+    ) {
         this.client = client;
         this.animeRepository = animeRepository;
+        this.siteConfigService = siteConfigService;
     }
 
     /**
@@ -54,7 +57,7 @@ public class DandanMatchService {
 
             ResponseEntity<String> resp;
             try {
-                resp = client.post(DANDAN_BASE, "/api/v2/match", item);
+                resp = client.post(siteConfigService.getDandanBaseUrl(), "/api/v2/match", item);
             } catch (Exception e) {
                 log.error("Dandan match call failed", e);
                 return null;
@@ -105,7 +108,7 @@ public class DandanMatchService {
             if (fileSize != null) item.put("fileSize", fileSize);
             item.put("matchMode", "hashAndFileName");
 
-            ResponseEntity<String> resp = client.post(DANDAN_BASE, "/api/v2/match", item);
+            ResponseEntity<String> resp = client.post(siteConfigService.getDandanBaseUrl(), "/api/v2/match", item);
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 return null;
             }
@@ -195,7 +198,7 @@ public class DandanMatchService {
             
             ResponseEntity<String> resp;
             try {
-                resp = client.post(DANDAN_BASE, "/api/v2/match/batch", request);
+                resp = client.post(siteConfigService.getDandanBaseUrl(), "/api/v2/match/batch", request);
             } catch (Exception e) {
                 log.error("Dandan batch match call failed", e);
                 // 返回与输入等量的失败结果
