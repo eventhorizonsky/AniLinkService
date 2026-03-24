@@ -1,25 +1,28 @@
-FROM eclipse-temurin:17-jdk
+# 运行 Spring Boot 仅需 JRE；JDK 会多占数百 MB
+FROM eclipse-temurin:17-jre-jammy
 
-# 更新包管理器并安装 FFmpeg 和相关工具
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    curl \
-    ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# 创建响应文件夹
-RUN mkdir -p /app/config
+# 与 README 推荐一致：-v <host>/data:/data、-v <host>/media:/media/anime
+# H2 与默认 media.data.root-dir 使用相对路径 ./data/...，工作目录必须为 /
+WORKDIR /
 
-# 设置环境变量，用于用户指定媒体目录和配置目录
-ENV CONFIG_DIR=/app/config
-ADD api/target/ani-link-service.jar app.jar
+# 默认 H2；切 PostgreSQL 时覆盖为 pgsql 并设置 DB_*（见 README）
+ENV DB_PROFILE=h2
+# 字幕/缩略图/下载暂存等落在持久化卷 /data 下（可用 -e MEDIA_DATA_DIR=... 覆盖）
+ENV MEDIA_DATA_DIR=/data/media-data
 ENV LANG=C.UTF-8
 ENV LANGUAGE=C.UTF-8
 ENV LC_ALL=C.UTF-8
-# 可挂载目录：字幕输出（SUBTITLE_DIR）和缩略图输出（THUMBNAIL_DIR）
-# 示例：-v /host/thumbnails:/data/thumbnails -e THUMBNAIL_DIR=/data/thumbnails
+
+ADD api/target/ani-link-service.jar /app.jar
+
 EXPOSE 8081
 
-# 运行程序主体
-ENTRYPOINT ["sh","-c","java -Djava.security.egd=file:/dev/./urandom -jar /app.jar"]
+# 推荐挂载点；未 -v 时由引擎创建匿名卷，避免写满容器可写层
+VOLUME ["/data", "/media/anime"]
 
+ENTRYPOINT ["sh", "-c", "java -Djava.security.egd=file:/dev/./urandom -jar /app.jar"]

@@ -1,0 +1,6 @@
+# 减小 build context（上传/扫描时间）；不影响仅 ADD 单个 jar 的层内容
+.git
+.idea
+data
+**/node_modules
+**/.mvn/wrapper/maven-wrapper.jar
