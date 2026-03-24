@@ -1,5 +1,6 @@
-# 运行 Spring Boot 仅需 JRE；JDK 会多占数百 MB
-FROM eclipse-temurin:17-jre-jammy
+# 运行 Spring Boot 仅需 JRE（比 JDK 小）。须与 frostwire jlibtorrent 预编译 .so 的 glibc 匹配：
+# `17-jdk` 无后缀时多为 Ubuntu noble；勿用 jammy，否则 JNI 会 LinkageError（Failed to load jlibtorrent）
+FROM eclipse-temurin:17-jre-noble
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
