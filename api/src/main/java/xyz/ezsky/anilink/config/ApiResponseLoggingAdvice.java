@@ -40,7 +40,9 @@ public class ApiResponseLoggingAdvice implements ResponseBodyAdvice<Object> {
         String path = request.getURI().getPath();
         String message = apiResponse.getMsg();
 
-        if (code >= 500) {
+        if (code == 401 || code == 403) {
+            log.info("API authorization failure: method={}, path={}, code={}, msg={}", method, path, code, message);
+        } else if (code >= 500) {
             log.error("API responded with error: method={}, path={}, code={}, msg={}", method, path, code, message);
         } else {
             log.warn("API responded with client error: method={}, path={}, code={}, msg={}", method, path, code, message);
