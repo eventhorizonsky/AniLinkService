@@ -282,7 +282,11 @@ public class ResourceDownloadService {
             mediaFile = mediaFileRepository.findById(task.getMediaFileId()).orElse(null);
         }
         if (mediaFile == null && task.getFinalPath() != null && !task.getFinalPath().isBlank()) {
-            mediaFile = mediaFileRepository.findByFilePath(task.getFinalPath()).orElse(null);
+            String normalized = Paths.get(task.getFinalPath()).normalize().toAbsolutePath().toString();
+            mediaFile = mediaFileRepository.findByFilePath(normalized).orElse(null);
+            if (mediaFile == null && !normalized.equals(task.getFinalPath())) {
+                mediaFile = mediaFileRepository.findByFilePath(task.getFinalPath()).orElse(null);
+            }
             if (mediaFile != null) {
                 task.setMediaFileId(mediaFile.getId());
                 taskRepository.save(task);
@@ -710,7 +714,7 @@ public class ResourceDownloadService {
         if (finalMainPath == null) {
             throw new IllegalStateException("无法确认主文件迁移路径");
         }
-        task.setFinalPath(finalMainPath.toString());
+        task.setFinalPath(finalMainPath.toAbsolutePath().normalize().toString());
         taskRepository.save(task);
         return finalMainPath;
     }
@@ -732,7 +736,11 @@ public class ResourceDownloadService {
         mediaScannerService.scanLibrary(library);
 
         if (task.getFinalPath() != null && !task.getFinalPath().isBlank()) {
-            Optional<MediaFile> mediaFileOpt = mediaFileRepository.findByFilePath(task.getFinalPath());
+            String finalPath = Paths.get(task.getFinalPath()).normalize().toAbsolutePath().toString();
+            Optional<MediaFile> mediaFileOpt = mediaFileRepository.findByFilePath(finalPath);
+            if (mediaFileOpt.isEmpty() && !finalPath.equals(task.getFinalPath())) {
+                mediaFileOpt = mediaFileRepository.findByFilePath(task.getFinalPath());
+            }
             mediaFileOpt.ifPresent(mediaFile -> {
                 task.setMediaFileId(mediaFile.getId());
                 taskRepository.save(task);

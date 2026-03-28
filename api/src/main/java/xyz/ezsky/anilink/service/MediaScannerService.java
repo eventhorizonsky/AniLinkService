@@ -13,15 +13,15 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 媒体库扫描与监控服务。
@@ -59,6 +59,27 @@ public class MediaScannerService {
     private final Map<Path, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
     private final Map<Long, WatchService> watchServices = new ConcurrentHashMap<>();
     private final Map<Long, Map<WatchKey, Path>> watchKeyPaths = new ConcurrentHashMap<>();
+
+    /**
+     * 同一媒体库的扫描/增量处理必须串行，否则并行 scanLibrary（例如多个下载同时 triggerScan）
+     * 会各自得到“尚未包含新文件”的 existingFilesMap 并重复 insert，触发 (library_id, file_path) 唯一约束。
+     */
+    private final ConcurrentHashMap<Long, Object> libraryScanLocks = new ConcurrentHashMap<>();
+
+    private Object lockForLibrary(Long libraryId) {
+        return libraryScanLocks.computeIfAbsent(libraryId, id -> new Object());
+    }
+
+    private String normalizePathKey(Path path) {
+        return path.toAbsolutePath().normalize().toString();
+    }
+
+    private String normalizePathKey(String storedPath) {
+        if (storedPath == null || storedPath.isBlank()) {
+            return storedPath;
+        }
+        return Paths.get(storedPath).normalize().toAbsolutePath().toString();
+    }
 
     /**
      * 扫描所有已注册的媒体库。
@@ -112,31 +133,35 @@ public class MediaScannerService {
                 log.warn("Failed to update library status to OK for {}", library.getName(), ex);
             }
 
-            List<MediaFile> existingFiles = mediaFileRepository.findByLibraryId(library.getId());
-            Map<String, MediaFile> existingFilesMap = existingFiles.stream()
-                    .collect(Collectors.toMap(MediaFile::getFilePath, Function.identity()));
+            synchronized (lockForLibrary(library.getId())) {
+                List<MediaFile> existingFiles = mediaFileRepository.findByLibraryId(library.getId());
+                Map<String, MediaFile> existingFilesMap = new HashMap<>();
+                for (MediaFile f : existingFiles) {
+                    existingFilesMap.put(normalizePathKey(f.getFilePath()), f);
+                }
 
-            Files.walkFileTree(libraryPath, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    if (isVideoFile(file)) {
-                        processFile(library, file, attrs, existingFilesMap);
+                Files.walkFileTree(libraryPath, new SimpleFileVisitor<Path>() {
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                        if (isVideoFile(file)) {
+                            processFile(library, file, attrs, existingFilesMap);
+                        }
+                        return FileVisitResult.CONTINUE;
                     }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+                });
 
-            // 删除数据库中已不存在的文件记录
-            for (MediaFile mediaFile : existingFiles) {
-                if (!Files.exists(Paths.get(mediaFile.getFilePath()))) {
-                    mediaSubtitleService.cleanupByMediaFileId(mediaFile.getId());
-                    mediaFileRepository.delete(mediaFile);
-                    log.info("Removed deleted file: {}", mediaFile.getFilePath());
+                // 删除数据库中已不存在的文件记录
+                for (MediaFile mediaFile : existingFiles) {
+                    if (!Files.exists(Paths.get(mediaFile.getFilePath()))) {
+                        mediaSubtitleService.cleanupByMediaFileId(mediaFile.getId());
+                        mediaFileRepository.delete(mediaFile);
+                        log.info("Removed deleted file: {}", mediaFile.getFilePath());
+                    }
                 }
+
+                // 扫描完成后启动对该库的监听
+                startWatching(library);
             }
-
-            // 扫描完成后启动对该库的监听
-            startWatching(library);
 
         } catch (IOException e) {
             log.error("Error scanning library: " + library.getName(), e);
@@ -155,7 +180,7 @@ public class MediaScannerService {
      * @param existingFilesMap 当前媒体库中已存在文件的映射（filePath -> MediaFile）
      */
     private void processFile(MediaLibrary library, Path file, BasicFileAttributes attrs, Map<String, MediaFile> existingFilesMap) {
-        String filePath = file.toAbsolutePath().toString();
+        String filePath = normalizePathKey(file);
         MediaFile existingFile = existingFilesMap.get(filePath);
 
         if (existingFile != null) {
@@ -190,6 +215,7 @@ public class MediaScannerService {
             newMediaFile.setMetadataFetched(false);  // 标记待提取元数据
             MediaFile savedFile = mediaFileRepository.save(newMediaFile);
             log.info("Added new file: {}", filePath);
+            existingFilesMap.put(filePath, savedFile);
 
             // 新文件落库后立即入匹配队列，匹配所需字段由匹配队列自行补齐（hash）。
             mediaMatchQueueManager.addToQueue(savedFile.getId());
@@ -341,13 +367,15 @@ public class MediaScannerService {
                 if (Files.exists(file)) {
                     BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
                     if (isVideoFile(file)) {
-                        List<MediaFile> existingFiles = mediaFileRepository.findByLibraryId(library.getId());
-                        Map<String, MediaFile> existingFilesMap = existingFiles.stream()
-                                .collect(Collectors.toMap(MediaFile::getFilePath, Function.identity()));
-                        String filePath = file.toAbsolutePath().toString();
-                        
-                        // 注意：无论是新文件还是修改的文件，匹配队列将在元数据提取完成后自动添加
-                        processFile(library, file, attrs, existingFilesMap);
+                        synchronized (lockForLibrary(library.getId())) {
+                            List<MediaFile> existingFiles = mediaFileRepository.findByLibraryId(library.getId());
+                            Map<String, MediaFile> existingFilesMap = new HashMap<>();
+                            for (MediaFile f : existingFiles) {
+                                existingFilesMap.put(normalizePathKey(f.getFilePath()), f);
+                            }
+                            // 注意：无论是新文件还是修改的文件，匹配队列将在元数据提取完成后自动添加
+                            processFile(library, file, attrs, existingFilesMap);
+                        }
                     }
                 }
             } catch (IOException e) {
@@ -365,10 +393,20 @@ public class MediaScannerService {
      * @param filePath 要删除的文件的绝对路径字符串
      */
     private void deleteFile(String filePath) {
-        mediaFileRepository.findByFilePath(filePath).ifPresent(mediaFile -> {
-            mediaSubtitleService.cleanupByMediaFileId(mediaFile.getId());
-            mediaFileRepository.delete(mediaFile);
-            log.info("Removed deleted file: {}", filePath);
+        String normalized = normalizePathKey(filePath);
+        Optional<MediaFile> found = mediaFileRepository.findByFilePath(filePath);
+        if (found.isEmpty() && !normalized.equals(filePath)) {
+            found = mediaFileRepository.findByFilePath(normalized);
+        }
+        found.ifPresent(mediaFile -> {
+            Long libId = mediaFile.getLibrary().getId();
+            synchronized (lockForLibrary(libId)) {
+                mediaFileRepository.findById(mediaFile.getId()).ifPresent(fresh -> {
+                    mediaSubtitleService.cleanupByMediaFileId(fresh.getId());
+                    mediaFileRepository.delete(fresh);
+                    log.info("Removed deleted file: {}", fresh.getFilePath());
+                });
+            }
         });
     }
 }
