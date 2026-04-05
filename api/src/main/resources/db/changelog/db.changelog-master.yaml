@@ -45,6 +45,9 @@ databaseChangeLog:
   - include:
       file: common/db.changelog-v15-pgsql-text-column-fixes.yaml
       relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-v16-mcp-api-key.yaml
+      relativeToChangelogFile: true
   # Database-specific changelogs
   - include:
       file: h2/db.changelog-h2-init.yaml

@@ -70,6 +70,15 @@ public class SiteConfigService {
     private volatile String cachedDandanAppSecret;
     
     /**
+     * 站点配置中的对外访问 URL（用于 MCP、远程访问等拼接链接；可能为空）
+     */
+    public Optional<String> getConfiguredSiteUrlOptional() {
+        return siteConfigRepository.findByConfigKey(SITE_URL)
+                .map(SiteConfig::getConfigValue)
+                .filter(s -> s != null && !s.isBlank());
+    }
+
+    /**
      * 获取站点配置
      */
     public SiteConfigVO getSiteConfig() {

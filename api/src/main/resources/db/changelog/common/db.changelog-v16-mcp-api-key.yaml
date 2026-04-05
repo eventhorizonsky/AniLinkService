@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: v16-add-users-mcp-api-key
+      author: anilink
+      changes:
+        - addColumn:
+            tableName: users
+            columns:
+              - column:
+                  name: mcp_api_key
+                  type: varchar(128)
+        - addUniqueConstraint:
+            tableName: users
+            columnNames: mcp_api_key
+            constraintName: uk_users_mcp_api_key

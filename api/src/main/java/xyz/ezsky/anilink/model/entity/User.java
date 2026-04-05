@@ -33,6 +33,9 @@ public class User {
     @Column(name = "remote_access_token", unique = true, length = 128)
     private String remoteAccessToken;
 
+    @Column(name = "mcp_api_key", unique = true, length = 128)
+    private String mcpApiKey;
+
     @Column(name = "bangumi_access_token", length = 255)
     private String bangumiAccessToken;
 

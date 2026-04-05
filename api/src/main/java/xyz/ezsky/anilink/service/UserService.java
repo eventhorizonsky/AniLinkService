@@ -405,5 +405,36 @@ public class UserService {
         }
         throw new RuntimeException("生成远程访问密钥失败，请重试");
     }
+
+    @Transactional
+    public String getOrCreateMcpApiKey(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+        if (user.getMcpApiKey() == null || user.getMcpApiKey().isBlank()) {
+            user.setMcpApiKey(generateUniqueMcpApiKey());
+            userRepository.save(user);
+        }
+        return user.getMcpApiKey();
+    }
+
+    @Transactional
+    public String regenerateMcpApiKey(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("用户不存在"));
+        user.setMcpApiKey(generateUniqueMcpApiKey());
+        userRepository.save(user);
+        return user.getMcpApiKey();
+    }
+
+    private String generateUniqueMcpApiKey() {
+        for (int i = 0; i < 10; i++) {
+            String candidate = UUID.randomUUID().toString().replace("-", "")
+                    + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            if (userRepository.findByMcpApiKey(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        throw new RuntimeException("生成 MCP API Key 失败，请重试");
+    }
 }
 

@@ -17,12 +17,24 @@
 	<description>a project to link anime to danmu</description>
 	<properties>
 		<java.version>17</java.version>
+		<mcp.sdk.version>1.1.0</mcp.sdk.version>
 		<jlibtorrent.version>2.0.12.7</jlibtorrent.version>
 		<!-- 编码 -->
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<spring-boot-dependencies.version>3.4.5</spring-boot-dependencies.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>io.modelcontextprotocol.sdk</groupId>
+				<artifactId>mcp-bom</artifactId>
+				<version>${mcp.sdk.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<repositories>
 		<repository>
 			<id>maven-central</id>
@@ -128,6 +140,14 @@
 			<groupId>com.frostwire</groupId>
 			<artifactId>jlibtorrent-linux-x86_64</artifactId>
 			<version>${jlibtorrent.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.modelcontextprotocol.sdk</groupId>
+			<artifactId>mcp-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.modelcontextprotocol.sdk</groupId>
+			<artifactId>mcp-json-jackson2</artifactId>
 		</dependency>
 	</dependencies>
 	<build>

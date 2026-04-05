@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -21,9 +21,11 @@ const ResourceDownloadProgress = defineAsyncComponent(() => import('./admin/down
 const ResourceDownloadSettings = defineAsyncComponent(() => import('./admin/download/ResourceDownloadSettings.vue'))
 const ResourceRssSubscription = defineAsyncComponent(() => import('./admin/download/ResourceRssSubscription.vue'))
 const UserManagement = defineAsyncComponent(() => import('./admin/UserManagement.vue'))
+const McpAccess = defineAsyncComponent(() => import('./admin/McpAccess.vue'))
 
 const mainMenuItems = [
   { id: 'system', title: '系统信息', icon: 'mdi-information', component: SystemInfo },
+  { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess },
   { id: 'users', title: '用户管理', icon: 'mdi-account-cog', component: UserManagement }
 ]
 
@@ -49,6 +51,14 @@ const componentMap = Object.fromEntries(
 )
 
 const userInfo = ref(null)
+
+const isSuperAdmin = computed(() =>
+  Array.isArray(userInfo.value?.roleCodeList) && userInfo.value.roleCodeList.includes('super-admin')
+)
+
+const visibleMainMenuItems = computed(() =>
+  mainMenuItems.filter((item) => item.id !== 'mcp' || isSuperAdmin.value)
+)
 
 // 获取当前用户信息
 const fetchUserInfo = async () => {
@@ -93,12 +103,21 @@ const currentComponent = computed(() => {
   return componentMap[selectedItem.value] || mainMenuItems[0].component
 })
 
+const fallbackMenuId = computed(() => visibleMainMenuItems.value[0]?.id || 'system')
+
 const handleSelectMenu = (id) => {
   selectedItem.value = id
 }
 
 onMounted(() => {
   checkLoginStatus()
+})
+
+// 非超级管理员无法访问 MCP 菜单：若当前选中 mcp，则切回可见首项
+watch([isSuperAdmin, () => selectedItem.value], () => {
+  if (selectedItem.value === 'mcp' && !isSuperAdmin.value) {
+    selectedItem.value = fallbackMenuId.value
+  }
 })
 </script>
 
@@ -122,7 +141,7 @@ onMounted(() => {
 
       <v-list density="compact" nav>
         <v-list-item
-          v-for="item in mainMenuItems"
+          v-for="item in visibleMainMenuItems"
           :key="item.id"
           :value="item.id"
           :active="selectedItem === item.id"
