@@ -1,11 +1,29 @@
 <template>
   <!-- 加载中 -->
   <div class="player-page" v-if="loading && !animeData" key="loading">
+    <div v-if="animeId" class="player-back-row player-back-row--standalone">
+      <router-link
+        class="player-back-link"
+        :to="{ name: 'AnimeDetail', params: { animeId } }"
+      >
+        <i class="mdi mdi-arrow-left"></i>
+        返回番剧详情
+      </router-link>
+    </div>
     <div class="loading-state">加载中...</div>
   </div>
 
   <!-- 发生错误 -->
   <div class="player-page" v-else-if="error" key="error">
+    <div v-if="animeId" class="player-back-row player-back-row--standalone">
+      <router-link
+        class="player-back-link"
+        :to="{ name: 'AnimeDetail', params: { animeId } }"
+      >
+        <i class="mdi mdi-arrow-left"></i>
+        返回番剧详情
+      </router-link>
+    </div>
     <div class="error-state">{{ error }}</div>
   </div>
 
@@ -14,6 +32,15 @@
     <div class="player-layout">
       <!-- 左侧：播放器和主要内容 -->
       <div class="player-main">
+        <div v-if="animeId" class="player-back-row">
+          <router-link
+            class="player-back-link"
+            :to="{ name: 'AnimeDetail', params: { animeId } }"
+          >
+            <i class="mdi mdi-arrow-left"></i>
+            返回番剧详情
+          </router-link>
+        </div>
         <!-- 播放器容器 -->
         <div class="player-card">
           <div ref="artRef" class="artplayer-container"></div>
@@ -580,7 +607,7 @@ const loadPlayProgress = async () => {
   }
   
   try {
-    const response = await axios.get(`/api/play-history/anime/${animeId.value}`)
+    const response = await axios.get(`/api/play-history/anime/${animeId.value}/resume`)
     if (response.data.code === 200 && response.data.data) {
       // 仅在当前播放视频与历史视频一致时恢复秒数，避免跨分集误跳进度。
       if (String(response.data.data.videoId || '') !== String(videoId.value || '')) {
@@ -1040,13 +1067,15 @@ const selectResource = (resource) => {
 
 /**
  * 播放剧集
+ * @param {object} ep 分集
+ * @param {boolean} fromPlayerChrome 为 true 时表示来自播放器内选集/上下集：多资源时直接播第一条，不弹窗。页面上的分集列表不传或传 false，保留资源选择弹窗。
  */
-const playEpisode = (ep) => {
+const playEpisode = (ep, fromPlayerChrome = false) => {
   if (isFuture(ep)) return
   const resources = getEpisodeResources(ep.episodeId)
   if (resources.length === 0) return
 
-  if (resources.length === 1) {
+  if (resources.length === 1 || fromPlayerChrome) {
     goToPlayer(resources[0])
     return
   }
@@ -1061,7 +1090,7 @@ const jumpToEpisodeById = (targetEpisodeId) => {
   if (!target) {
     return false
   }
-  playEpisode(target)
+  playEpisode(target, true)
   return true
 }
 
@@ -1081,7 +1110,7 @@ const jumpToAdjacentEpisode = (delta) => {
     return null
   }
 
-  playEpisode(list[nextIndex])
+  playEpisode(list[nextIndex], true)
   return list[nextIndex]
 }
 
@@ -1595,6 +1624,39 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.player-back-row {
+  margin-bottom: 12px;
+}
+
+.player-back-row--standalone {
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 4px;
+}
+
+.player-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #6b4f3e;
+  text-decoration: none;
+  padding: 6px 4px;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.player-back-link:hover {
+  color: #4a3629;
+  background: rgba(107, 79, 62, 0.08);
+}
+
+.player-back-link i {
+  font-size: 1.1rem;
+}
+
 /* Loading and Error States */
 .loading-state,
 .error-state {

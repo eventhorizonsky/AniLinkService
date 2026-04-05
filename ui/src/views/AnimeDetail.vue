@@ -54,6 +54,19 @@
           @toggleFollow="toggleFollow"
         />
 
+        <AnimeLastWatchSection
+          v-if="showLastWatchSection"
+          :loading="resumeLoading"
+          :progress="animeResume"
+          :episode-line="resumeEpisodeLine"
+          :progress-text="resumeProgressText"
+          :last-play-text="resumeLastPlayText"
+          :continue-disabled="!canResumeContinue"
+          :next-disabled="!canWatchNextEpisode"
+          @continue="continueFromHistory"
+          @next="watchNextEpisode"
+        />
+
         <!-- 分集/评论切换：仅当评论区可用时展示 -->
         <div v-if="showCommentsTab" class="detail-section-tabs">
           <button
@@ -271,6 +284,7 @@ import RelatedWorksCarousel from '../components/anime/RelatedWorksCarousel.vue';
 import MetadataCard from '../components/anime/MetadataCard.vue';
 import FooterLinks from '../components/anime/FooterLinks.vue';
 import BangumiComments from '../components/anime/BangumiComments.vue';
+import AnimeLastWatchSection from '../components/anime/AnimeLastWatchSection.vue';
 
 // Props
 const props = defineProps({
@@ -306,6 +320,9 @@ const bgmCollectionForm = ref({
   rate: 0,
   comment: ''
 });
+
+const animeResume = ref(null);
+const resumeLoading = ref(false);
 
 const snackbarShow = ref(false);
 const snackbarMsg = ref('');
@@ -348,6 +365,29 @@ const fetchAnimeData = async () => {
     error.value = err.message;
   } finally {
     loading.value = false;
+    fetchAnimeResume();
+  }
+};
+
+const fetchAnimeResume = async () => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    animeResume.value = null;
+    resumeLoading.value = false;
+    return;
+  }
+  resumeLoading.value = true;
+  try {
+    const response = await axios.get(`/api/play-history/anime/${route.params.animeId}/resume`);
+    if (response.data?.code === 200) {
+      animeResume.value = response.data.data ?? null;
+    } else {
+      animeResume.value = null;
+    }
+  } catch (e) {
+    animeResume.value = null;
+  } finally {
+    resumeLoading.value = false;
   }
 };
 
@@ -422,6 +462,7 @@ watch(() => route.params.animeId, () => {
   bgmCollectionEditMode.value = false;
   bgmCollectionExists.value = false;
   bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
+  animeResume.value = null;
   fetchAnimeData();
 });
 
@@ -526,6 +567,86 @@ const bangumiSubjectUrl = computed(() => {
 
 const showCommentsTab = computed(() => bangumiSubjectId.value !== null && commentsAvailable.value);
 const isLoggedIn = computed(() => Boolean(localStorage.getItem('token')));
+
+const formatDateTime = (value) => {
+  if (!value) return '';
+  return new Date(value).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const showLastWatchSection = computed(() => {
+  if (!isLoggedIn.value || loading.value || error.value) return false;
+  return resumeLoading.value || !!animeResume.value;
+});
+
+const historyResolvedEpisodeId = computed(() => {
+  const h = animeResume.value;
+  if (!h) return '';
+  if (h.episodeId !== undefined && h.episodeId !== null && String(h.episodeId).trim() !== '') {
+    return String(h.episodeId);
+  }
+  const vid = h.videoId;
+  if (!vid) return '';
+  const row = existingEpisodes.value.find((r) => String(r.id) === String(vid));
+  return row?.episodeId != null ? String(row.episodeId) : '';
+});
+
+const nextPlayableEpisodeAfterHistory = computed(() => {
+  const eps = animeData.value?.episodes;
+  if (!eps?.length || !animeResume.value) return null;
+  const curId = historyResolvedEpisodeId.value;
+  if (!curId) return null;
+  const idx = eps.findIndex((ep) => String(ep.episodeId) === curId);
+  if (idx < 0) return null;
+  for (let i = idx + 1; i < eps.length; i++) {
+    const ep = eps[i];
+    if (isFuture(ep)) continue;
+    const resources = existingEpisodes.value.filter(
+      (item) => String(item.episodeId) === String(ep.episodeId) && item.id !== undefined && item.id !== null
+    );
+    if (resources.length) return ep;
+  }
+  return null;
+});
+
+const canResumeContinue = computed(() => Boolean(animeResume.value?.videoId));
+const canWatchNextEpisode = computed(() => nextPlayableEpisodeAfterHistory.value != null);
+
+const resumeProgressText = computed(() => {
+  const item = animeResume.value;
+  if (!item) return '';
+  const progress = Number(item.progressSeconds || 0);
+  const duration = Number(item.durationSeconds || 0);
+  const percent = Number(item.progressPercentage || 0);
+  if (!duration) return `${progress} 秒`;
+  return `${progress} 秒 / ${duration} 秒（${Math.min(100, Math.max(0, percent))}%）`;
+});
+
+const resumeLastPlayText = computed(() => formatDateTime(animeResume.value?.lastPlayTime));
+
+const resumeEpisodeLine = computed(() => {
+  const h = animeResume.value;
+  if (!h) return '';
+  const epId = historyResolvedEpisodeId.value;
+  if (epId) {
+    const ep = animeData.value?.episodes?.find((e) => String(e.episodeId) === epId);
+    const num = ep?.episodeNumber;
+    const title = ep?.episodeTitle;
+    if (num && title) return `第${num}话 ${title}`;
+    if (title) return title;
+    if (num) return `第${num}话`;
+  }
+  if (h.videoName && String(h.videoName).trim()) return h.videoName;
+  if (h.episodeId !== undefined && h.episodeId !== null && String(h.episodeId).trim() !== '') {
+    return `第 ${h.episodeId} 话`;
+  }
+  return h.videoId ? `视频 #${h.videoId}` : '最近播放';
+});
 const isBangumiBound = computed(() => Boolean(currentUserInfo.value?.bangumiBound));
 const showBangumiCollectionCard = computed(() => isLoggedIn.value && isBangumiBound.value && bangumiSubjectId.value !== null);
 const showBangumiBindHint = computed(() => isLoggedIn.value && !isBangumiBound.value && bangumiSubjectId.value !== null);
@@ -693,6 +814,24 @@ const closeResourceDialog = () => {
 
 const selectResource = (resource) => {
   goToPlayer(resource);
+};
+
+const continueFromHistory = () => {
+  const h = animeResume.value;
+  if (!h?.videoId) return;
+  router.push({
+    name: 'Player',
+    params: { videoId: String(h.videoId) },
+    query: {
+      animeId: String(route.params.animeId),
+      episodeId: String(h.episodeId ?? ''),
+    },
+  });
+};
+
+const watchNextEpisode = () => {
+  const ep = nextPlayableEpisodeAfterHistory.value;
+  if (ep) playEpisode(ep);
 };
 
 const playEpisode = (ep) => {

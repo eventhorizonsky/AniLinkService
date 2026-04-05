@@ -55,6 +55,19 @@ public class PlayHistoryController {
     }
     
     /**
+     * 获取用户某个番剧的播放进度（无记录时 data 为 null，不返回 404，便于详情页等场景一次请求判断）
+     */
+    @Operation(summary = "获取番剧续播信息", description = "同 getAnimePlayProgress，但无记录时返回成功且 data 为空")
+    @GetMapping("/anime/{animeId}/resume")
+    public ApiResponseVO<PlayHistoryVO> getAnimePlayResume(
+            @Parameter(description = "番剧ID", required = true)
+            @PathVariable Long animeId) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        PlayHistoryVO result = playHistoryService.getAnimePlayProgress(userId, animeId);
+        return ApiResponseVO.success(result);
+    }
+
+    /**
      * 获取用户某个番剧的播放进度
      */
     @Operation(summary = "获取番剧播放进度", description = "获取用户对某个番剧的最近播放记录")
