@@ -22,6 +22,7 @@ AniLinkService 适合这类场景：
 - 你可以使用 Docker，或具备基本的 Java / Node 本地开发环境
 - 你的环境可以访问 `ghcr.io`
 - 你已经申请到弹弹开放平台的 `AppId` 和 `AppSecret`
+（如果你还没有官方AppId/AppSecret，可以先参考本项目的[下游代理服务介绍](https://eventhorizonsky.github.io/ani-link-doc/ani-link-proxy.html)。）
 
 如果你只有一台电脑或手机，希望直接开箱即用，弹弹官方客户端通常会更合适：
 https://www.dandanplay.com/
@@ -94,6 +95,7 @@ https://www.dandanplay.com/
 
 开放平台申请指引：
 https://doc.dandanplay.com/open/#_3-申请-appid-和-appsecret
+（如果你无法获取官方AppId/AppSecret，可以先参考本项目的[下游代理服务介绍](https://eventhorizonsky.github.io/ani-link-doc/ani-link-proxy.html)。）
 
 ### 1. 拉取镜像
 
