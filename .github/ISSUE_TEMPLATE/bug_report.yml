@@ -1,0 +1,65 @@
+name: Bug 反馈
+description: 报告程序运行异常、崩溃、功能不生效等问题
+title: "[Bug] 简短描述问题"
+labels: [bug]
+assignees: eventhorizonsky
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 问题说明
+        请完整填写信息，方便快速定位与修复。
+
+  - type: textarea
+    id: describe
+    attributes:
+      label: 问题描述
+      description: 清晰说明遇到的问题、触发步骤
+      placeholder: 1. 部署方式... 2. 操作步骤... 3. 异常表现...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: 部署方式
+      multiple: false
+      options:
+        - Docker（H2）
+        - Docker（PostgreSQL）
+        - 本地源码运行
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 服务版本
+      description: 镜像标签或 commit hash
+      placeholder: latest / ee812a2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志信息
+      description: 粘贴 docker logs 或控制台报错
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expect
+    attributes:
+      label: 预期行为
+      description: 正常情况下应该发生什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: other
+    attributes:
+      label: 补充信息
+      description: 环境、配置、截图等额外信息
