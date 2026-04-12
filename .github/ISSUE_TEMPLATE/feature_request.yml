@@ -1,0 +1,48 @@
+name: 功能请求
+description: 提出新功能、优化建议、体验改进
+title: "[Feature] 简短描述需求"
+labels: [feature]
+assignees: eventhorizonsky
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 功能需求
+        说明你希望添加/改进的功能与使用场景。
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: 需求背景
+      description: 为什么需要这个功能？解决什么痛点？
+    validations:
+      required: true
+
+  - type: textarea
+    id: describe
+    attributes:
+      label: 功能描述
+      description: 详细说明功能逻辑、界面、交互方式
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 你会在什么场景下使用该功能
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternative
+    attributes:
+      label: 替代方案
+      description: 目前有没有临时替代方式
+
+  - type: textarea
+    id: other
+    attributes:
+      label: 补充信息
+      description: 参考资料、截图、设计思路等
