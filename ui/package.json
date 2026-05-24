@@ -12,6 +12,7 @@
     "@mdi/font": "^7.4.47",
     "artplayer": "^5.3.0",
     "artplayer-plugin-danmuku": "^5.2.0",
+    "artplayer-plugin-vtt-thumbnail": "^1.1.0",
     "axios": "^1.7.9",
     "libass-wasm": "^4.1.0",
     "qrcode": "^1.5.4",

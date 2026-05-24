@@ -27,6 +27,7 @@ import xyz.ezsky.anilink.model.vo.QueueStatusVO;
 import xyz.ezsky.anilink.service.MediaFileService;
 import xyz.ezsky.anilink.service.MediaMetadataQueueManager;
 import xyz.ezsky.anilink.service.MediaSubtitleService;
+import xyz.ezsky.anilink.service.MediaVttThumbnailService;
 
 import java.io.File;
 import java.io.IOException;
@@ -52,6 +53,9 @@ public class MediaFileController {
 
     @Autowired
     private MediaSubtitleService mediaSubtitleService;
+
+    @Autowired
+    private MediaVttThumbnailService mediaVttThumbnailService;
 
     @Operation(summary = "分页查询媒体文件列表", description = "查询媒体文件列表，支持按媒体库过滤")
     @SaCheckRole("super-admin")
@@ -127,6 +131,38 @@ public class MediaFileController {
             @Parameter(description = "媒体文件ID")
             @PathVariable Long id) {
         return ApiResponseVO.success(mediaSubtitleService.listByMediaFileId(id));
+    }
+
+    @Operation(summary = "获取播放进度缩略图 VTT 文件", description = "返回 WebVTT 格式的缩略图时间-坐标映射，供 ArtPlayer 进度条预览使用")
+    @GetMapping("/{id}/thumbnails.vtt")
+    public ResponseEntity<Resource> getVttThumbnails(
+            @Parameter(description = "媒体文件ID")
+            @PathVariable Long id) {
+        Path vttFile = mediaVttThumbnailService.getVttThumbnailDir(id).resolve("thumbnails.vtt");
+        File file = vttFile.toFile();
+        if (!file.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("text/vtt"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=thumbnails.vtt")
+                .body(new FileSystemResource(file));
+    }
+
+    @Operation(summary = "获取播放进度缩略图雪碧图", description = "返回 JPEG 雪碧图，供 VTT 文件中的坐标引用")
+    @GetMapping("/{id}/sprite.jpg")
+    public ResponseEntity<Resource> getVttSprite(
+            @Parameter(description = "媒体文件ID")
+            @PathVariable Long id) {
+        Path spriteFile = mediaVttThumbnailService.getVttThumbnailDir(id).resolve("sprite.jpg");
+        File file = spriteFile.toFile();
+        if (!file.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=sprite.jpg")
+                .body(new FileSystemResource(file));
     }
 
     @Operation(summary = "批量重新获取元数据", description = "对指定媒体库中的所有文件重新触发元数据提取（异步处理）")

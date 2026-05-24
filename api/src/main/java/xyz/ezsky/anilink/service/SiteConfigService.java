@@ -63,6 +63,7 @@ public class SiteConfigService {
     private static final String MAIL_SEND_DAILY_LIMIT_PER_IP = "mail_send_daily_limit_per_ip";
     private static final String MAIL_SEND_DAILY_LIMIT_PER_EMAIL = "mail_send_daily_limit_per_email";
     private static final String REGISTER_DAILY_LIMIT_PER_IP = "register_daily_limit_per_ip";
+    private static final String THUMBNAIL_PLAYBACK_ENABLED = "thumbnail_playback_enabled";
     private static final String DEFAULT_DANDAN_BASE_URL = "https://api.dandanplay.net";
 
     // 简单内存缓存，避免每次请求都访问数据库
@@ -133,6 +134,8 @@ public class SiteConfigService {
         vo.setSmtpStarttlsEnabled(getBooleanConfig(SMTP_STARTTLS_ENABLED, false));
         String smtpPassword = getConfigValue(SMTP_PASSWORD);
         vo.setSmtpPasswordConfigured(smtpPassword != null && !smtpPassword.isBlank());
+
+        vo.setThumbnailPlaybackEnabled(isThumbnailPlaybackEnabled());
         
         return vo;
     }
@@ -330,6 +333,9 @@ public class SiteConfigService {
         if (request.getSmtpStarttlsEnabled() != null) {
             saveOrUpdateConfig(SMTP_STARTTLS_ENABLED, String.valueOf(request.getSmtpStarttlsEnabled()), "SMTP STARTTLS 开关");
         }
+        if (request.getThumbnailPlaybackEnabled() != null) {
+            saveOrUpdateConfig(THUMBNAIL_PLAYBACK_ENABLED, String.valueOf(request.getThumbnailPlaybackEnabled()), "生成播放缩略图开关");
+        }
     }
 
     public boolean isRegisterEnabled() {
@@ -422,6 +428,10 @@ public class SiteConfigService {
         boolean sslEnabled = getBooleanConfig(SMTP_SSL_ENABLED, true);
         boolean starttlsEnabled = getBooleanConfig(SMTP_STARTTLS_ENABLED, false);
         return new SmtpSettings(host, port, username, password, fromEmail, fromName, sslEnabled, starttlsEnabled);
+    }
+
+    public boolean isThumbnailPlaybackEnabled() {
+        return getBooleanConfig(THUMBNAIL_PLAYBACK_ENABLED, false);
     }
 
     private boolean getBooleanConfig(String key, boolean defaultValue) {

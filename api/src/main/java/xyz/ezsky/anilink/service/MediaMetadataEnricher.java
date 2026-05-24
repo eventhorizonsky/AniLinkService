@@ -32,6 +32,12 @@ public class MediaMetadataEnricher {
     @Autowired
     private MediaThumbnailService mediaThumbnailService;
 
+    @Autowired
+    private MediaVttThumbnailService mediaVttThumbnailService;
+
+    @Autowired
+    private SiteConfigService siteConfigService;
+
     /**
      * 异步提取并补充媒体文件的完整元数据
      * 
@@ -75,6 +81,11 @@ public class MediaMetadataEnricher {
 
             // 第四步：生成视频缩略图
             mediaThumbnailService.generateThumbnail(mediaFile);
+
+            // 第四点五步：生成播放进度 VTT 缩略图（需开启配置开关）
+            if (siteConfigService.isThumbnailPlaybackEnabled()) {
+                mediaVttThumbnailService.generateVttThumbnails(mediaFile);
+            }
 
             // 第五步：标记已获取元数据
             mediaFile.setMetadataFetched(true);

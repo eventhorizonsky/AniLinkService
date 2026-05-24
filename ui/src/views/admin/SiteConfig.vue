@@ -29,7 +29,8 @@ const form = ref({
   smtpFromEmail: '',
   smtpFromName: '',
   smtpSslEnabled: true,
-  smtpStarttlsEnabled: false
+  smtpStarttlsEnabled: false,
+  thumbnailPlaybackEnabled: false
 })
 
 // Dandan 字段
@@ -78,7 +79,8 @@ const fetchConfig = async () => {
         smtpFromName: res.data.data.smtpFromName || '',
         smtpSslEnabled: res.data.data.smtpSslEnabled !== false,
         smtpStarttlsEnabled: !!res.data.data.smtpStarttlsEnabled,
-        smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured
+        smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured,
+        thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled
       }
     }
   } catch (error) {
@@ -117,7 +119,8 @@ const saveConfig = async () => {
         smtpFromEmail: form.value.smtpFromEmail,
         smtpFromName: form.value.smtpFromName,
         smtpSslEnabled: form.value.smtpSslEnabled,
-        smtpStarttlsEnabled: form.value.smtpStarttlsEnabled
+        smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
+        thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled
     })
 
     if (res.data?.code === 200) {
@@ -238,6 +241,22 @@ onMounted(() => {
                 variant="outlined"
                 color="primary"
                 required
+              />
+
+              <v-divider class="my-4" />
+
+              <h3 class="text-h6 mb-4 text-primary font-weight-medium">
+                <v-icon start color="primary">mdi-play-box-multiple</v-icon>
+                媒体功能
+              </h3>
+
+              <v-switch
+                v-model="form.thumbnailPlaybackEnabled"
+                label="生成播放缩略图（鼠标悬停进度条时预览画面）"
+                color="primary"
+                inset
+                hint="开启后，新扫描的媒体文件将在元数据提取阶段生成 VTT 雪碧图缩略图。已有文件需要重新触发元数据提取才会生成。"
+                persistent-hint
               />
             </v-window-item>
 

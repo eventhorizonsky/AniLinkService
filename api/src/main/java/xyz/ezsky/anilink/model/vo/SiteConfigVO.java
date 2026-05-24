@@ -104,6 +104,9 @@ public class SiteConfigVO {
     @Schema(description = "SMTP 密码是否已配置", example = "true")
     private Boolean smtpPasswordConfigured;
 
+    @Schema(description = "是否生成播放进度缩略图", example = "false")
+    private Boolean thumbnailPlaybackEnabled;
+
     public String getDandanBaseUrl() {
         return dandanBaseUrl;
     }

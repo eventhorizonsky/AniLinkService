@@ -101,6 +101,9 @@ public class UpdateSiteConfigRequest {
     @Schema(description = "是否启用 STARTTLS", example = "false")
     private Boolean smtpStarttlsEnabled;
 
+    @Schema(description = "是否生成播放进度缩略图", example = "false")
+    private Boolean thumbnailPlaybackEnabled;
+
     public String getDandanBaseUrl() {
         return dandanBaseUrl;
     }

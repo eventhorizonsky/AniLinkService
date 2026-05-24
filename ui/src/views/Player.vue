@@ -145,6 +145,7 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import Artplayer from 'artplayer'
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
+import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
 import AnimeHeroSection from '../components/anime/AnimeHeroSection.vue'
@@ -1436,6 +1437,9 @@ const createPlayerInstance = async () => {
       },
       plugins: [
         artplayerPluginDanmuku(danmakuOptions),
+        artplayerPluginVttThumbnail({
+          vtt: `/api/media-files/${targetVideoId}/thumbnails.vtt`,
+        }),
         ...(subtitlePlugin ? [subtitlePlugin] : []),
       ],
       controls: episodeControls,
