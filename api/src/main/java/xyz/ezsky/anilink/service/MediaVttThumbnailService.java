@@ -5,16 +5,24 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import xyz.ezsky.anilink.model.entity.MediaFile;
 
+import javax.imageio.ImageIO;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.stream.Stream;
 
 /**
  * 播放进度缩略图（VTT雪碧图）生成服务
  *
- * 在元数据扫描完成后，使用 FFmpeg 从视频中按固定间隔截取帧并拼接为雪碧图，
+ * 使用并行 seek 方式从视频中按固定间隔提取单帧，再用 Java 拼接为雪碧图，
  * 同时生成 WebVTT 文件描述每帧的时间范围和坐标，供 ArtPlayer 的
  * artplayer-plugin-vtt-thumbnail 插件使用。
  *
@@ -30,6 +38,8 @@ public class MediaVttThumbnailService {
     private static final int THUMB_HEIGHT = 90;
     private static final int MAX_THUMBS = 100;
     private static final int MIN_INTERVAL_SEC = 5;
+    private static final int FRAME_EXTRACT_TIMEOUT_SEC = 30;
+    private static final int OVERALL_TIMEOUT_MIN = 10;
 
     @Value("${media.thumbnail.output-dir:./data/thumbnails}")
     private String thumbnailOutputDir;
@@ -73,34 +83,52 @@ public class MediaVttThumbnailService {
         }
 
         String inputPath = mediaFile.getFilePath();
+        Path tempDir = vttDir.resolve("temp");
 
         try {
-            // 使用 FFmpeg tile 滤镜生成雪碧图
-            // fps=1/{interval} 每秒取一帧，tile={cols}x{rows} 拼接成网格
-            ProcessBuilder pb = new ProcessBuilder(
-                    "ffmpeg",
-                    "-ss", "0",
-                    "-i", inputPath,
-                    "-vf", String.format("fps=1/%d,scale=%d:%d,tile=%dx%d",
-                            interval, THUMB_WIDTH, THUMB_HEIGHT, cols, rows),
-                    "-vframes", "1",
-                    "-q:v", "5",
-                    "-y",
-                    spriteFile.toAbsolutePath().toString()
-            );
-            pb.redirectErrorStream(true);
+            cleanupTempDir(tempDir);
+            Files.createDirectories(tempDir);
 
-            Process process = pb.start();
-            process.getInputStream().transferTo(java.io.OutputStream.nullOutputStream());
-            int exitCode = process.waitFor();
+            // 并行 seek 提取单帧 — 大幅快于逐帧解码全片
+            int parallelism = Math.max(1, Math.min(thumbCount,
+                    Runtime.getRuntime().availableProcessors() * 2));
+            ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+            List<Future<Boolean>> futures = new ArrayList<>(thumbCount);
 
-            if (exitCode != 0 || !Files.exists(spriteFile) || Files.size(spriteFile) == 0) {
-                log.warn("FFmpeg sprite generation failed for media [{}], exit code: {}", mediaFile.getId(), exitCode);
+            for (int i = 0; i < thumbCount; i++) {
+                final int index = i;
+                final long timestamp = (long) i * interval;
+                futures.add(executor.submit(() -> extractFrame(inputPath, tempDir, index, timestamp)));
+            }
+
+            executor.shutdown();
+            executor.awaitTermination(OVERALL_TIMEOUT_MIN, TimeUnit.MINUTES);
+
+            int successCount = 0;
+            for (int i = 0; i < futures.size(); i++) {
+                try {
+                    if (futures.get(i).isDone() && futures.get(i).get()) {
+                        successCount++;
+                    }
+                } catch (Exception e) {
+                    log.debug("Thumbnail {} extraction failed for media [{}]", i, mediaFile.getId());
+                }
+            }
+
+            if (successCount == 0) {
+                log.warn("All thumbnail extractions failed for media [{}]", mediaFile.getId());
                 cleanup(vttDir);
                 return;
             }
 
-            // 生成 WebVTT 文件
+            log.debug("Extracted {}/{} thumbnails for media [{}]", successCount, thumbCount, mediaFile.getId());
+
+            if (!stitchSprite(tempDir, thumbCount, cols, rows, spriteFile)) {
+                log.warn("Failed to stitch sprite for media [{}]", mediaFile.getId());
+                cleanup(vttDir);
+                return;
+            }
+
             generateVttFile(vttFile, thumbCount, cols, interval);
 
             log.info("VTT thumbnails generated for media [{}]: {} thumbs, {}x{} grid, interval {}s",
@@ -111,6 +139,84 @@ public class MediaVttThumbnailService {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
+        } finally {
+            cleanupTempDir(tempDir);
+        }
+    }
+
+    /**
+     * 使用 FFmpeg seek 快速提取单帧缩略图。
+     * -ss 在 -i 之前使用关键帧跳转，-vframes 1 拿到一帧即停止。
+     */
+    private boolean extractFrame(String inputPath, Path tempDir, int index, long timestampSec) {
+        Path thumbFile = tempDir.resolve(String.format("thumb_%04d.jpg", index));
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffmpeg",
+                    "-ss", String.valueOf(timestampSec),
+                    "-i", inputPath,
+                    "-vframes", "1",
+                    "-s", THUMB_WIDTH + "x" + THUMB_HEIGHT,
+                    "-q:v", "5",
+                    "-y",
+                    thumbFile.toAbsolutePath().toString()
+            );
+            pb.redirectErrorStream(true);
+
+            Process process = pb.start();
+            process.getInputStream().transferTo(OutputStream.nullOutputStream());
+            boolean finished = process.waitFor(FRAME_EXTRACT_TIMEOUT_SEC, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return false;
+            }
+            return process.exitValue() == 0 && Files.exists(thumbFile) && Files.size(thumbFile) > 0;
+        } catch (Exception e) {
+            log.debug("Frame extraction failed for index {} at {}s: {}", index, timestampSec, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 将独立缩略图拼接为雪碧图，失败的格位填充黑色。
+     */
+    private boolean stitchSprite(Path tempDir, int thumbCount, int cols, int rows, Path spriteFile) {
+        int spriteWidth = cols * THUMB_WIDTH;
+        int spriteHeight = rows * THUMB_HEIGHT;
+        BufferedImage sprite = new BufferedImage(spriteWidth, spriteHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = sprite.createGraphics();
+
+        int successCount = 0;
+        for (int i = 0; i < thumbCount; i++) {
+            Path thumbFile = tempDir.resolve(String.format("thumb_%04d.jpg", i));
+            int col = i % cols;
+            int row = i / cols;
+            int x = col * THUMB_WIDTH;
+            int y = row * THUMB_HEIGHT;
+
+            try {
+                if (Files.exists(thumbFile) && Files.size(thumbFile) > 0) {
+                    BufferedImage thumb = ImageIO.read(thumbFile.toFile());
+                    if (thumb != null) {
+                        g.drawImage(thumb, x, y, null);
+                        successCount++;
+                        continue;
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+            g.setColor(Color.BLACK);
+            g.fillRect(x, y, THUMB_WIDTH, THUMB_HEIGHT);
+        }
+        g.dispose();
+
+        if (successCount == 0) return false;
+
+        try {
+            return ImageIO.write(sprite, "jpg", spriteFile.toFile());
+        } catch (IOException e) {
+            log.error("Failed to write sprite image: {}", spriteFile, e);
+            return false;
         }
     }
 
@@ -150,12 +256,26 @@ public class MediaVttThumbnailService {
     }
 
     private void cleanup(Path vttDir) {
+        cleanupTempDir(vttDir.resolve("temp"));
         try {
             Files.deleteIfExists(vttDir.resolve("sprite.jpg"));
             Files.deleteIfExists(vttDir.resolve("thumbnails.vtt"));
             Files.deleteIfExists(vttDir);
         } catch (IOException ignored) {
-            // best-effort cleanup
+        }
+    }
+
+    private void cleanupTempDir(Path tempDir) {
+        if (!Files.exists(tempDir)) return;
+        try (Stream<Path> files = Files.list(tempDir)) {
+            files.forEach(f -> {
+                try {
+                    Files.deleteIfExists(f);
+                } catch (IOException ignored) {
+                }
+            });
+            Files.deleteIfExists(tempDir);
+        } catch (IOException ignored) {
         }
     }
 
