@@ -2,12 +2,15 @@ package xyz.ezsky.anilink.service;
 
 import lombok.extern.log4j.Log4j2;
 import okhttp3.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -23,7 +26,10 @@ public class BangumiApiService {
     private static final String BANGUMI_NEXT_BASE = "https://next.bgm.tv";
     private static final String BANGUMI_API_BASE = "https://api.bgm.tv";
 
-    private final OkHttpClient okHttpClient = new OkHttpClient.Builder()
+    @Autowired
+    private SiteConfigService siteConfigService;
+
+    private final OkHttpClient baseClient = new OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
@@ -72,7 +78,9 @@ public class BangumiApiService {
                 .method(method, buildRequestBody(method, payloadJson))
                 .build();
 
-        try (Response response = okHttpClient.newCall(request).execute()) {
+        OkHttpClient client = buildClientWithProxy();
+
+        try (Response response = client.newCall(request).execute()) {
             String body = response.body() != null ? response.body().string() : "";
             log.debug("Bangumi API {} {} returned {}", method, path, response.code());
             return new ResponseEntity<>(body, HttpStatus.valueOf(response.code()));
@@ -98,5 +106,15 @@ public class BangumiApiService {
         }
         byte[] bytes = (payloadJson == null ? "{}" : payloadJson).getBytes(StandardCharsets.UTF_8);
         return RequestBody.create(bytes, MediaType.parse("application/json"));
+    }
+
+    private OkHttpClient buildClientWithProxy() {
+        String host = siteConfigService.getBangumiProxyHost();
+        Integer port = siteConfigService.getBangumiProxyPort();
+        if (host == null || host.isBlank() || port == null || port <= 0) {
+            return baseClient;
+        }
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host.trim(), port));
+        return baseClient.newBuilder().proxy(proxy).build();
     }
 }

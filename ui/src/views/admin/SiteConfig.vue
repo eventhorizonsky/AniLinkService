@@ -33,6 +33,10 @@ const form = ref({
   thumbnailPlaybackEnabled: false
 })
 
+// Bangumi 代理
+form.value.bangumiProxyHost = ''
+form.value.bangumiProxyPort = null
+
 // Dandan 字段
 form.value.dandanAppId = ''
 form.value.dandanAppSecret = ''
@@ -80,7 +84,9 @@ const fetchConfig = async () => {
         smtpSslEnabled: res.data.data.smtpSslEnabled !== false,
         smtpStarttlsEnabled: !!res.data.data.smtpStarttlsEnabled,
         smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured,
-        thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled
+        thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled,
+        bangumiProxyHost: res.data.data.bangumiProxyHost || '',
+        bangumiProxyPort: res.data.data.bangumiProxyPort || null
       }
     }
   } catch (error) {
@@ -120,7 +126,9 @@ const saveConfig = async () => {
         smtpFromName: form.value.smtpFromName,
         smtpSslEnabled: form.value.smtpSslEnabled,
         smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
-        thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled
+        thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
+        bangumiProxyHost: form.value.bangumiProxyHost || null,
+        bangumiProxyPort: form.value.bangumiProxyPort || null
     })
 
     if (res.data?.code === 200) {
@@ -402,6 +410,43 @@ onMounted(() => {
                 persistent-hint
                 class="mb-4"
               />
+
+              <v-divider class="my-4" />
+
+              <h3 class="text-h6 mb-4 text-primary font-weight-medium">
+                <v-icon start color="primary">mdi-shield-key</v-icon>
+                Bangumi API 代理配置
+              </h3>
+              <p class="text-body-2 text-medium-emphasis mb-4">
+                为 Bangumi.tv API（bgm.tv）请求配置 HTTP 代理，用于网络受限环境。
+              </p>
+              <v-row dense>
+                <v-col cols="12" md="8">
+                  <v-text-field
+                    v-model="form.bangumiProxyHost"
+                    label="代理主机"
+                    prepend-inner-icon="mdi-server-network"
+                    variant="outlined"
+                    color="primary"
+                    hint="例如 127.0.0.1，留空则不使用代理"
+                    persistent-hint
+                    class="mb-3"
+                  />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model.number="form.bangumiProxyPort"
+                    label="代理端口"
+                    type="number"
+                    prepend-inner-icon="mdi-numeric"
+                    variant="outlined"
+                    color="primary"
+                    hint="例如 7890"
+                    persistent-hint
+                    class="mb-3"
+                  />
+                </v-col>
+              </v-row>
             </v-window-item>
 
             <v-window-item value="remote-access">

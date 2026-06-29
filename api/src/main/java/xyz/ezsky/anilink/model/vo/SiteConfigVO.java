@@ -68,6 +68,12 @@ public class SiteConfigVO {
     @Schema(description = "RSS 请求代理端口", example = "7890")
     private Integer rssProxyPort;
 
+    @Schema(description = "Bangumi API 代理主机", example = "127.0.0.1")
+    private String bangumiProxyHost;
+
+    @Schema(description = "Bangumi API 代理端口", example = "7890")
+    private Integer bangumiProxyPort;
+
     @Schema(description = "是否开放注册", example = "false")
     private Boolean authRegisterEnabled;
 
