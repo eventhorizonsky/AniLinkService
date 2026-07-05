@@ -325,7 +325,7 @@ public class MediaFileService {
                         mediaFile.setEpisodeTitle(request.getEpisodeTitle());
                     }
 
-                    // 手工更新后同步匹配状态，确保”弹幕匹配”展示与绑定关系一致。
+                    // 手工更新后同步匹配状态，确保"弹幕匹配"展示与绑定关系一致。
                     boolean hasMatchedBinding = mediaFile.getAnimeId() != null
                             && mediaFile.getEpisodeId() != null
                             && !mediaFile.getEpisodeId().isBlank();
@@ -341,7 +341,7 @@ public class MediaFileService {
                                     null    // 手动匹配没有 imageUrl
                             );
                         } catch (Exception e) {
-                            log.warn(“Failed to ensure anime exists for manual update, animeId={}: {}”,
+                            log.warn("Failed to ensure anime exists for manual update, animeId={}: {}",
                                     mediaFile.getAnimeId(), e.getMessage());
                         }
                     }
