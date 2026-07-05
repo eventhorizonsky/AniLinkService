@@ -63,6 +63,9 @@ public class MediaFileService {
     private MediaHashService mediaHashService;
 
     @Autowired
+    private AnimeService animeService;
+
+    @Autowired
     private xyz.ezsky.anilink.repository.PlayHistoryRepository playHistoryRepository;
 
     /**
@@ -322,11 +325,26 @@ public class MediaFileService {
                         mediaFile.setEpisodeTitle(request.getEpisodeTitle());
                     }
 
-                    // 手工更新后同步匹配状态，确保“弹幕匹配”展示与绑定关系一致。
+                    // 手工更新后同步匹配状态，确保”弹幕匹配”展示与绑定关系一致。
                     boolean hasMatchedBinding = mediaFile.getAnimeId() != null
                             && mediaFile.getEpisodeId() != null
                             && !mediaFile.getEpisodeId().isBlank();
                     mediaFile.setMatchStatus(hasMatchedBinding ? MatchStatus.MATCHED : MatchStatus.UNMATCHED);
+
+                    // 手动匹配后，确保动漫信息也写入 anime 表（之前遗漏了这一步）
+                    if (mediaFile.getAnimeId() != null && hasMatchedBinding) {
+                        try {
+                            animeService.ensureAnimeExists(
+                                    mediaFile.getAnimeId(),
+                                    mediaFile.getAnimeTitle(),
+                                    null,   // 手动匹配没有 type 字段
+                                    null    // 手动匹配没有 imageUrl
+                            );
+                        } catch (Exception e) {
+                            log.warn(“Failed to ensure anime exists for manual update, animeId={}: {}”,
+                                    mediaFile.getAnimeId(), e.getMessage());
+                        }
+                    }
 
                     MediaFile saved = mediaFileRepository.save(mediaFile);
 

@@ -29,6 +29,9 @@ public interface MediaFileRepository extends BaseRepository<MediaFile, Long> {
 
     long countByAnimeId(Long animeId);
 
+    /** 查找某个动漫在媒体库中的第一条记录，用于兜底重建 Anime 信息 */
+    Optional<MediaFile> findFirstByAnimeId(Long animeId);
+
     long countByLibraryIdAndMatchStatus(Long libraryId, MatchStatus matchStatus);
 
     long countByMatchStatusIn(List<MatchStatus> matchStatuses);

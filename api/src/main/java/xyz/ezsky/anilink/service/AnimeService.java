@@ -107,15 +107,74 @@ public class AnimeService {
 
 
     /**
-     * 根据动漫ID获取动漫详情
+     * 根据动漫ID获取动漫详情。
+     * 如果 anime 表中不存在，但媒体库中有该 animeId 的文件，
+     * 则自动用媒体库中的信息兜底创建一条 Anime 记录。
      *
      * @param animeId 弹幕库动漫ID
-     * @return 动漫信息
+     * @return 动漫信息，若无任何数据则返回 null
      */
     public AnimeVO getAnimeById(Long animeId) {
-        return animeRepository.findByAnimeId(animeId)
-                .map(this::convertToVO)
-                .orElse(null);
+        Anime anime = animeRepository.findByAnimeId(animeId).orElse(null);
+        if (anime == null) {
+            anime = tryCreateAnimeFromMediaFiles(animeId);
+        }
+        return anime != null ? convertToVO(anime) : null;
+    }
+
+    /**
+     * 确保 Anime 记录存在。
+     * 已存在则跳过，不存在则用提供的信息创建。
+     *
+     * @param animeId  弹弹动漫ID
+     * @param title    动漫标题
+     * @param type     动漫类型（可为 null）
+     * @param imageUrl 封面图URL（可为 null）
+     */
+    public void ensureAnimeExists(Long animeId, String title, String type, String imageUrl) {
+        if (animeId == null) return;
+        if (animeRepository.findByAnimeId(animeId).isPresent()) return;
+
+        Anime anime = new Anime();
+        anime.setAnimeId(animeId);
+        anime.setTitle(title != null && !title.isBlank() ? title : "未知动漫");
+        anime.setType(type);
+        anime.setImageUrl(imageUrl);
+        try {
+            animeRepository.save(anime);
+            log.info("Created anime record from ensureAnimeExists - animeId: {}, title: {}", animeId, title);
+        } catch (Exception e) {
+            log.warn("Failed to save anime record for animeId: {}", animeId, e);
+        }
+    }
+
+    /**
+     * 兜底：从媒体库中提取动漫信息来创建 Anime 记录。
+     * 适用于手动匹配等未写入 anime 表的场景。
+     *
+     * @param animeId 弹弹动漫ID
+     * @return 新创建的 Anime，失败或无媒体文件则返回 null
+     */
+    private Anime tryCreateAnimeFromMediaFiles(Long animeId) {
+        try {
+            Optional<MediaFile> mediaFileOpt = mediaFileRepository.findFirstByAnimeId(animeId);
+            if (mediaFileOpt.isEmpty()) {
+                log.debug("No media files found for animeId={}, skip lazy create", animeId);
+                return null;
+            }
+            MediaFile mf = mediaFileOpt.get();
+            Anime anime = new Anime();
+            anime.setAnimeId(animeId);
+            anime.setTitle(mf.getAnimeTitle() != null && !mf.getAnimeTitle().isBlank()
+                    ? mf.getAnimeTitle() : "未知动漫");
+            animeRepository.save(anime);
+            log.info("Lazy-created anime from media files: animeId={}, title={}, sourceFileId={}",
+                    animeId, anime.getTitle(), mf.getId());
+            return anime;
+        } catch (Exception e) {
+            log.error("Failed to lazy-create anime from media files for animeId={}", animeId, e);
+            return null;
+        }
     }
 
     /**
