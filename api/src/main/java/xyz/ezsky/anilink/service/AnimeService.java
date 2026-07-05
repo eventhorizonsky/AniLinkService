@@ -154,10 +154,12 @@ public class AnimeService {
     private void upsertAnimeFromRawJson(Long animeId, String rawJson) {
         try {
             JsonNode root = objectMapper.readTree(rawJson);
-            String title = readTextField(root, "animeTitle", "未知动漫");
-            String type = readTextField(root, "type", null);
-            String typeDesc = readTextField(root, "typeDescription", null);
-            String imageUrl = readTextField(root, "imageUrl", null);
+            // 弹弹 bangumi API 响应格式为 { success, bangumi: {...} }，先解包
+            JsonNode data = root.has("bangumi") ? root.get("bangumi") : root;
+            String title = readTextField(data, "animeTitle", "未知动漫");
+            String type = readTextField(data, "type", null);
+            String typeDesc = readTextField(data, "typeDescription", null);
+            String imageUrl = readTextField(data, "imageUrl", null);
 
             // 优先用 typeDescription（更可读），没有则用 type
             String resolvedType = (typeDesc != null && !typeDesc.isBlank()) ? typeDesc : type;
