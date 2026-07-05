@@ -108,18 +108,14 @@ public class AnimeService {
 
     /**
      * 根据动漫ID获取动漫详情。
-     * 如果 anime 表中不存在，但媒体库中有该 animeId 的文件，
-     * 则自动用媒体库中的信息兜底创建一条 Anime 记录。
      *
      * @param animeId 弹幕库动漫ID
-     * @return 动漫信息，若无任何数据则返回 null
+     * @return 动漫信息，若无则返回 null
      */
     public AnimeVO getAnimeById(Long animeId) {
-        Anime anime = animeRepository.findByAnimeId(animeId).orElse(null);
-        if (anime == null) {
-            anime = tryCreateAnimeFromMediaFiles(animeId);
-        }
-        return anime != null ? convertToVO(anime) : null;
+        return animeRepository.findByAnimeId(animeId)
+                .map(this::convertToVO)
+                .orElse(null);
     }
 
     /**
@@ -219,12 +215,16 @@ public class AnimeService {
     }
 
     /**
-     * 根据动漫ID获取原始JSON数据
+     * 根据动漫ID获取原始JSON数据。
+     * 同时作为兜底：如果 anime 表缺少该记录但媒体库中有对应文件，则自动补建。
      *
      * @param animeId 动漫ID
      * @return 原始JSON数据
      */
     public String getRawJsonByAnimeId(Long animeId) {
+        // 兜底：请求动漫详情时，若 anime 表缺失但媒体库有数据，自动补建
+        tryCreateAnimeFromMediaFiles(animeId);
+
         String cacheKey = buildBangumiCacheKey(animeId);
         LocalDateTime now = LocalDateTime.now();
 
