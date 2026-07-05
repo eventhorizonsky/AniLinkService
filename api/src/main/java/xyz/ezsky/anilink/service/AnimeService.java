@@ -1,7 +1,10 @@
 package xyz.ezsky.anilink.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -50,6 +53,8 @@ public class AnimeService {
 
     @Autowired
     private SiteConfigService siteConfigService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     // setter used by unit tests
     public void setMediaFileRepository(MediaFileRepository mediaFileRepository) {
@@ -136,17 +141,75 @@ public class AnimeService {
         anime.setTitle(title != null && !title.isBlank() ? title : "未知动漫");
         anime.setType(type);
         anime.setImageUrl(imageUrl);
-        try {
-            animeRepository.save(anime);
-            log.info("Created anime record from ensureAnimeExists - animeId: {}, title: {}", animeId, title);
-        } catch (Exception e) {
-            log.warn("Failed to save anime record for animeId: {}", animeId, e);
-        }
+        saveAnimeSafely(anime, "ensureAnimeExists", animeId);
     }
 
     /**
-     * 兜底：从媒体库中提取动漫信息来创建 Anime 记录。
-     * 适用于手动匹配等未写入 anime 表的场景。
+     * 用 raw JSON 中的完整信息补建/更新 Anime 记录。
+     * 解析 type、typeDescription、imageUrl 等字段，比 media file 兜底更完整。
+     *
+     * @param animeId 弹弹动漫ID
+     * @param rawJson 从缓存或上游获取的原始 JSON
+     */
+    private void upsertAnimeFromRawJson(Long animeId, String rawJson) {
+        try {
+            JsonNode root = objectMapper.readTree(rawJson);
+            String title = readTextField(root, "animeTitle", "未知动漫");
+            String type = readTextField(root, "type", null);
+            String typeDesc = readTextField(root, "typeDescription", null);
+            String imageUrl = readTextField(root, "imageUrl", null);
+
+            // 优先用 typeDescription（更可读），没有则用 type
+            String resolvedType = (typeDesc != null && !typeDesc.isBlank()) ? typeDesc : type;
+
+            animeRepository.findByAnimeId(animeId).ifPresentOrElse(
+                    existing -> {
+                        // 已存在则补全缺失字段
+                        boolean changed = false;
+                        if ((existing.getType() == null || existing.getType().isBlank()) && resolvedType != null) {
+                            existing.setType(resolvedType);
+                            changed = true;
+                        }
+                        if ((existing.getImageUrl() == null || existing.getImageUrl().isBlank()) && imageUrl != null) {
+                            existing.setImageUrl(imageUrl);
+                            changed = true;
+                        }
+                        if (changed) {
+                            existing.setUpdatedAt(LocalDateTime.now());
+                            animeRepository.save(existing);
+                            log.info("Enriched existing anime record: animeId={}, type={}, imageUrl={}",
+                                    animeId, resolvedType, imageUrl);
+                        }
+                    },
+                    () -> {
+                        // 不存在则创建完整记录
+                        Anime anime = new Anime();
+                        anime.setAnimeId(animeId);
+                        anime.setTitle(title);
+                        anime.setType(resolvedType);
+                        anime.setImageUrl(imageUrl);
+                        saveAnimeSafely(anime, "upsertAnimeFromRawJson", animeId);
+                    }
+            );
+        } catch (Exception e) {
+            log.warn("Failed to upsert anime from raw JSON for animeId={}", animeId, e);
+        }
+    }
+
+    private String readTextField(JsonNode node, String fieldName, String defaultValue) {
+        JsonNode field = node.get(fieldName);
+        if (field != null && !field.isNull()) {
+            String text = field.asText(null);
+            if (text != null && !text.isBlank()) {
+                return text;
+            }
+        }
+        return defaultValue;
+    }
+
+    /**
+     * 兜底：从媒体库中提取动漫信息来创建 Anime 记录（仅有 title，无 type/imageUrl）。
+     * 仅在完全拿不到 raw JSON 时使用。
      *
      * @param animeId 弹弹动漫ID
      * @return 新创建的 Anime，失败或无媒体文件则返回 null
@@ -163,13 +226,29 @@ public class AnimeService {
             anime.setAnimeId(animeId);
             anime.setTitle(mf.getAnimeTitle() != null && !mf.getAnimeTitle().isBlank()
                     ? mf.getAnimeTitle() : "未知动漫");
-            animeRepository.save(anime);
-            log.info("Lazy-created anime from media files: animeId={}, title={}, sourceFileId={}",
-                    animeId, anime.getTitle(), mf.getId());
+            if (saveAnimeSafely(anime, "tryCreateAnimeFromMediaFiles", animeId)) {
+                log.info("Lazy-created anime from media files: animeId={}, title={}, sourceFileId={}",
+                        animeId, anime.getTitle(), mf.getId());
+            }
             return anime;
         } catch (Exception e) {
             log.error("Failed to lazy-create anime from media files for animeId={}", animeId, e);
             return null;
+        }
+    }
+
+    /**
+     * 安全保存 Anime，遇到并发插入导致的唯一约束冲突时静默跳过。
+     *
+     * @return true 表示保存成功，false 表示冲突（已有其他线程先插入了）
+     */
+    private boolean saveAnimeSafely(Anime anime, String caller, Long animeId) {
+        try {
+            animeRepository.save(anime);
+            return true;
+        } catch (DataIntegrityViolationException e) {
+            log.debug("Anime already exists (concurrent insert from {}): animeId={}", caller, animeId);
+            return false;
         }
     }
 
@@ -216,24 +295,25 @@ public class AnimeService {
 
     /**
      * 根据动漫ID获取原始JSON数据。
-     * 同时作为兜底：如果 anime 表缺少该记录但媒体库中有对应文件，则自动补建。
+     * 同时作为兜底：优先用 raw JSON 中的完整信息补建 Anime 记录（含 type、imageUrl），
+     * 拿不到 raw JSON 时退而用媒体库中的基本信息。
      *
      * @param animeId 动漫ID
      * @return 原始JSON数据
      */
     public String getRawJsonByAnimeId(Long animeId) {
-        // 兜底：请求动漫详情时，若 anime 表缺失但媒体库有数据，自动补建
-        tryCreateAnimeFromMediaFiles(animeId);
-
         String cacheKey = buildBangumiCacheKey(animeId);
         LocalDateTime now = LocalDateTime.now();
 
+        // 路径 A：命中有效缓存 → 用缓存数据补建
         Optional<ApiCache> validCache = apiCacheRepository.findByCacheKeyAndExpireTimeAfter(cacheKey, now);
         String validCacheValue = extractUsableJsonCacheValue(validCache, cacheKey);
         if (validCacheValue != null) {
+            upsertAnimeFromRawJson(animeId, validCacheValue);
             return validCacheValue;
         }
 
+        // 路径 B：缓存过期或不存在，请求上游
         Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
         String path = "/api/v2/bangumi/" + animeId;
         try {
@@ -241,6 +321,7 @@ public class AnimeService {
             String responseBody = response.getBody();
             if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(responseBody)) {
                 upsertCache(cacheKey, responseBody, now.plusMinutes(BANGUMI_CACHE_TTL_MINUTES));
+                upsertAnimeFromRawJson(animeId, responseBody);
                 return responseBody;
             }
             log.warn("Dandan bangumi request returned non-success status for animeId={}, status={}",
@@ -249,13 +330,16 @@ public class AnimeService {
             log.error("Dandan bangumi request failed for animeId={}", animeId, ex);
         }
 
+        // 路径 C：上游失败，返回过期缓存兜底 → 过期缓存也是完整数据
         String staleCacheValue = extractUsableJsonCacheValue(staleCache, cacheKey);
         if (staleCacheValue != null) {
             log.warn("Returning stale api cache for animeId={} due to upstream failure", animeId);
+            upsertAnimeFromRawJson(animeId, staleCacheValue);
             return staleCacheValue;
         }
 
-        // 最后退避到本地已存 raw_json，兼容历史数据。
+        // 路径 D：完全无数据，从媒体库兜底基本信息
+        tryCreateAnimeFromMediaFiles(animeId);
         return null;
     }
 
