@@ -10,6 +10,7 @@ const drawer = ref(true)
 const selectedItem = ref('system')
 
 const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
+const CacheManage = defineAsyncComponent(() => import('./admin/CacheManage.vue'))
 const SiteConfig = defineAsyncComponent(() => import('./admin/SiteConfig.vue'))
 const MediaLibrary = defineAsyncComponent(() => import('./admin/media/MediaLibrary.vue'))
 const VideoFileManager = defineAsyncComponent(() => import('./admin/media/VideoFileManager.vue'))
@@ -25,6 +26,7 @@ const McpAccess = defineAsyncComponent(() => import('./admin/McpAccess.vue'))
 
 const mainMenuItems = [
   { id: 'system', title: '系统信息', icon: 'mdi-information', component: SystemInfo },
+  { id: 'cache', title: '缓存管理', icon: 'mdi-cached', component: CacheManage },
   { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess },
   { id: 'users', title: '用户管理', icon: 'mdi-account-cog', component: UserManagement }
 ]
