@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: v17-add-regex-filter-to-resource-rss-subscription
+      author: anilink
+      changes:
+        - addColumn:
+            tableName: resource_rss_subscription
+            columns:
+              - column:
+                  name: include_filter
+                  type: VARCHAR(2048)
+              - column:
+                  name: exclude_filter
+                  type: VARCHAR(2048)

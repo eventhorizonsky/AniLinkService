@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, watch, defineAsyncComponent, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -110,6 +110,8 @@ const fallbackMenuId = computed(() => visibleMainMenuItems.value[0]?.id || 'syst
 const handleSelectMenu = (id) => {
   selectedItem.value = id
 }
+
+provide('navigateTo', handleSelectMenu)
 
 onMounted(() => {
   checkLoginStatus()

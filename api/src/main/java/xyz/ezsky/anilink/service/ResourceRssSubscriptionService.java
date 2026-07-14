@@ -16,6 +16,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import xyz.ezsky.anilink.model.dto.ResourceRssSubscriptionRequest;
+import xyz.ezsky.anilink.model.dto.RssFilterPreviewRequest;
 import xyz.ezsky.anilink.model.dto.ResourceSearchDownloadRequest;
 import xyz.ezsky.anilink.model.entity.MediaLibrary;
 import xyz.ezsky.anilink.model.entity.ResourceRssSubscription;
@@ -34,8 +35,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 @Log4j2
 @Service
@@ -60,7 +64,15 @@ public class ResourceRssSubscriptionService {
     @Autowired
     private SiteConfigService siteConfigService;
 
-    private final OkHttpClient baseClient = new OkHttpClient();
+    private final OkHttpClient baseClient = new OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build();
+
+    private volatile OkHttpClient proxyClient;
+    private volatile String lastProxyHost;
+    private volatile Integer lastProxyPort;
 
     public List<ResourceSearchVO.RssSubscriptionItem> listSubscriptions() {
         List<ResourceSearchVO.RssSubscriptionItem> list = new ArrayList<>();
@@ -138,6 +150,16 @@ public class ResourceRssSubscriptionService {
                 rssRepository.save(item);
                 return;
             }
+            log.info("RSS subscription {} got {} magnet entries", item.getName(), entries.size());
+            int beforeFilterCount = entries.size();
+            entries = applyFilters(entries, item.getIncludeFilter(), item.getExcludeFilter());
+            int filteredOut = beforeFilterCount - entries.size();
+            if (entries.isEmpty()) {
+                item.setLastFetchedContent(buildParsedResultContent(beforeFilterCount, filteredOut, 0, 0, List.of()));
+                item.setLastError("过滤后无匹配条目");
+                rssRepository.save(item);
+                return;
+            }
             int created = 0;
             int duplicated = 0;
             List<String> resultLines = new ArrayList<>();
@@ -164,7 +186,7 @@ public class ResourceRssSubscriptionService {
                 created++;
                 appendEntryLine(resultLines, "已创建", entry);
             }
-            item.setLastFetchedContent(buildParsedResultContent(entries.size(), created, duplicated, resultLines));
+            item.setLastFetchedContent(buildParsedResultContent(beforeFilterCount, filteredOut, created, duplicated, resultLines));
             item.setLastSuccessAt(Timestamp.from(Instant.now()));
             if (created == 0) {
                 item.setLastError("本次检查未发现新磁链（可能都已存在）");
@@ -199,8 +221,21 @@ public class ResourceRssSubscriptionService {
         if (host == null || host.isBlank() || port == null || port <= 0) {
             return baseClient;
         }
-        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host.trim(), port));
-        return baseClient.newBuilder().proxy(proxy).build();
+        String trimmedHost = host.trim();
+        // Cache the proxy client to avoid rebuilding on every call
+        if (proxyClient != null && trimmedHost.equals(lastProxyHost) && port.equals(lastProxyPort)) {
+            return proxyClient;
+        }
+        synchronized (this) {
+            if (proxyClient != null && trimmedHost.equals(lastProxyHost) && port.equals(lastProxyPort)) {
+                return proxyClient;
+            }
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(trimmedHost, port));
+            proxyClient = baseClient.newBuilder().proxy(proxy).build();
+            lastProxyHost = trimmedHost;
+            lastProxyPort = port;
+            return proxyClient;
+        }
     }
 
     private List<RssEntry> parseEntries(String xml) throws Exception {
@@ -211,6 +246,7 @@ public class ResourceRssSubscriptionService {
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         Document doc = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
         List<Element> entryNodes = collectEntryNodes(doc);
+        log.info("parseEntries: found {} entry nodes in RSS", entryNodes.size());
         for (Element item : entryNodes) {
             String title = firstNonBlank(textOf(item, "title"), textOf(item, "name"));
             String linkText = textOf(item, "link");
@@ -221,19 +257,25 @@ public class ResourceRssSubscriptionService {
             String canonicalLink = candidateLinks.isEmpty() ? linkText : candidateLinks.get(0);
 
             String magnet = null;
+            String magnetSource = null;
             for (String value : candidateLinks) {
                 magnet = firstMagnet(value);
                 if (magnet != null) {
+                    magnetSource = "candidateLink";
                     break;
                 }
             }
             if (magnet == null) {
                 magnet = firstMagnet(description);
+                if (magnet != null) {
+                    magnetSource = "description";
+                }
             }
             if (magnet == null) {
                 for (String link : candidateLinks) {
                     magnet = tryConvertTorrentUrlToMagnet(link);
                     if (magnet != null) {
+                        magnetSource = "torrent:" + link;
                         break;
                     }
                 }
@@ -241,6 +283,8 @@ public class ResourceRssSubscriptionService {
 
             if (magnet != null) {
                 list.add(new RssEntry(title, canonicalLink, magnet));
+            } else {
+                log.warn("parseEntries: no magnet for entry \"{}\", candidateLinks={}", title, candidateLinks);
             }
         }
         return list;
@@ -320,54 +364,57 @@ public class ResourceRssSubscriptionService {
         if (url == null || url.isBlank()) {
             return null;
         }
-        if (!looksLikeHttpUrl(url)) {
+        String lowerUrl = url.toLowerCase(Locale.ROOT);
+        if (!lowerUrl.endsWith(".torrent") && !lowerUrl.contains(".torrent?")) {
+            return null;
+        }
+        if (!lowerUrl.startsWith("http://") && !lowerUrl.startsWith("https://")) {
             return null;
         }
 
         Request request = new Request.Builder().url(url).get().build();
         OkHttpClient client = buildClientWithProxy();
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
+        // Retry up to 3 times with backoff, to handle proxy rate limiting gracefully
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+                try {
+                    Thread.sleep(1000L * attempt);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    if (attempt < 2) continue;
+                    log.warn("Torrent download non-success: {} -> HTTP {}", url, response.code());
+                    return null;
+                }
+                byte[] data = response.body().bytes();
+                if (data.length == 0 || data.length > 10 * 1024 * 1024) {
+                    if (attempt < 2) continue;
+                    log.warn("Torrent download bad size: {} -> {} bytes", url, data.length);
+                    return null;
+                }
+                if (data.length <= 1 || data[0] != 'd') {
+                    String preview = new String(data, 0, Math.min(data.length, 200), java.nio.charset.StandardCharsets.UTF_8);
+                    log.warn("Torrent not bencoded: {} -> '{}'", url, preview.substring(0, Math.min(preview.length(), 80)));
+                    return null;
+                }
+                TorrentInfo torrentInfo = new TorrentInfo(data);
+                String magnet = torrentInfo.makeMagnetUri();
+                if (magnet != null && !magnet.isBlank()) {
+                    return magnet;
+                }
+                log.warn("Torrent parse produced no magnet: {}", url);
+                return null;
+            } catch (Exception e) {
+                if (attempt < 2) continue;
+                log.warn("Torrent download failed: {} -> {}", url, e.getMessage());
                 return null;
             }
-            String contentType = response.header("Content-Type");
-            byte[] data = response.body().bytes();
-            if (data.length == 0 || data.length > 10 * 1024 * 1024) {
-                return null;
-            }
-            if (!looksLikeTorrentContent(url, contentType, data)) {
-                return null;
-            }
-
-            TorrentInfo torrentInfo = new TorrentInfo(data);
-            String magnet = torrentInfo.makeMagnetUri();
-            if (magnet != null && !magnet.isBlank()) {
-                return magnet;
-            }
-            return null;
-        } catch (Exception ignored) {
-            return null;
         }
-    }
-
-    private boolean looksLikeHttpUrl(String value) {
-        String lower = value.toLowerCase(Locale.ROOT);
-        return lower.startsWith("http://") || lower.startsWith("https://");
-    }
-
-    private boolean looksLikeTorrentContent(String url, String contentType, byte[] data) {
-        String lowerUrl = url.toLowerCase(Locale.ROOT);
-        if (lowerUrl.contains(".torrent")) {
-            return true;
-        }
-        if (contentType != null) {
-            String lowerType = contentType.toLowerCase(Locale.ROOT);
-            if (lowerType.contains("application/x-bittorrent") || lowerType.contains("application/octet-stream")) {
-                return true;
-            }
-        }
-        // bencoded torrent files usually begin with 'd'
-        return data.length > 1 && data[0] == 'd';
+        return null;
     }
 
     private boolean matchesTag(String nodeName, String expected) {
@@ -399,10 +446,13 @@ public class ResourceRssSubscriptionService {
         return null;
     }
 
-    private String buildParsedResultContent(int parsedCount, int createdCount, int duplicatedCount, List<String> lines) {
+    private String buildParsedResultContent(int parsedCount, int filteredOut, int createdCount, int duplicatedCount, List<String> lines) {
         StringBuilder builder = new StringBuilder();
         builder.append("解析结果:\n");
         builder.append("- 解析条目: ").append(parsedCount).append("\n");
+        if (filteredOut > 0) {
+            builder.append("- 过滤排除: ").append(filteredOut).append("\n");
+        }
         builder.append("- 新建任务: ").append(createdCount).append("\n");
         builder.append("- 已存在: ").append(duplicatedCount).append("\n");
         builder.append("\n条目明细:\n");
@@ -450,6 +500,8 @@ public class ResourceRssSubscriptionService {
         entity.setLibrary(library);
         entity.setIntervalMinutes(Math.max(1, request.getIntervalMinutes() == null ? 30 : request.getIntervalMinutes()));
         entity.setEnabled(request.getEnabled() == null || request.getEnabled());
+        entity.setIncludeFilter(blankToNull(request.getIncludeFilter()));
+        entity.setExcludeFilter(blankToNull(request.getExcludeFilter()));
     }
 
     private ResourceSearchVO.RssSubscriptionItem toVO(ResourceRssSubscription entity) {
@@ -461,11 +513,166 @@ public class ResourceRssSubscriptionService {
                 .libraryName(entity.getLibrary() != null ? entity.getLibrary().getName() : null)
                 .intervalMinutes(entity.getIntervalMinutes())
                 .enabled(entity.getEnabled())
+                .includeFilter(entity.getIncludeFilter())
+                .excludeFilter(entity.getExcludeFilter())
                 .lastCheckedAt(entity.getLastCheckedAt())
                 .lastSuccessAt(entity.getLastSuccessAt())
                 .lastError(entity.getLastError())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
+                .build();
+    }
+
+    private String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private List<RssEntry> applyFilters(List<RssEntry> entries, String includeFilter, String excludeFilter) {
+        Predicate<RssEntry> predicate = buildFilterPredicate(includeFilter, excludeFilter);
+        List<RssEntry> filtered = new ArrayList<>();
+        for (RssEntry entry : entries) {
+            if (predicate.test(entry)) {
+                filtered.add(entry);
+            }
+        }
+        return filtered;
+    }
+
+    private Predicate<RssEntry> buildFilterPredicate(String includeFilter, String excludeFilter) {
+        Pattern includePattern = compileFilterPattern(includeFilter);
+        Pattern excludePattern = compileFilterPattern(excludeFilter);
+
+        return entry -> {
+            String title = entry.title() != null ? entry.title() : "";
+            if (includePattern != null && !includePattern.matcher(title).find()) {
+                return false;
+            }
+            if (excludePattern != null && excludePattern.matcher(title).find()) {
+                return false;
+            }
+            return true;
+        };
+    }
+
+    private Pattern compileFilterPattern(String regex) {
+        if (regex == null || regex.isBlank()) {
+            return null;
+        }
+        try {
+            return Pattern.compile(regex);
+        } catch (PatternSyntaxException e) {
+            log.warn("Invalid regex pattern ignored: {}", regex, e);
+            return null;
+        }
+    }
+
+    /**
+     * Lightweight RSS entry parsing for preview — only extracts title/link, skips magnet extraction and torrent downloads entirely.
+     */
+    private List<RssEntry> parseEntriesForPreview(String xml) throws Exception {
+        List<RssEntry> list = new ArrayList<>();
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setExpandEntityReferences(false);
+        factory.setNamespaceAware(false);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        Document doc = factory.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
+        List<Element> entryNodes = collectEntryNodes(doc);
+        for (Element item : entryNodes) {
+            String title = firstNonBlank(textOf(item, "title"), textOf(item, "name"));
+            String linkText = textOf(item, "link");
+            list.add(new RssEntry(title, linkText, null));
+        }
+        return list;
+    }
+
+    public ResourceSearchVO.RssFilterPreviewResult previewFilter(RssFilterPreviewRequest request) {
+        if (request.getFeedUrl() == null || request.getFeedUrl().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "RSS 地址不能为空");
+        }
+
+        String includeFilter = blankToNull(request.getIncludeFilter());
+        String excludeFilter = blankToNull(request.getExcludeFilter());
+
+        // Validate regex patterns early
+        boolean includeFilterValid = true;
+        String includeFilterError = null;
+        if (includeFilter != null) {
+            try {
+                Pattern.compile(includeFilter);
+            } catch (PatternSyntaxException e) {
+                includeFilterValid = false;
+                includeFilterError = e.getMessage();
+            }
+        }
+
+        boolean excludeFilterValid = true;
+        String excludeFilterError = null;
+        if (excludeFilter != null) {
+            try {
+                Pattern.compile(excludeFilter);
+            } catch (PatternSyntaxException e) {
+                excludeFilterValid = false;
+                excludeFilterError = e.getMessage();
+            }
+        }
+
+        String xml;
+        try {
+            xml = fetchRss(request.getFeedUrl());
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "获取 RSS 数据失败: " + e.getMessage());
+        }
+
+        List<RssEntry> entries;
+        try {
+            entries = parseEntriesForPreview(xml);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "解析 RSS 数据失败: " + e.getMessage());
+        }
+
+        Predicate<RssEntry> predicate = buildFilterPredicate(includeFilter, excludeFilter);
+        Pattern includePattern = includeFilterValid && includeFilter != null ? Pattern.compile(includeFilter) : null;
+        Pattern excludePattern = excludeFilterValid && excludeFilter != null ? Pattern.compile(excludeFilter) : null;
+
+        int includedCount = 0;
+        int excludedCount = 0;
+        List<ResourceSearchVO.RssFilterPreviewItem> previewItems = new ArrayList<>();
+
+        for (RssEntry entry : entries) {
+            boolean wouldDownload = predicate.test(entry);
+            if (wouldDownload) {
+                includedCount++;
+            } else {
+                excludedCount++;
+            }
+
+            String title = entry.title() != null ? entry.title() : "";
+            boolean included = includePattern == null || includePattern.matcher(title).find();
+            boolean excluded = excludePattern != null && excludePattern.matcher(title).find();
+
+            previewItems.add(ResourceSearchVO.RssFilterPreviewItem.builder()
+                    .title(entry.title())
+                    .link(entry.link())
+                    .included(included)
+                    .excluded(excluded)
+                    .build());
+        }
+
+        return ResourceSearchVO.RssFilterPreviewResult.builder()
+                .totalCount(entries.size())
+                .includedCount(includedCount)
+                .excludedCount(excludedCount)
+                .includeFilter(includeFilter)
+                .excludeFilter(excludeFilter)
+                .includeFilterValid(includeFilterValid)
+                .excludeFilterValid(excludeFilterValid)
+                .includeFilterError(includeFilterError)
+                .excludeFilterError(excludeFilterError)
+                .entries(previewItems)
                 .build();
     }
 

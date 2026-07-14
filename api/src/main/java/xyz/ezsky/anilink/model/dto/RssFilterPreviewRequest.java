@@ -8,22 +8,10 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "RSS 订阅配置请求")
-public class ResourceRssSubscriptionRequest {
-    @Schema(description = "订阅源名称")
-    private String name;
-
+@Schema(description = "RSS 正则过滤预览请求")
+public class RssFilterPreviewRequest {
     @Schema(description = "RSS 地址")
     private String feedUrl;
-
-    @Schema(description = "目标媒体库 ID")
-    private Long libraryId;
-
-    @Schema(description = "更新间隔（分钟）")
-    private Integer intervalMinutes;
-
-    @Schema(description = "是否启用")
-    private Boolean enabled;
 
     @Schema(description = "正向过滤正则（匹配标题，符合则下载）")
     private String includeFilter;

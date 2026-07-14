@@ -44,6 +44,12 @@ public class ResourceRssSubscription {
     @Column(name = "last_fetched_content", columnDefinition = "TEXT")
     private String lastFetchedContent;
 
+    @Column(name = "include_filter", length = 2048)
+    private String includeFilter;
+
+    @Column(name = "exclude_filter", length = 2048)
+    private String excludeFilter;
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private Timestamp createdAt;
 

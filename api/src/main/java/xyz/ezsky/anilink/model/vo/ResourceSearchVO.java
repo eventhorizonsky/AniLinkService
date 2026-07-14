@@ -108,6 +108,8 @@ public final class ResourceSearchVO {
         private String libraryName;
         private Integer intervalMinutes;
         private Boolean enabled;
+        private String includeFilter;
+        private String excludeFilter;
         private String lastError;
         private Timestamp lastCheckedAt;
         private Timestamp lastSuccessAt;
@@ -124,5 +126,33 @@ public final class ResourceSearchVO {
         private String name;
         private Timestamp lastCheckedAt;
         private String lastFetchedContent;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RssFilterPreviewItem {
+        private String title;
+        private String link;
+        private boolean included;
+        private boolean excluded;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class RssFilterPreviewResult {
+        private Integer totalCount;
+        private Integer includedCount;
+        private Integer excludedCount;
+        private String includeFilter;
+        private String excludeFilter;
+        private boolean includeFilterValid;
+        private boolean excludeFilterValid;
+        private String includeFilterError;
+        private String excludeFilterError;
+        private List<RssFilterPreviewItem> entries;
     }
 }

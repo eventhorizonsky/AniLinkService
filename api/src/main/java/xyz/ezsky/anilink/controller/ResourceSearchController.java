@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import xyz.ezsky.anilink.model.dto.ResourceRssSubscriptionRequest;
+import xyz.ezsky.anilink.model.dto.RssFilterPreviewRequest;
 import xyz.ezsky.anilink.model.dto.ResourceSearchDownloadRequest;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.model.vo.ResourceSearchVO;
@@ -133,5 +134,11 @@ public class ResourceSearchController {
     @Operation(summary = "查询 RSS 订阅最近拉取内容")
     public ApiResponseVO<ResourceSearchVO.RssFetchedContent> getRssLastContent(@PathVariable Long id) {
         return ApiResponseVO.success(rssSubscriptionService.getLastFetchedContent(id));
+    }
+
+    @PostMapping("/rss-subscriptions/preview")
+    @Operation(summary = "预览 RSS 正则过滤结果")
+    public ApiResponseVO<ResourceSearchVO.RssFilterPreviewResult> previewRssFilter(@RequestBody RssFilterPreviewRequest request) {
+        return ApiResponseVO.success(rssSubscriptionService.previewFilter(request));
     }
 }

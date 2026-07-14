@@ -48,6 +48,9 @@ databaseChangeLog:
   - include:
       file: common/db.changelog-v16-mcp-api-key.yaml
       relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-v17-rss-regex-filter.yaml
+      relativeToChangelogFile: true
   # Database-specific changelogs
   - include:
       file: h2/db.changelog-h2-init.yaml
