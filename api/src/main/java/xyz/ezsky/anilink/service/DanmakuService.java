@@ -8,12 +8,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import xyz.ezsky.anilink.model.entity.ApiCache;
+import xyz.ezsky.anilink.model.entity.DanmakuRecord;
 import xyz.ezsky.anilink.repository.ApiCacheRepository;
+import xyz.ezsky.anilink.repository.DanmakuRecordRepository;
 import xyz.ezsky.anilink.util.DandanClientUtil;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -42,6 +45,9 @@ public class DanmakuService {
 
     @Autowired
     private SiteConfigService siteConfigService;
+
+    @Autowired
+    private DanmakuRecordRepository danmakuRecordRepository;
 
     /**
      * 获取指定弹幕库的弹幕（带缓存）
@@ -248,6 +254,88 @@ public class DanmakuService {
         cache.setUpdatedAt(now);
         
         apiCacheRepository.save(cache);
+    }
+
+    /**
+     * 向指定弹幕库发送弹幕（开放弹幕网络接口），并保存本地记录。
+     *
+     * @param episodeId    弹幕库ID
+     * @param time          弹幕出现时间（秒）
+     * @param mode          弹幕模式：1-普通，4-顶部，5-底部
+     * @param color         弹幕颜色（R*255*255 + G*255 + B）
+     * @param comment       弹幕内容
+     * @param userName      弹幕发送者昵称
+     * @param userId        发送者用户 ID
+     * @param animeId       番剧 ID（可选）
+     * @param animeTitle    番剧标题（可选）
+     * @param videoId       视频文件 ID（可选）
+     * @param episodeTitle  分集标题（可选）
+     * @return 上游响应 JSON 字符串，失败返回 null
+     */
+    public String sendAppComment(Long episodeId, Double time, Integer mode, Integer color,
+                                 String comment, String userName, Long userId,
+                                 Long animeId, String animeTitle, Long videoId, String episodeTitle) {
+        String path = "/api/v2/comment/" + episodeId + "/app";
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("time", time);
+        body.put("mode", mode);
+        body.put("color", color);
+        body.put("comment", comment);
+        body.put("userName", userName);
+
+        try {
+            ResponseEntity<String> response = dandanClientUtil.post(siteConfigService.getDandanBaseUrl(), path, body);
+            String responseBody = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(responseBody)) {
+                log.info("发送弹幕成功: episodeId={}, userName={}", episodeId, userName);
+                saveDanmakuRecord(episodeId, time, mode, color, comment, userName,
+                        userId, animeId, animeTitle, videoId, episodeTitle, responseBody);
+                return responseBody;
+            }
+            log.warn("发送弹幕返回非成功状态: episodeId={}, status={}, body={}", episodeId, response.getStatusCode(), responseBody);
+            return responseBody;
+        } catch (Exception ex) {
+            log.error("发送弹幕请求失败: episodeId={}", episodeId, ex);
+            return null;
+        }
+    }
+
+    /**
+     * 保存弹幕发送记录到本地数据库
+     */
+    private void saveDanmakuRecord(Long episodeId, Double time, Integer mode, Integer color,
+                                   String comment, String userName, Long userId,
+                                   Long animeId, String animeTitle, Long videoId,
+                                   String episodeTitle, String responseBody) {
+        try {
+            Long cid = null;
+            if (responseBody != null) {
+                JsonNode root = OBJECT_MAPPER.readTree(responseBody);
+                if (root.path("success").asBoolean(false)) {
+                    cid = root.path("cid").asLong();
+                }
+            }
+
+            DanmakuRecord record = new DanmakuRecord();
+            record.setUserId(userId);
+            record.setUsername(userName);
+            record.setEpisodeId(episodeId);
+            record.setAnimeId(animeId);
+            record.setAnimeTitle(animeTitle);
+            record.setVideoId(videoId);
+            record.setEpisodeTitle(episodeTitle);
+            record.setTime(time);
+            record.setMode(mode);
+            record.setColor(color);
+            record.setComment(comment);
+            record.setCid(cid);
+
+            danmakuRecordRepository.save(record);
+            log.debug("弹幕记录已保存: cid={}", cid);
+        } catch (Exception e) {
+            log.warn("保存弹幕记录失败: episodeId={}, userId={}", episodeId, userId, e);
+        }
     }
 
     /**

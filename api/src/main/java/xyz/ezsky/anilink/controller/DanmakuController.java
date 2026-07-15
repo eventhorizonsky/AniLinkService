@@ -1,5 +1,7 @@
 package xyz.ezsky.anilink.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -8,8 +10,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import xyz.ezsky.anilink.model.dto.SendDanmakuRequest;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
+import xyz.ezsky.anilink.model.vo.DanmakuRecordVO;
+import xyz.ezsky.anilink.model.vo.PageVO;
+import xyz.ezsky.anilink.model.vo.UserInfoVO;
+import xyz.ezsky.anilink.service.DanmakuRecordService;
 import xyz.ezsky.anilink.service.DanmakuService;
+import xyz.ezsky.anilink.service.UserService;
 
 /**
  * 弹幕管理接口
@@ -22,6 +30,12 @@ public class DanmakuController {
 
     @Autowired
     private DanmakuService danmakuService;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private DanmakuRecordService danmakuRecordService;
 
     /**
      * 获取指定弹幕库的所有弹幕（带30分钟缓存）
@@ -86,5 +100,88 @@ public class DanmakuController {
         } catch (Exception e) {
             return ApiResponseVO.fail("搜索剧集失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 向指定弹幕库发送弹幕（开放弹幕网络接口）
+     * 需要登录，userName 取自当前登录用户的 username
+     */
+    @Operation(
+        summary = "发送弹幕",
+        description = "代理弹弹play /api/v2/comment/{episodeId}/app 接口，向指定弹幕库发送弹幕。需要登录。"
+    )
+    @SaCheckLogin
+    @PostMapping("/comment/{episodeId}/app")
+    public ApiResponseVO<Object> sendAppComment(
+            @Parameter(description = "弹幕库ID", required = true)
+            @PathVariable Long episodeId,
+            @Parameter(description = "弹幕内容", required = true)
+            @RequestBody SendDanmakuRequest request) {
+
+        // 获取当前登录用户的 username
+        Long userId = StpUtil.getLoginIdAsLong();
+        UserInfoVO userInfo = userService.getUserInfoById(userId);
+        if (userInfo == null) {
+            return ApiResponseVO.fail(401, "用户不存在");
+        }
+        String userName = userInfo.getUsername();
+
+        // 校验参数
+        if (request.getComment() == null || request.getComment().isBlank()) {
+            return ApiResponseVO.fail(400, "弹幕内容不能为空");
+        }
+        if (request.getTime() == null || request.getTime() < 0) {
+            return ApiResponseVO.fail(400, "弹幕时间不能为空或为负数");
+        }
+        if (request.getMode() == null) {
+            request.setMode(1);
+        }
+        if (request.getColor() == null) {
+            request.setColor(16777215);
+        }
+
+        String responseBody = danmakuService.sendAppComment(
+                episodeId,
+                request.getTime(),
+                request.getMode(),
+                request.getColor(),
+                request.getComment(),
+                userName,
+                userId,
+                request.getAnimeId(),
+                request.getAnimeTitle(),
+                request.getVideoId(),
+                request.getEpisodeTitle()
+        );
+
+        if (responseBody == null) {
+            return ApiResponseVO.fail("发送弹幕失败");
+        }
+
+        try {
+            Object json = new ObjectMapper().readValue(responseBody, Object.class);
+            return ApiResponseVO.success(json, "发送弹幕成功");
+        } catch (JsonProcessingException e) {
+            log.error("解析弹幕发送响应失败: episodeId={}", episodeId, e);
+            return ApiResponseVO.fail("解析响应失败");
+        }
+    }
+
+    /**
+     * 获取当前用户的弹幕发送记录
+     */
+    @Operation(
+        summary = "获取我的弹幕记录",
+        description = "获取当前登录用户的弹幕发送记录，按时间倒序排列。"
+    )
+    @SaCheckLogin
+    @GetMapping("/danmaku-records/mine")
+    public ApiResponseVO<PageVO<DanmakuRecordVO>> getMyDanmakuRecords(
+            @Parameter(description = "页码，从1开始", required = false)
+            @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页大小", required = false)
+            @RequestParam(defaultValue = "20") int pageSize) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        return ApiResponseVO.success(danmakuRecordService.getUserRecords(userId, page, pageSize));
     }
 }

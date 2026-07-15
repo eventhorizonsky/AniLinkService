@@ -1,0 +1,88 @@
+databaseChangeLog:
+  - changeSet:
+      id: 23-danmaku-records-table
+      author: anilink
+      changes:
+        - createTable:
+            tableName: danmaku_records
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: username
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: episode_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: anime_id
+                  type: BIGINT
+              - column:
+                  name: anime_title
+                  type: VARCHAR(500)
+              - column:
+                  name: video_id
+                  type: BIGINT
+              - column:
+                  name: episode_title
+                  type: VARCHAR(500)
+              - column:
+                  name: time
+                  type: DOUBLE
+              - column:
+                  name: mode
+                  type: INT
+                  defaultValueNumeric: 1
+              - column:
+                  name: color
+                  type: INT
+                  defaultValueNumeric: 16777215
+              - column:
+                  name: comment
+                  type: TEXT
+              - column:
+                  name: cid
+                  type: BIGINT
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  defaultValueComputed: CURRENT_TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: danmaku_records
+            indexName: idx_danmaku_user
+            columns:
+              - column:
+                  name: user_id
+        - createIndex:
+            tableName: danmaku_records
+            indexName: idx_danmaku_episode
+            columns:
+              - column:
+                  name: episode_id
+        - createIndex:
+            tableName: danmaku_records
+            indexName: idx_danmaku_anime
+            columns:
+              - column:
+                  name: anime_id
+        - createIndex:
+            tableName: danmaku_records
+            indexName: idx_danmaku_created
+            columns:
+              - column:
+                  name: created_at

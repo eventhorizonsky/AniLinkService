@@ -8,7 +8,7 @@ const router = useRouter()
 const route = useRoute()
 const API_BASE = '/api'
 
-const activeTab = ref(['history', 'follows', 'messages', 'binding'].includes(route.query.tab) ? route.query.tab : 'history')
+const activeTab = ref(['history', 'follows', 'danmaku', 'messages', 'binding'].includes(route.query.tab) ? route.query.tab : 'history')
 
 const historyList = ref([])
 const historyLoading = ref(false)
@@ -36,6 +36,13 @@ const messageTotal = ref(0)
 const messageFilterType = ref('')
 const selectedMessage = ref(null)
 
+const danmakuRecords = ref([])
+const danmakuLoading = ref(false)
+const danmakuError = ref('')
+const danmakuPage = ref(1)
+const danmakuPageSize = ref(20)
+const danmakuTotal = ref(0)
+
 const bangumiLoading = ref(false)
 const bangumiBinding = ref(false)
 const bangumiUnbinding = ref(false)
@@ -54,6 +61,7 @@ const bangumiStatus = ref({
 const tabs = [
   { value: 'history', label: '观看历史', icon: 'mdi mdi-history' },
   { value: 'follows', label: '我的追番', icon: 'mdi mdi-bookmark-multiple' },
+  { value: 'danmaku', label: '我的弹幕', icon: 'mdi mdi-comment-text-multiple' },
   { value: 'messages', label: '消息中心', icon: 'mdi mdi-bell-outline' },
   { value: 'binding', label: '账号绑定', icon: 'mdi mdi-link-variant' }
 ]
@@ -81,7 +89,7 @@ const syncTabQuery = (tab) => {
 }
 
 watch(() => route.query.tab, (tab) => {
-  activeTab.value = ['history', 'follows', 'messages', 'binding'].includes(tab) ? tab : 'history'
+  activeTab.value = ['history', 'follows', 'danmaku', 'messages', 'binding'].includes(tab) ? tab : 'history'
 })
 
 watch(activeTab, async (tab) => {
@@ -91,6 +99,9 @@ watch(activeTab, async (tab) => {
   }
   if (tab === 'follows') {
     await fetchFollowList()
+  }
+  if (tab === 'danmaku') {
+    await fetchDanmakuRecords()
   }
   if (tab === 'messages') {
     await fetchMessages()
@@ -186,6 +197,51 @@ const selectMessage = async (message) => {
   if (!message.isRead) {
     await markMessageAsRead(message.id)
   }
+}
+
+const fetchDanmakuRecords = async () => {
+  danmakuLoading.value = true
+  danmakuError.value = ''
+  try {
+    const response = await axios.get('/api/v2/danmaku-records/mine', {
+      params: { page: danmakuPage.value, pageSize: danmakuPageSize.value }
+    })
+    if (response.data?.code === 200) {
+      danmakuRecords.value = response.data.data?.content || []
+      danmakuTotal.value = Number(response.data.data?.totalElements || 0)
+    } else {
+      danmakuError.value = response.data?.msg || '加载弹幕记录失败'
+    }
+  } catch (err) {
+    console.error('加载弹幕记录失败:', err)
+    danmakuError.value = '加载弹幕记录失败'
+  } finally {
+    danmakuLoading.value = false
+  }
+}
+
+const goToDanmakuPlayer = (record) => {
+  const targetVideoId = record.videoId
+  const targetAnimeId = record.animeId
+  const targetEpisodeId = record.episodeId
+  if (targetVideoId) {
+    router.push({
+      name: 'Player',
+      params: { videoId: String(targetVideoId) },
+      query: {
+        animeId: targetAnimeId ? String(targetAnimeId) : undefined,
+        episodeId: targetEpisodeId ? String(targetEpisodeId) : undefined,
+        t: record.time != null ? String(record.time) : undefined,
+      }
+    })
+  } else if (targetAnimeId) {
+    router.push(`/anime/${targetAnimeId}`)
+  }
+}
+
+const danmakuModeLabel = (mode) => {
+  const map = { 1: '普通', 4: '底部', 5: '顶部' }
+  return map[mode] || `模式${mode}`
 }
 
 const handleMessageFilterChange = async () => {
@@ -460,6 +516,7 @@ const messageUnreadCount = computed(() => messages.value.filter((m) => !m.isRead
 
 const historyTotalPages = computed(() => Math.max(1, Math.ceil(historyTotal.value / historyPageSize.value)))
 const followTotalPages = computed(() => Math.max(1, Math.ceil(followTotal.value / followPageSize.value)))
+const danmakuTotalPages = computed(() => Math.max(1, Math.ceil(danmakuTotal.value / danmakuPageSize.value)))
 
 const formatDateTime = (value) => {
   if (!value) return '--'
@@ -494,6 +551,8 @@ onMounted(async () => {
     await fetchPlayHistory()
   } else if (activeTab.value === 'follows') {
     await fetchFollowList()
+  } else if (activeTab.value === 'danmaku') {
+    await fetchDanmakuRecords()
   } else if (activeTab.value === 'messages') {
     await fetchMessages()
   } else {
@@ -635,6 +694,50 @@ onMounted(async () => {
               <div v-if="followTotalPages > 1" class="d-flex justify-center mt-6">
                 <v-pagination v-model="followPage" :length="followTotalPages" @update:model-value="fetchFollowList" />
               </div>
+                </div>
+              </section>
+
+              <section v-else-if="activeTab === 'danmaku'" class="profile-section">
+                <div class="text-h5 d-flex align-center profile-section-title">
+                  <i class="mdi mdi-comment-text-multiple mr-3" style="color: #9b59b6;"></i>
+                  我的弹幕
+                </div>
+                <div class="profile-section-body">
+                  <v-alert v-if="danmakuError" type="error" variant="tonal" class="mb-4">{{ danmakuError }}</v-alert>
+                  <v-skeleton-loader v-if="danmakuLoading" type="list-item-avatar-three-line@4" />
+                  <div v-else-if="danmakuRecords.length > 0" class="history-list">
+                    <v-card v-for="item in danmakuRecords" :key="item.id" class="history-card" elevation="1">
+                      <div class="history-main-card">
+                        <div class="history-content">
+                          <p class="history-subtitle">
+                            <v-chip size="x-small" :color="item.mode === 5 ? 'primary' : item.mode === 4 ? 'success' : 'grey'" variant="tonal" class="mr-2">
+                              {{ danmakuModeLabel(item.mode) }}
+                            </v-chip>
+                            {{ item.comment }}
+                          </p>
+                          <p class="history-meta">
+                            番剧: {{ item.animeTitle || `#${item.animeId || '-'}` }}
+                            &nbsp;|&nbsp; 剧集: {{ item.episodeTitle || `弹幕库 #${item.episodeId || '-'}` }}
+                          </p>
+                          <p class="history-meta">
+                            时间: {{ item.time != null ? item.time.toFixed(1) + 's' : '-' }}
+                            &nbsp;|&nbsp; 发送于: {{ formatDateTime(item.createdAt) }}
+                          </p>
+                        </div>
+                        <div class="history-actions">
+                          <v-btn color="primary"
+                            :disabled="!item.videoId && !item.animeId"
+                            @click="goToDanmakuPlayer(item)">
+                            跳转播放
+                          </v-btn>
+                        </div>
+                      </div>
+                    </v-card>
+                  </div>
+                  <v-alert v-else type="info" variant="tonal" class="text-center">暂无弹幕记录</v-alert>
+                  <div v-if="danmakuTotalPages > 1" class="d-flex justify-center mt-6">
+                    <v-pagination v-model="danmakuPage" :length="danmakuTotalPages" @update:model-value="fetchDanmakuRecords" />
+                  </div>
                 </div>
               </section>
 

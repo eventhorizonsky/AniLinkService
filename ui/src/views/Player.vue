@@ -162,6 +162,14 @@ const videoId = computed(() => String(route.params.videoId || ''))
 const animeId = computed(() => String(route.query.animeId || ''))
 const episodeId = computed(() => String(route.query.episodeId || ''))
 const subtitleTrackId = computed(() => String(route.query.subtitleId || ''))
+const seekTime = computed(() => {
+  const t = route.query.t
+  if (t !== undefined && t !== null && t !== '') {
+    const n = parseFloat(t)
+    return isNaN(n) ? null : n
+  }
+  return null
+})
 
 // Anime Data State
 const animeData = ref(null)
@@ -1007,6 +1015,45 @@ const fetchDanmaku = async (episodeId) => {
 }
 
 /**
+ * 发送弹幕到弹弹play API
+ * @param {Object} danmu - 弹幕数据 { text, time, mode, color }
+ */
+const sendDanmaku = async (danmu) => {
+  const targetEpisodeId = episodeId.value
+  if (!targetEpisodeId) {
+    throw new Error('缺少弹幕库ID')
+  }
+
+  // Artplayer mode: 0=滚动, 1=顶部, 2=底部
+  // 弹弹play mode: 1=普通(滚动), 4=底部, 5=顶部
+  const modeMap = { 0: 1, 2: 4, 1: 5 }
+  const dandanMode = modeMap[danmu.mode] || 1
+
+  // 颜色转换: #HEX -> 十进制整数 RGB
+  let colorInt = 16777215 // 默认白色
+  if (danmu.color) {
+    const hex = danmu.color.replace('#', '')
+    colorInt = parseInt(hex, 16)
+    if (isNaN(colorInt)) {
+      colorInt = 16777215
+    }
+  }
+
+  const requestBody = {
+    time: danmu.time || 0,
+    mode: dandanMode,
+    color: colorInt,
+    comment: danmu.text || '',
+    animeId: animeId.value || null,
+    animeTitle: animeData.value?.titles?.[0]?.title || null,
+    videoId: videoId.value || null,
+    episodeTitle: currentEpisodeResource.value?.episodeTitle || null,
+  }
+
+  await axios.post(`/api/v2/comment/${targetEpisodeId}/app`, requestBody)
+}
+
+/**
  * 根据episodeId获取可用资源
  */
 const getEpisodeResources = (episodeId) => {
@@ -1182,7 +1229,35 @@ const buildDanmakuOptions = (danmakuData, mobile) => {
     minWidth: mobile ? 140 : 200,
     maxWidth: mobile ? 320 : 500,
     filter: (danmu) => danmu.text && danmu.text.length < 200,
-    beforeEmit: (danmu) => danmu.text && !!danmu.text.trim(),
+    beforeEmit: async (danmu) => {
+      // 先校验文本非空
+      if (!danmu.text || !danmu.text.trim()) {
+        return false
+      }
+
+      // 检查登录状态
+      const token = localStorage.getItem('token')
+      if (!token) {
+        if (art.value?.notice) {
+          art.value.notice.show = '请先登录后再发送弹幕'
+        }
+        return false
+      }
+
+      try {
+        await sendDanmaku(danmu)
+        if (art.value?.notice) {
+          art.value.notice.show = '弹幕发送成功'
+        }
+        return true
+      } catch (err) {
+        console.error('弹幕发送失败:', err)
+        if (art.value?.notice) {
+          art.value.notice.show = '弹幕发送失败'
+        }
+        return false
+      }
+    },
   }
 }
 
@@ -1474,15 +1549,40 @@ const createPlayerInstance = async () => {
       console.log('播放器已就绪')
       placeEpisodeControlBeforeScreenshot()
 
-      // 加载并恢复播放进度
-      try {
-        const savedProgress = await loadPlayProgress()
-        if (savedProgress && savedProgress > 5) {
-          art.value.currentTime = savedProgress
-          console.log('已恢复播放进度:', savedProgress)
+      // 优先处理 URL 传入的时间跳转参数
+      const t = seekTime.value
+      if (t !== null && t >= 0) {
+        const doSeek = () => {
+          if (art.value) {
+            art.value.currentTime = t
+            console.log('已跳转到指定时间:', t)
+          }
+          // 跳转完成后清除 URL 中的 t 参数
+          const { t: _, ...restQuery } = route.query
+          router.replace({ query: restQuery }).catch(() => {})
         }
-      } catch (error) {
-        console.warn('恢复播放进度失败:', error)
+
+        // 检查视频是否已经可以播放（避免 canplay 已触发过的竞态）
+        const video = art.value?.video
+        if (video && video.readyState >= 2) {
+          doSeek()
+        } else {
+          art.value.on('video:canplay', function onCanPlay() {
+            art.value.off('video:canplay', onCanPlay)
+            doSeek()
+          })
+        }
+      } else {
+        // 加载并恢复播放进度
+        try {
+          const savedProgress = await loadPlayProgress()
+          if (savedProgress && savedProgress > 5) {
+            art.value.currentTime = savedProgress
+            console.log('已恢复播放进度:', savedProgress)
+          }
+        } catch (error) {
+          console.warn('恢复播放进度失败:', error)
+        }
       }
 
       // 切集后自动恢复全屏状态

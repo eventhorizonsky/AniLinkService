@@ -23,12 +23,14 @@ const ResourceDownloadSettings = defineAsyncComponent(() => import('./admin/down
 const ResourceRssSubscription = defineAsyncComponent(() => import('./admin/download/ResourceRssSubscription.vue'))
 const UserManagement = defineAsyncComponent(() => import('./admin/UserManagement.vue'))
 const McpAccess = defineAsyncComponent(() => import('./admin/McpAccess.vue'))
+const AdminDanmaku = defineAsyncComponent(() => import('./admin/AdminDanmaku.vue'))
 
 const mainMenuItems = [
   { id: 'system', title: '系统信息', icon: 'mdi-information', component: SystemInfo },
   { id: 'cache', title: '缓存管理', icon: 'mdi-cached', component: CacheManage },
   { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess },
-  { id: 'users', title: '用户管理', icon: 'mdi-account-cog', component: UserManagement }
+  { id: 'users', title: '用户管理', icon: 'mdi-account-cog', component: UserManagement },
+  { id: 'danmaku', title: '弹幕管理', icon: 'mdi-comment-text-multiple', component: AdminDanmaku }
 ]
 
 const siteMenuItem = { id: 'site', title: '服务配置', icon: 'mdi-web', component: SiteConfig }
