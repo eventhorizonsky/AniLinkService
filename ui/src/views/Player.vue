@@ -1,119 +1,88 @@
 <template>
   <!-- 加载中 -->
   <div class="player-page" v-if="loading && !animeData" key="loading">
-    <div v-if="animeId" class="player-back-row player-back-row--standalone">
-      <router-link
-        class="player-back-link"
-        :to="{ name: 'AnimeDetail', params: { animeId } }"
-      >
-        <i class="mdi mdi-arrow-left"></i>
-        返回番剧详情
-      </router-link>
-    </div>
     <div class="loading-state">加载中...</div>
   </div>
 
   <!-- 发生错误 -->
   <div class="player-page" v-else-if="error" key="error">
-    <div v-if="animeId" class="player-back-row player-back-row--standalone">
-      <router-link
-        class="player-back-link"
-        :to="{ name: 'AnimeDetail', params: { animeId } }"
-      >
-        <i class="mdi mdi-arrow-left"></i>
-        返回番剧详情
-      </router-link>
-    </div>
     <div class="error-state">{{ error }}</div>
   </div>
 
   <!-- 正常显示 -->
   <div class="player-page" v-else key="loaded">
     <div class="player-layout">
-      <!-- 左侧：播放器和主要内容 -->
-      <div class="player-main">
-        <div v-if="animeId" class="player-back-row">
-          <router-link
-            class="player-back-link"
-            :to="{ name: 'AnimeDetail', params: { animeId } }"
-          >
-            <i class="mdi mdi-arrow-left"></i>
-            返回番剧详情
-          </router-link>
-        </div>
-        <!-- 播放器容器 -->
-        <div class="player-card">
-          <div ref="artRef" class="artplayer-container"></div>
-          <div v-if="isSwitching" class="player-switching-overlay">
-            <div class="player-switching-content">
-              <div class="player-switching-spinner"></div>
-              <div class="player-switching-text">正在切换分集...</div>
+      <!-- 播放器 + 选集卡片行（撑满视口） -->
+      <div class="player-top-row">
+        <!-- 播放器区域 -->
+        <div class="player-main">
+          <div class="player-card">
+            <div ref="artRef" class="artplayer-container"></div>
+            <div v-if="isSwitching" class="player-switching-overlay">
+              <div class="player-switching-content">
+                <div class="player-switching-spinner"></div>
+                <div class="player-switching-text">正在切换分集...</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div v-if="showDdplayButton" class="player-actions">
-          <button class="ddplay-btn" @click="openWithDdplay">
-            <i class="mdi mdi-play-network-outline"></i>
-            <span>通过弹弹play播放</span>
-          </button>
-        </div>
+        <!-- 选集卡片 -->
+        <div v-if="animeData" class="player-episode-panel">
+          <!-- 顶部番剧信息 -->
+          <div class="episode-panel-header">
+            <img
+              v-if="animeData.imageUrl"
+              :src="animeData.imageUrl"
+              class="episode-panel-poster"
+              alt=""
+            />
+            <div class="episode-panel-meta">
+              <div class="episode-panel-title">{{ titleInfo.main }}</div>
+              <div class="episode-panel-sub" v-if="titleInfo.sub">{{ titleInfo.sub }}</div>
+            </div>
+            <router-link
+              v-if="animeId"
+              :to="{ name: 'AnimeDetail', params: { animeId } }"
+              class="episode-panel-back"
+            >
+              <i class="mdi mdi-arrow-left"></i>详情
+            </router-link>
+          </div>
 
-        <!-- 番剧信息部分 -->
-        <div v-if="animeData" class="anime-info-section">
-          <!-- 头部信息 -->
-          <AnimeHeroSection 
-            :anime-data="animeData"
-            :title-info="titleInfo"
-            :is-on-air="isOnAir"
-            :air-day-text="airDayText"
-            :rating-main="ratingMain"
-            :rating-bangumi="ratingBangumi"
-            :rating-anidb="ratingAnidb"
-            :main-episodes="mainEpisodes"
-            :total-episodes="totalEpisodes"
-            :formatted-summary="formattedSummary"
-            :is-summary-expanded="isSummaryExpanded"
-            :is-favorited="isFavorited"
-            :is-following="isFollowing"
-            :follow-loading="followLoading"
-            @update:is-summary-expanded="isSummaryExpanded = $event"
-            @toggleFavorite="toggleFavorite"
-            @toggleFollow="toggleFollow"
-          />
+          <!-- Tab 切换 -->
+          <div class="episode-panel-tabs">
+            <button
+              v-for="tab in episodeTabs"
+              :key="tab.value"
+              class="episode-panel-tab"
+              :class="{ active: episodeTab === tab.value }"
+              @click="episodeTab = tab.value"
+            >{{ tab.label }}</button>
+            <span class="episode-panel-count">共{{ totalEpisodes }}话</span>
+          </div>
 
           <!-- 分集列表 -->
-          <EpisodeListSection
-            :episodes="animeData.episodes"
-            :main-count="mainEpisodes.length"
-            :total-count="animeData.episodes.length"
-            :playable-episode-keys="playableEpisodeKeys"
-            :current-episode-id="episodeId"
-            @playEpisode="playEpisode"
-          />
-
-          <!-- 预告片 -->
-          <TrailerCarousel :trailers="animeData.trailers" />
-
-          <!-- 外部链接 -->
-          <FooterLinks
-            :databases="animeData.onlineDatabases"
-            :copyright-text="copyrightText"
-          />
+          <div class="episode-panel-list">
+            <button
+              v-for="ep in displayedEpisodes"
+              :key="ep.episodeId"
+              class="episode-panel-item"
+              :class="{
+                'is-current': String(ep.episodeId) === String(episodeId),
+                'is-unavailable': !canPlayEpisode(ep)
+              }"
+              :disabled="!canPlayEpisode(ep)"
+              @click="playEpisode(ep)"
+            >
+              <span class="episode-item-num">{{ episodeNumberDisplay(ep) }}</span>
+              <span class="episode-item-title">{{ ep.episodeTitle || '' }}</span>
+              <span class="episode-item-date">{{ formatEpisodeDate(ep.airDate) }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- 右侧边栏 -->
-      <div v-if="animeData" class="player-sidebar">
-        <!-- 制作信息 -->
-        <MetadataCard
-          :staff-list="staffList"
-          :tags="animeData.tags"
-        />
-
-        <!-- 相关作品 -->
-        <RelatedWorksCarousel :relateds="animeData.relateds" />
-      </div>
     </div>
 
     <!-- 资源选择对话框 -->
@@ -148,12 +117,7 @@ import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
-import AnimeHeroSection from '../components/anime/AnimeHeroSection.vue'
-import EpisodeListSection from '../components/anime/EpisodeListSection.vue'
-import TrailerCarousel from '../components/anime/TrailerCarousel.vue'
-import RelatedWorksCarousel from '../components/anime/RelatedWorksCarousel.vue'
-import MetadataCard from '../components/anime/MetadataCard.vue'
-import FooterLinks from '../components/anime/FooterLinks.vue'
+
 
 const route = useRoute()
 const router = useRouter()
@@ -399,9 +363,48 @@ const getEpisodeType = (ep) => {
   return 'other'
 }
 
-const mainEpisodes = computed(() => 
+const mainEpisodes = computed(() =>
   animeData.value?.episodes.filter(ep => getEpisodeType(ep) === 'main') || []
 )
+
+const specialEpisodes = computed(() => {
+  const eps = animeData.value?.episodes || []
+  return eps.filter(ep => ['special', 'credit'].includes(getEpisodeType(ep)))
+})
+
+// ===== 选集面板 =====
+const episodeTab = ref('main')
+const episodeTabs = [
+  { label: '正片', value: 'main' },
+  { label: '特典', value: 'special' },
+  { label: '全部', value: 'all' }
+]
+
+const displayedEpisodes = computed(() => {
+  const eps = animeData.value?.episodes || []
+  if (episodeTab.value === 'main') return mainEpisodes.value
+  if (episodeTab.value === 'special') return specialEpisodes.value
+  return [...eps].sort((a, b) => new Date(a.airDate) - new Date(b.airDate))
+})
+
+const episodeNumberDisplay = (ep) => {
+  const type = getEpisodeType(ep)
+  if (type === 'main') return `第${ep.episodeNumber}话`
+  if (type === 'special') return '特典'
+  if (type === 'credit') return '主题'
+  return ep.episodeNumber
+}
+
+const formatEpisodeDate = (iso) => {
+  if (!iso) return ''
+  const d = iso.slice(5, 10) // MM-DD
+  return d
+}
+
+const canPlayEpisode = (ep) => {
+  if (!ep || ep.episodeId === undefined || ep.episodeId === null) return false
+  return playableEpisodeKeys.value.has(String(ep.episodeId)) && !isFuture(ep)
+}
 
 const formatRating = (value, digits = 1) => {
   const num = Number(value)
@@ -1367,11 +1370,23 @@ const buildNativeSubtitleOption = (track) => {
 }
 
 const buildEpisodeControls = (mobile) => {
-  if (mobile) {
-    return []
+  const controls = []
+
+  if (!mobile && showDdplayButton.value) {
+    controls.push({
+      position: 'right',
+      index: 5,
+      html: '<i class="mdi mdi-open-in-new" style="font-size:20px;line-height:1;"></i>',
+      tooltip: '通过弹弹play播放',
+      click: () => { openWithDdplay() },
+    })
   }
 
-  return [
+  if (mobile) {
+    return controls
+  }
+
+  controls.push(
   {
     position: 'left',
     index: 9,
@@ -1398,7 +1413,7 @@ const buildEpisodeControls = (mobile) => {
   },
   {
     position: 'right',
-    index: 100,
+    index: 6,
     html: '<span class="anilink-episode-control" style="font-size:13px;line-height:1">分集</span>',
     tooltip: '选择分集',
     selector: playableEpisodes.value.map((ep, index) => ({
@@ -1420,7 +1435,8 @@ const buildEpisodeControls = (mobile) => {
       return '分集'
     },
   },
-]
+  )
+  return controls
 }
 
 const createPlayerInstance = async () => {
@@ -1680,6 +1696,9 @@ const createPlayerInstance = async () => {
 }
 
 onMounted(async () => {
+  // 从详情页跳转时可能保留了滚动位置，重置到顶部
+  const mainContent = document.querySelector('.main-content')
+  if (mainContent) mainContent.scrollTop = 0
   updateViewportState()
   window.addEventListener('resize', updateViewportState)
   document.addEventListener('keydown', handleSubtitleDelayKey)
@@ -1727,40 +1746,14 @@ onBeforeUnmount(() => {
 })
 </script>
 
+<style>
+/* Player 页禁止外层滚动 */
+.main-content:has(.player-page) {
+  overflow-y: hidden;
+}
+</style>
+
 <style scoped>
-.player-back-row {
-  margin-bottom: 12px;
-}
-
-.player-back-row--standalone {
-  max-width: 1400px;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 0 4px;
-}
-
-.player-back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: #6b4f3e;
-  text-decoration: none;
-  padding: 6px 4px;
-  border-radius: 8px;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.player-back-link:hover {
-  color: #4a3629;
-  background: rgba(107, 79, 62, 0.08);
-}
-
-.player-back-link i {
-  font-size: 1.1rem;
-}
-
 /* Loading and Error States */
 .loading-state,
 .error-state {
@@ -1774,28 +1767,46 @@ onBeforeUnmount(() => {
   color: #d32f2f;
 }
 
-/* Main Layout */
-
-.player-layout {
-  max-width: 1400px;
-  margin: 0 auto;
+/* Player page — 固定视口高度，无滚动 */
+.player-page {
   display: flex;
-  gap: 28px;
+  flex-direction: column;
+  height: calc(100vh - 76px);
+}
+
+/* Main Layout */
+.player-layout {
+  display: flex;
+  flex-direction: column;
   background: white;
   border-radius: 32px;
   overflow: hidden;
-  padding: 32px;
+  padding: 24px;
   box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.2);
+  flex: 1;
+  min-height: 0;
 }
 
+/* 播放器 + 选集行 */
+.player-top-row {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 播放器区域 */
 .player-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.player-sidebar {
-  width: 280px;
-  flex-shrink: 0;
+.player-card {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Player Card */
@@ -1805,42 +1816,185 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  margin-bottom: 28px;
 }
 
-.player-actions {
-  margin: -12px 0 20px;
+/* 选集卡片面板 — 固定高度对齐播放器，不滚动 */
+.player-episode-panel {
+  flex: 0 0 360px;
+  width: 360px;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  background: #fdfbf9;
+  border: 1px solid #e7ddd3;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
-.ddplay-btn {
+/* 面板顶部 — 番剧信息 + 返回 */
+.episode-panel-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #efe7de;
+}
+
+.episode-panel-poster {
+  width: 54px;
+  height: 76px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #e8e2da;
+}
+
+.episode-panel-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.episode-panel-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2e241e;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.episode-panel-sub {
+  font-size: 0.78rem;
+  color: #8b7e74;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.episode-panel-back {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  border: 1px solid #1f8f67;
-  background: #e8f7f1;
-  color: #116449;
-  border-radius: 999px;
-  padding: 9px 16px;
-  font-size: 0.9rem;
-  font-weight: 700;
+  gap: 3px;
+  font-size: 0.78rem;
+  color: #a39386;
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid #e7ddd3;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.episode-panel-back:hover {
+  color: #c45d2b;
+  border-color: #c45d2b;
+}
+
+/* Tab 切换 — 底部下划线 + 右侧计数 */
+.episode-panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid #efe7de;
+}
+
+.episode-panel-tab {
+  border: none;
+  background: none;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  color: #8b7e74;
   cursor: pointer;
-  transition: all 0.2s ease;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
 }
 
-.ddplay-btn i {
-  font-size: 1.05rem;
+.episode-panel-tab:hover {
+  color: #5f5148;
 }
 
-.ddplay-btn:hover {
-  background: #d8f0e7;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(17, 100, 73, 0.18);
+.episode-panel-tab.active {
+  color: #c45d2b;
+  border-bottom-color: #c45d2b;
+  font-weight: 600;
 }
 
-.ddplay-btn:active {
-  transform: translateY(0);
+.episode-panel-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #b0a59a;
+  padding-right: 4px;
+}
+
+/* 分集列表 — 撑满剩余高度，溢出滚动 */
+.episode-panel-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+}
+
+.episode-panel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.8rem;
+  color: #5f5148;
+  transition: background 0.1s;
+  flex-shrink: 0;
+}
+
+.episode-panel-item:hover {
+  background: rgba(196, 93, 43, 0.06);
+}
+
+.episode-panel-item.is-current {
+  background: #fff7f0;
+  color: #c45d2b;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.episode-panel-item.is-unavailable {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.episode-item-num {
+  flex-shrink: 0;
+  min-width: 4.2em;
+  font-variant-numeric: tabular-nums;
+}
+
+.episode-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.episode-item-date {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: #a39386;
+  font-variant-numeric: tabular-nums;
+}
+
+.episode-panel-item.is-current .episode-item-date {
+  color: #c45d2b;
 }
 
 .player-switching-overlay {
@@ -1883,11 +2037,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
-  .player-actions {
-    display: none;
-  }
-
-  /* Artplayer 移动端默认会把左右控件组外扩（负 margin），全屏时需要覆盖并叠加安全区 */
+  /* Artplayer 移动端全屏安全区 */
   .artplayer-container :deep(.art-video-player.art-mobile.art-fullscreen .art-bottom),
   .artplayer-container :deep(.art-video-player.art-mobile.art-fullscreen-web .art-bottom),
   .artplayer-container :deep(.art-video-player.art-mobile:fullscreen .art-bottom),
@@ -1924,9 +2074,8 @@ onBeforeUnmount(() => {
 
 .artplayer-container {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: 100%;
   min-height: 280px;
-  height: auto;
   background: #000;
 }
 
@@ -1950,11 +2099,6 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   font-size: 12px;
   padding: 6px 10px;
-}
-
-/* Info Section */
-.anime-info-section {
-  margin-top: 0;
 }
 
 /* Resource Dialog */
@@ -2043,21 +2187,36 @@ onBeforeUnmount(() => {
   background: #f9f4ef;
 }
 
-/* Responsive Design */
+/* Responsive */
 @media (max-width: 1199px) {
   .player-layout {
-    flex-direction: column;
-    padding: 20px;
+    padding: 16px;
+    gap: 12px;
+    min-height: 0;
+    border-radius: 24px;
   }
 
-  .player-sidebar {
+  .player-top-row {
+    flex-direction: column;
+  }
+
+  .player-main {
+    flex: 0 0 auto;
     width: 100%;
+  }
+
+  .player-episode-panel {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 420px;
   }
 }
 
 @media (max-width: 799px) {
   .player-layout {
-    padding: 16px;
+    padding: 12px;
+    gap: 10px;
+    border-radius: 20px;
   }
 }
 
