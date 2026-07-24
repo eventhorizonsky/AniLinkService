@@ -1,7 +1,9 @@
 package xyz.ezsky.anilink.service;
 
+import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import xyz.ezsky.anilink.model.dto.MediaLibraryDTO;
@@ -24,6 +26,7 @@ import xyz.ezsky.anilink.model.vo.PathVO;
  * <p>提供媒体库的增删查以及触发扫描的功能。该服务与 {@link MediaScannerService} 协作，
  * 在新增媒体库后触发扫描，或对单个媒体库发起扫描操作。</p>
  */
+@Log4j2
 @Service
 public class MediaLibraryService {
 
@@ -41,6 +44,9 @@ public class MediaLibraryService {
 
     @Autowired
     private AnimeRepository animeRepository;
+
+    @Autowired
+    private MediaMatchQueueManager mediaMatchQueueManager;
 
     /**
      * 添加一个新的媒体库并在后台触发一次扫描以索引该库中的媒体文件。
@@ -193,5 +199,30 @@ public class MediaLibraryService {
                 })
                 .map(f -> new PathVO(f.getName(), f.getAbsolutePath(), f.isDirectory() ? "directory" : "file"))
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    // ==================== 定时重新匹配 ====================
+
+    /**
+     * 每4小时自动触发所有媒体库的重新匹配，将可匹配文件加入弹弹匹配队列。
+     * 在整点过 3 分触发，避免与其他整点任务碰撞。
+     */
+    @Scheduled(cron = "0 3 */4 * * *")
+    public void scheduledRematchAllLibraries() {
+        try {
+            List<MediaLibrary> libraries = mediaLibraryRepository.findAll();
+            log.info("定时重新匹配任务开始，共 {} 个媒体库", libraries.size());
+            int totalEnqueued = 0;
+            for (MediaLibrary library : libraries) {
+                int enqueued = mediaMatchQueueManager.enqueueLibraryForRematch(library.getId());
+                if (enqueued > 0) {
+                    log.info("媒体库 [{}] 重新匹配: {} 个文件加入队列", library.getName(), enqueued);
+                }
+                totalEnqueued += enqueued;
+            }
+            log.info("定时重新匹配任务完成，共加入队列 {} 个文件", totalEnqueued);
+        } catch (Exception e) {
+            log.error("定时重新匹配任务失败", e);
+        }
     }
 }
