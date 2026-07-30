@@ -23,11 +23,44 @@ const followError = ref('')
 const followPage = ref(1)
 const followPageSize = ref(20)
 const followTotal = ref(0)
-const followStatus = ref('')  // 空字符串 = 显示全部，不筛选
+const followStatus = ref('active')  // 默认显示活跃追番（想看+在看）
 const followKeyword = ref('')
 const statusUpdatingAnimeId = ref(null)
 const pullingBangumi = ref(false)
 const mobileMenuAnimeId = ref(null)  // 移动端弹窗：当前打开的是哪个番剧
+
+// 未匹配番剧绑定
+const bindDialog = ref({ show: false, follow: null, keyword: '', results: [], searched: false, searching: false })
+const openBindDialog = (follow) => {
+  bindDialog.value = { show: true, follow, keyword: follow.animeTitle || '', results: [], searched: false, searching: false }
+}
+const searchBindAnime = async () => {
+  if (!bindDialog.value.keyword.trim()) return
+  bindDialog.value.searching = true
+  try {
+    const res = await axios.get('/api/animes/search-dandan', { params: { keyword: bindDialog.value.keyword } })
+    if (res.data?.code === 200 && res.data.data) {
+      // 弹弹返回: { success, animes: [...] } 或包装在 data 中
+      const raw = res.data.data
+      const list = raw.animes || raw.data?.animes || []
+      bindDialog.value.results = Array.isArray(list) ? list : []
+    } else {
+      bindDialog.value.results = []
+    }
+    bindDialog.value.searched = true
+  } catch (e) { console.error('搜索番剧失败:', e) }
+  finally { bindDialog.value.searching = false }
+}
+const bindAnime = async (follow, anime) => {
+  try {
+    await axios.put(`/api/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: anime.title, imageUrl: anime.imageUrl })
+    showAppMessage(`已绑定「${anime.title}」`, 'success')
+    bindDialog.value.show = false
+    await fetchFollowList()
+  } catch (e) {
+    showAppMessage('绑定失败', 'error')
+  }
+}
 
 // 确认对话框
 const confirmDialog = ref({ show: false, title: '', message: '', resolve: null })
@@ -83,6 +116,7 @@ const messageTypes = [
 ]
 
 const followStatuses = [
+  { label: '想看', value: 'wish', color: 'info' },
   { label: '在看', value: 'watching', color: 'primary' },
   { label: '看过', value: 'watched', color: 'success' },
   { label: '搁置', value: 'on_hold', color: 'warning' },
@@ -90,6 +124,7 @@ const followStatuses = [
 ]
 
 const followStatusOptions = [
+  { title: '活跃', value: 'active' },
   { title: '全部', value: '' },
   ...followStatuses.map(s => ({ title: s.label, value: s.value }))
 ]
@@ -353,7 +388,7 @@ const clearHistory = async () => {
   }
 }
 
-const STATUS_ORDER = { watching: 1, watched: 2, on_hold: 3, dropped: 4 }
+const STATUS_ORDER = { wish: 0, watching: 1, watched: 2, on_hold: 3, dropped: 4 }
 
 const fetchFollowList = async () => {
   followLoading.value = true
@@ -364,8 +399,10 @@ const fetchFollowList = async () => {
       pageSize: followPageSize.value
     }
 
-    // 按状态下拉框筛选（空=全部）
-    const url = followStatus.value ? `/api/follows/status/${followStatus.value}` : '/api/follows'
+    // 按状态下拉框筛选（active=活跃, 空=全部, 其他=具体状态）
+    const url = followStatus.value === 'active' ? '/api/follows/active'
+              : followStatus.value ? `/api/follows/status/${followStatus.value}`
+              : '/api/follows'
     const response = await axios.get(url, { params })
 
     if (response.data?.code === 200) {
@@ -404,19 +441,20 @@ const goToAnime = (animeId) => {
 }
 
 const statusLabel = (status) => {
-  const map = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
+  const map = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
   return map[status] || status
 }
 
 const statusChipColor = (status) => {
-  const map = { watching: 'primary', watched: 'success', on_hold: 'warning', dropped: 'error' }
+  const map = { wish: 'info', watching: 'primary', watched: 'success', on_hold: 'warning', dropped: 'error' }
   return map[status] || 'grey'
 }
 
-const CASCADE_COLORS = { watching: '#ff9800', watched: '#4caf50', on_hold: '#ffc107', dropped: '#ef5350' }
+const CASCADE_COLORS = { wish: '#42a5f5', watching: '#ff9800', watched: '#4caf50', on_hold: '#ffc107', dropped: '#ef5350' }
 const cascadeColor = (s) => CASCADE_COLORS[s] || '#999'
 
 const changeFollowStatus = async (animeId, status) => {
+  if (!animeId) return  // 未匹配的不能改状态
   const currentFollow = followList.value.find((item) => item.animeId === animeId)
   if (currentFollow?.status === status) {
     return
@@ -726,7 +764,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
                   class="follow-cover-card"
                   elevation="1"
                   hover
-                  @click="goToAnime(follow.animeId)"
+                  @click="follow.animeId ? goToAnime(follow.animeId) : openBindDialog(follow)"
                 >
                   <div class="follow-cover-inner">
                     <!-- 封面 -->
@@ -754,11 +792,25 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
                       >
                         {{ statusLabel(follow.status) }}
                       </v-chip>
+                      <!-- 未匹配 Tag -->
+                      <v-chip
+                        v-if="!follow.animeId"
+                        class="follow-cover-tag follow-cover-unmatch"
+                        color="grey-darken-2"
+                        size="x-small"
+                        variant="elevated"
+                      >
+                        未匹配
+                      </v-chip>
                     </div>
                     <!-- 信息 -->
                     <div class="follow-cover-info">
                       <h3 class="follow-cover-title">{{ follow.animeTitle }}</h3>
                       <div class="follow-cover-date">追番 {{ formatDate(follow.followAt) }}</div>
+                      <!-- 未匹配提示 -->
+                      <div v-if="!follow.animeId" class="follow-cover-unmatch-hint" @click.stop="openBindDialog(follow)">
+                        <i class="mdi mdi-link-variant-off"></i> 点击绑定番剧
+                      </div>
                       <!-- 桌面端：级联按钮组 -->
                       <div class="status-cascade status-cascade-desktop" @click.stop>
                         <button
@@ -767,7 +819,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
                           class="status-cascade-btn"
                           :class="{ active: follow.status === s.value }"
                           :style="{ '--cascade-color': cascadeColor(s.value) }"
-                          :disabled="statusUpdatingAnimeId === follow.animeId"
+                          :disabled="!follow.animeId || statusUpdatingAnimeId === follow.animeId"
                           :title="'标记为: ' + s.label"
                           @click="changeFollowStatus(follow.animeId, s.value)"
                         >{{ s.label }}</button>
@@ -1091,6 +1143,50 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
       </v-card>
     </v-dialog>
 
+    <!-- 未匹配番剧绑定对话框 -->
+    <v-dialog v-model="bindDialog.show" max-width="480">
+      <v-card>
+        <v-card-title class="text-h6">绑定番剧</v-card-title>
+        <v-card-text>
+          <p class="mb-3">为「{{ bindDialog.follow?.animeTitle }}」搜索弹弹play中的对应番剧：</p>
+          <v-text-field
+            v-model="bindDialog.keyword"
+            placeholder="输入关键词搜索..."
+            density="compact"
+            variant="outlined"
+            hide-details
+            @keyup.enter="searchBindAnime"
+          >
+            <template #append>
+              <v-btn size="small" variant="text" :loading="bindDialog.searching" @click="searchBindAnime">
+                <i class="mdi mdi-magnify"></i>
+              </v-btn>
+            </template>
+          </v-text-field>
+          <div v-if="bindDialog.results.length" class="mt-3 bind-results">
+            <div
+              v-for="r in bindDialog.results"
+              :key="r.animeId"
+              class="bind-result-item"
+              @click="bindAnime(bindDialog.follow, r)"
+            >
+              <div class="bind-result-poster-wrap">
+                <v-img :src="r.imageUrl || ''" cover class="bind-result-poster" />
+              </div>
+              <div class="bind-result-info">
+                <div class="bind-result-title">{{ r.animeTitle }}</div>
+                <div class="bind-result-meta">{{ r.typeDescription || '' }} · ID: {{ r.animeId }}</div>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="bindDialog.searched" class="text-center text-grey mt-4">未找到匹配番剧</div>
+        </v-card-text>
+        <v-card-actions class="d-flex justify-end pa-4">
+          <v-btn variant="outlined" @click="bindDialog.show = false">关闭</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- 通用确认对话框 -->
     <v-dialog v-model="confirmDialog.show" max-width="420" persistent>
       <v-card>
@@ -1184,6 +1280,9 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
+.follow-cover-unmatch {
+  top: 32px;
+}
 
 .follow-cover-info {
   padding: 12px 14px 14px;
@@ -1203,8 +1302,36 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
 .follow-cover-date {
   font-size: 0.75rem;
   color: #a39386;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
 }
+
+.follow-cover-unmatch-hint {
+  font-size: 0.72rem;
+  color: #ab47bc;
+  cursor: pointer;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.follow-cover-unmatch-hint:hover { color: #7b1fa2; text-decoration: underline; }
+
+/* 绑定搜索结果 */
+.bind-results { max-height: 240px; overflow-y: auto; }
+.bind-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.bind-result-item:hover { background: #f5f0ea; }
+.bind-result-poster-wrap { width: 48px; height: 68px; flex-shrink: 0; border-radius: 4px; overflow: hidden; }
+.bind-result-poster { width: 100%; height: 100%; }
+.bind-result-title { font-size: 0.9rem; font-weight: 500; }
+.bind-result-meta { font-size: 0.75rem; color: #999; }
 
 /* ===== 级联状态按钮组 ===== */
 .status-cascade {

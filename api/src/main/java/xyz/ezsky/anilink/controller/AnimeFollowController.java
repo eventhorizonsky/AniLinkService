@@ -14,6 +14,7 @@ import xyz.ezsky.anilink.model.vo.PageVO;
 import xyz.ezsky.anilink.service.AnimeFollowService;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 追番管理接口
@@ -131,6 +132,31 @@ public class AnimeFollowController {
             @RequestParam String status) {
         Long userId = StpUtil.getLoginIdAsLong();
         AnimeFollowVO result = animeFollowService.updateFollowStatus(userId, animeId, status);
+        if (result == null) {
+            return ApiResponseVO.fail(404, "追番记录不存在");
+        }
+        return ApiResponseVO.success(result);
+    }
+
+    @Operation(summary = "获取活跃追番", description = "获取用户想看+在看状态的追番（首页用）")
+    @GetMapping("/active")
+    public ApiResponseVO<List<AnimeFollowVO>> getActiveFollows() {
+        Long userId = StpUtil.getLoginIdAsLong();
+        List<AnimeFollowVO> result = animeFollowService.getActiveFollows(userId);
+        return ApiResponseVO.success(result);
+    }
+
+    @Operation(summary = "绑定未匹配追番", description = "为从 Bangumi 拉取但未匹配的追番记录绑定本地番剧")
+    @PutMapping("/{followId}/bind")
+    public ApiResponseVO<AnimeFollowVO> bindFollow(
+            @Parameter(description = "追番记录ID", required = true)
+            @PathVariable Long followId,
+            @RequestBody Map<String, Object> body) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        Long animeId = body.get("animeId") != null ? Long.valueOf(body.get("animeId").toString()) : null;
+        String animeTitle = body.get("animeTitle") != null ? body.get("animeTitle").toString() : null;
+        String imageUrl = body.get("imageUrl") != null ? body.get("imageUrl").toString() : null;
+        AnimeFollowVO result = animeFollowService.bindFollow(userId, followId, animeId, animeTitle, imageUrl);
         if (result == null) {
             return ApiResponseVO.fail(404, "追番记录不存在");
         }

@@ -29,9 +29,12 @@ public class AnimeFollow {
     @Column(name = "user_id", nullable = false)
     private Long userId;
     
-    @Column(name = "anime_id", nullable = false)
+    @Column(name = "anime_id")
     private Long animeId;
-    
+
+    @Column(name = "bangumi_subject_id")
+    private Long bangumiSubjectId;
+
     @Column(name = "anime_title", length = 500)
     private String animeTitle;
     
@@ -43,7 +46,7 @@ public class AnimeFollow {
      * wish(想看/1)、watched(看过/2)、watching(在看/3)、on_hold(搁置/4)、dropped(抛弃/5)
      */
     @Column(name = "status", nullable = false, length = 20)
-    private String status = "watching";
+    private String status = "wish";
     
     /**
      * 用户的标签（tag），用于分类管理，如"待看"、"喜欢"等

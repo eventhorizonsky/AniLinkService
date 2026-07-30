@@ -6,7 +6,7 @@ import axios from 'axios'
 const router = useRouter()
 const API_BASE = '/api'
 
-const STATUS_LABEL_MAP = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
+const STATUS_LABEL_MAP = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
 const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
 
 // ===================== Follow List =====================
@@ -31,8 +31,6 @@ const trendingHot = ref([])
 const trendingNewAnime = ref([])
 const trendingLoading = ref(false)
 const trendingError = ref('')
-const hoveredHot = ref(null)
-const hoveredNew = ref(null)
 
 const isLoggedIn = computed(() => !!localStorage.getItem('token'))
 
@@ -41,10 +39,9 @@ const fetchFollowList = async () => {
   if (!isLoggedIn.value) return
   followLoading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/follows/status/watching`, { params: { page: 1, pageSize: 8 } })
+    const res = await axios.get(`${API_BASE}/follows/active`)
     if (res.data?.code === 200) {
-      const data = res.data.data
-      followList.value = (Array.isArray(data) ? data : (data?.content || [])).slice(0, 8)
+      followList.value = Array.isArray(res.data.data) ? res.data.data : []
     }
   } catch (e) { console.error('Fetch follow list failed:', e) }
   finally { followLoading.value = false }
@@ -206,21 +203,9 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
             <div v-else-if="trendingError" class="empty"><i class="mdi mdi-alert-circle-outline"></i><span>{{ trendingError }}</span></div>
             <div v-else-if="!trendingHot.length" class="empty"><i class="mdi mdi-fire-off"></i><span>暂无数据</span></div>
             <template v-else>
-              <div class="t-hover-area" @mouseleave="hoveredHot = null">
-                <div class="t-preview-slot" :class="{ active: hoveredHot }">
-                  <div v-if="hoveredHot" class="t-preview-card">
-                    <img :src="hoveredHot.imageUrl" :alt="hoveredHot.animeTitle" />
-                    <div class="t-preview-info">
-                      <span class="t-preview-score"><i class="mdi mdi-star"></i>{{ fmtScore(hoveredHot.rating) }}</span>
-                      <p class="t-preview-title">{{ hoveredHot.animeTitle }}</p>
-                    </div>
-                  </div>
-                  <span v-else class="t-preview-hint"><i class="mdi mdi-gesture-tap"></i>悬停条目查看详情</span>
-                </div>
-                <ul class="trending-list">
-                  <li v-for="(a, i) in trendingHot" :key="a.animeId || i" class="t-item"
-                    @mouseenter="hoveredHot = a">
-                    <router-link :to="'/anime/' + a.animeId" class="t-link" @click.stop>
+              <ul class="trending-list">
+                <li v-for="(a, i) in trendingHot" :key="a.animeId || i" class="t-item">
+                  <router-link :to="'/anime/' + a.animeId" class="t-link">
                     <span class="t-rank" :class="rankClass(i)">{{ i + 1 }}</span>
                     <img v-if="a.imageUrl" :src="a.imageUrl" class="t-thumb" loading="lazy" />
                     <span v-else class="t-thumb-ph"></span>
@@ -230,7 +215,6 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
                   </router-link>
                 </li>
               </ul>
-              </div>
             </template>
           </div>
         </section>
@@ -248,21 +232,9 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
             <div v-if="trendingLoading" class="sk-list"><div v-for="i in 6" :key="i" class="sk-line"></div></div>
             <div v-else-if="!trendingNewAnime.length" class="empty"><i class="mdi mdi-rocket-launch-off"></i><span>暂无数据</span></div>
             <template v-else>
-              <div class="t-hover-area" @mouseleave="hoveredNew = null">
-                <div class="t-preview-slot" :class="{ active: hoveredNew }">
-                  <div v-if="hoveredNew" class="t-preview-card">
-                    <img :src="hoveredNew.imageUrl" :alt="hoveredNew.animeTitle" />
-                    <div class="t-preview-info">
-                      <span class="t-preview-score"><i class="mdi mdi-star"></i>{{ fmtScore(hoveredNew.rating) }}</span>
-                      <p class="t-preview-title">{{ hoveredNew.animeTitle }}</p>
-                    </div>
-                  </div>
-                  <span v-else class="t-preview-hint"><i class="mdi mdi-gesture-tap"></i>悬停条目查看详情</span>
-                </div>
-                <ul class="trending-list">
-                  <li v-for="(a, i) in trendingNewAnime" :key="a.animeId || i" class="t-item"
-                    @mouseenter="hoveredNew = a">
-                    <router-link :to="'/anime/' + a.animeId" class="t-link" @click.stop>
+              <ul class="trending-list">
+                <li v-for="(a, i) in trendingNewAnime" :key="a.animeId || i" class="t-item">
+                  <router-link :to="'/anime/' + a.animeId" class="t-link">
                       <span class="t-rank" :class="rankClass(i)">{{ i + 1 }}</span>
                       <img v-if="a.imageUrl" :src="a.imageUrl" class="t-thumb" loading="lazy" />
                       <span v-else class="t-thumb-ph"></span>
@@ -271,7 +243,6 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
                     </router-link>
                   </li>
                 </ul>
-              </div>
             </template>
           </div>
         </section>
@@ -478,48 +449,6 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
 }
 .t-link:hover { background:linear-gradient(90deg,#fef9f4 0%,#fdfbf9 100%); }
 
-/* ===== sticky preview slot — follows scroll, never shifts list ===== */
-.t-preview-slot {
-  position:sticky; top:0; z-index:5;
-  height: 22px;                     /* thin when empty */
-  display:flex; align-items:center; justify-content:center;
-  transition: height .28s ease;
-  overflow:hidden;
-  background:#fdfbf9;               /* cover list items behind */
-}
-.t-preview-slot.active {
-  height: 127px;                    /* expands to fit card */
-}
-.t-preview-hint {
-  font-size: .68rem; color: #bfb0a0;
-  display:inline-flex; align-items:center; gap:4px;
-  transition: opacity .2s;
-}
-.t-preview-card {
-  display:flex; gap:12px; padding:10px 12px;
-  background:linear-gradient(135deg,#fef9f4,#fdf5ec);
-  border:1px solid #ead9c8; border-radius:12px;
-  width:100%;
-}
-.t-preview-card img {
-  width:80px; height:107px; border-radius:8px;
-  object-fit:cover; object-position:center top; flex-shrink:0;
-  box-shadow:0 3px 12px rgba(0,0,0,.14);
-}
-.t-preview-info {
-  display:flex; flex-direction:column; justify-content:center; gap:6px; min-width:0;
-}
-.t-preview-score {
-  display:inline-flex; align-items:center; gap:3px; align-self:flex-start;
-  background:rgba(196,93,43,.12); color:#c45d2b;
-  font-size:.78rem; font-weight:700; padding:3px 10px; border-radius:999px;
-}
-.t-preview-score i { font-size:.65rem; }
-.t-preview-title {
-  margin:0; font-size:.82rem; font-weight:600; color:#2e241e;
-  line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
-  overflow:hidden;
-}
 
 .t-rank {
   flex-shrink:0; width:20px; height:20px; border-radius:5px;
@@ -575,10 +504,6 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
   .home-right { grid-template-columns: 1fr; gap: 10px; }
   .trending-panel { max-height: 300px; }
   .schedule-section { max-height: 360px; }
-  /* smaller preview on mobile */
-  .t-preview-slot.active { height: 105px; }
-  .t-preview-card img { width: 60px; height: 80px; }
-  .t-preview-title { font-size: .74rem; }
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 7px; }
   .card-info { height: 44px; }
   .card-title { font-size: .65rem; }

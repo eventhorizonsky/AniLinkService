@@ -449,6 +449,24 @@ public class AnimeService {
     }
 
     /**
+     * 搜索弹弹番剧（代理 /api/v2/search/anime）。
+     */
+    public String searchDandanAnime(String keyword) {
+        String path = "/api/v2/search/anime";
+        try {
+            ResponseEntity<String> response = dandanClientUtil.get(
+                    siteConfigService.getDandanBaseUrl(), path,
+                    java.util.Map.of("keyword", keyword, "v2", "true"));
+            if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(response.getBody())) {
+                return response.getBody();
+            }
+        } catch (Exception e) {
+            log.error("Dandan search failed for keyword={}", keyword, e);
+        }
+        return null;
+    }
+
+    /**
      * 获取弹弹 /api/v2/bangumi/shin 原始JSON数据（带数据库缓存）。
      *
      * @return 原始JSON字符串

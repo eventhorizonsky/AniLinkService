@@ -167,4 +167,25 @@ public class AnimeController {
             return ApiResponseVO.fail(500, "番剧数据解析失败");
         }
     }
+
+    @Operation(summary = "搜索弹弹番剧", description = "代理弹弹 /api/v2/search/anime 用于未匹配追番绑定")
+    @GetMapping("/search-dandan")
+    public ApiResponseVO<Object> searchDandan(
+            @Parameter(description = "搜索关键词", required = true)
+            @RequestParam String keyword) {
+        if (keyword == null || keyword.trim().length() < 2) {
+            return ApiResponseVO.fail(400, "关键词至少2个字符");
+        }
+        try {
+            String json = animeService.searchDandanAnime(keyword.trim());
+            if (json == null) {
+                return ApiResponseVO.fail(502, "弹弹搜索服务不可用");
+            }
+            Object result = new ObjectMapper().readValue(json, Object.class);
+            return ApiResponseVO.success(result);
+        } catch (Exception e) {
+            log.error("Dandan search failed for keyword={}", keyword, e);
+            return ApiResponseVO.fail(500, "搜索失败");
+        }
+    }
 }

@@ -23,19 +23,19 @@
         <span class="anime-badge anime-badge-air">更新 {{ mainEpisodes.length }}/{{ totalEpisodes }}</span>
 
         <!-- 追番按钮 + 级联状态选择 -->
-        <span v-if="showFollowBtn" class="anime-follow-btn-wrap">
+        <span v-if="showFollowBtn" ref="btnWrap" class="anime-follow-btn-wrap">
           <span
             class="anime-follow-btn"
             :class="{ following: isFollowing, loading: followLoading }"
-            :title="isFollowing ? '修改追番状态' : '添加追番'"
-            @click.stop="menuOpen = !menuOpen"
+            :title="isFollowing ? '修改追番状态' : '添加想看'"
+            @click="handleFollowClick"
           >
             <i class="mdi" :class="isFollowing ? 'mdi-bookmark-check' : 'mdi-bookmark-outline'"></i>
-            {{ isFollowing ? statusLabel(followStatus) : '追番' }}
+            {{ isFollowing ? statusLabel(followStatus) : '想看' }}
           </span>
           <!-- 级联状态面板 -->
           <Transition name="follow-menu">
-            <div v-if="menuOpen" class="follow-status-panel" @click.stop>
+            <div v-if="menuOpen" class="follow-status-panel">
               <div class="follow-status-title">{{ isFollowing ? '修改状态' : '添加追番' }}</div>
               <div class="follow-status-cascade">
                 <button
@@ -130,7 +130,7 @@ const props = defineProps({
   },
   followStatus: {
     type: String,
-    default: 'watching'
+    default: 'wish'
   },
   followLoading: {
     type: Boolean,
@@ -143,6 +143,7 @@ const emit = defineEmits(['update:isSummaryExpanded', 'toggleFavorite', 'toggleF
 const menuOpen = ref(false);
 
 const STATUS_MAP = {
+  wish:    { label: '想看', color: '#42a5f5' },
   watching:{ label: '在看', color: '#ff9800' },
   watched: { label: '看过', color: '#4caf50' },
   on_hold: { label: '搁置', color: '#ffc107' },
@@ -150,18 +151,28 @@ const STATUS_MAP = {
 };
 
 const statusOptions = [
+  { value: 'wish',     label: '想看', color: '#42a5f5' },
   { value: 'watching', label: '在看', color: '#ff9800' },
   { value: 'watched',  label: '看过', color: '#4caf50' },
   { value: 'on_hold',  label: '搁置', color: '#ffc107' },
   { value: 'dropped',  label: '抛弃', color: '#ef5350' },
 ];
 
-const statusLabel = (s) => STATUS_MAP[s]?.label || '追番中';
+const statusLabel = (s) => STATUS_MAP[s]?.label || '想看';
+
+const handleFollowClick = (e) => {
+  e.stopPropagation();
+  if (!props.isFollowing) {
+    // 首次追番：直接标记想看
+    emit('setFollowStatus', 'wish');
+  } else {
+    menuOpen.value = !menuOpen.value;
+  }
+};
 
 const selectStatus = (status) => {
   menuOpen.value = false;
   if (status === null) {
-    // 取消追番
     emit('toggleFollow');
   } else {
     emit('setFollowStatus', status);
@@ -192,8 +203,11 @@ const toggleFollow = () => {
 };
 
 // 点击外部关闭面板
+const btnWrap = ref(null);
 const closeMenu = (e) => {
-  menuOpen.value = false;
+  if (btnWrap.value && !btnWrap.value.contains(e.target)) {
+    menuOpen.value = false;
+  }
 };
 onMounted(() => document.addEventListener('click', closeMenu));
 onBeforeUnmount(() => document.removeEventListener('click', closeMenu));

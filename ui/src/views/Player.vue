@@ -301,7 +301,7 @@ const checkFollowStatus = async () => {
   const token = localStorage.getItem('token')
   if (!token || !animeId.value) {
     isFollowing.value = false
-    followStatus.value = 'watching'
+    followStatus.value = 'wish'
     return
   }
 
@@ -312,12 +312,24 @@ const checkFollowStatus = async () => {
       followStatus.value = response.data.data.status || 'watching'
     } else {
       isFollowing.value = false
-      followStatus.value = 'watching'
+      followStatus.value = 'wish'
     }
   } catch (e) {
     console.error('检查追番状态失败:', e)
     isFollowing.value = false
+    followStatus.value = 'wish'
+  }
+}
+
+const upgradeFollowWishToWatching = async () => {
+  const token = localStorage.getItem('token')
+  if (!token || !isFollowing.value || followStatus.value !== 'wish' || !animeId.value) return
+  try {
+    await axios.put(`/api/follows/${animeId.value}/status`, null, { params: { status: 'watching' } })
     followStatus.value = 'watching'
+    console.log('追番自动升级: 想看 → 在看')
+  } catch (e) {
+    console.debug('追番自动升级失败:', e)
   }
 }
 
@@ -1662,6 +1674,8 @@ const createPlayerInstance = async () => {
     art.value.on('play', () => {
       console.log('开始播放')
       startProgressSaveTimer()
+      // 追番"想看" → 自动升级为"在看"
+      upgradeFollowWishToWatching()
     })
 
     art.value.on('pause', () => {

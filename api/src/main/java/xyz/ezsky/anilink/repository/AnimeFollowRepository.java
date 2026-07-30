@@ -43,6 +43,11 @@ public interface AnimeFollowRepository extends JpaRepository<AnimeFollow, Long> 
     List<AnimeFollow> findByAnimeId(Long animeId);
     
     /**
+     * 根据用户ID查询指定多个状态的追番（按更新时间倒序）
+     */
+    List<AnimeFollow> findByUserIdAndStatusInOrderByUpdatedAtDesc(Long userId, List<String> statuses);
+
+    /**
      * 根据用户ID删除所有追番记录
      */
     void deleteByUserId(Long userId);

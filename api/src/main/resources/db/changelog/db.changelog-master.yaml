@@ -60,6 +60,9 @@ databaseChangeLog:
   - include:
       file: common/db.changelog-v20-follow-status-alignment.yaml
       relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-v21-follow-bangumi-subject-id.yaml
+      relativeToChangelogFile: true
   # Database-specific changelogs
   - include:
       file: h2/db.changelog-h2-init.yaml

@@ -421,7 +421,7 @@ const checkFollowStatus = async (animeIdOverride) => {
   const token = localStorage.getItem('token');
   if (!token || !animeData.value) {
     isFollowing.value = false;
-    followStatus.value = 'watching';
+    followStatus.value = 'wish';
     return;
   }
 
@@ -433,12 +433,12 @@ const checkFollowStatus = async (animeIdOverride) => {
       followStatus.value = response.data.data.status || 'watching';
     } else {
       isFollowing.value = false;
-      followStatus.value = 'watching';
+      followStatus.value = 'wish';
     }
   } catch (error) {
     console.error('Failed to check follow status:', error);
     isFollowing.value = false;
-    followStatus.value = 'watching';
+    followStatus.value = 'wish';
   }
 };
 
@@ -498,7 +498,7 @@ const toggleFollow = async () => {
   try {
     await axios.delete(`/api/follows/${resolvedAnimeId.value}`);
     isFollowing.value = false;
-    followStatus.value = 'watching';
+    followStatus.value = 'wish';
     showAppMessage('已取消追番', 'success');
   } catch (error) {
     console.error('Failed to toggle follow:', error);

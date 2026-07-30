@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 26-follow-bangumi-subject-id
+      author: anilink
+      changes:
+        - addColumn:
+            tableName: anime_follow
+            columns:
+              - column:
+                  name: bangumi_subject_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+        - dropNotNullConstraint:
+            tableName: anime_follow
+            columnName: anime_id
+            columnDataType: BIGINT

@@ -175,14 +175,7 @@ public class BangumiSyncService {
                         int bgmType = item.get("type").asInt(3);
                         String localStatus = mapBangumiTypeToLocalStatus(bgmType);
 
-                        // 尝试通过 Dandan 的 bgmtv 接口查找本地 animeId
-                        Long localAnimeId = findLocalAnimeIdByBangumiSubject(subjectId);
-                        if (localAnimeId == null) {
-                            skipped++;
-                            continue;
-                        }
-
-                        // 获取番剧标题和封面（优先从 Dandan）
+                        // 从 Bangumi 返回中提取标题和封面
                         String title = null;
                         String imageUrl = null;
                         if (item.has("subject")) {
@@ -195,12 +188,27 @@ public class BangumiSyncService {
                             }
                         }
 
-                        // 创建或更新本地追番
-                        Optional<AnimeFollow> existing = animeFollowRepository
-                                .findByUserIdAndAnimeId(userId, localAnimeId);
+                        // 尝试通过 Dandan 的 bgmtv 接口查找本地 animeId
+                        Long localAnimeId = findLocalAnimeIdByBangumiSubject(subjectId);
+
+                        // 查找已有记录：优先按 subjectId 匹配，其次按 animeId
+                        Optional<AnimeFollow> existing = Optional.empty();
+                        if (localAnimeId != null) {
+                            existing = animeFollowRepository.findByUserIdAndAnimeId(userId, localAnimeId);
+                        }
+                        if (existing.isEmpty()) {
+                            // 按 bangumi_subject_id 查找
+                            List<AnimeFollow> allFollows = animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+                            existing = allFollows.stream()
+                                    .filter(f -> subjectId.equals(f.getBangumiSubjectId()))
+                                    .findFirst();
+                        }
+
                         if (existing.isPresent()) {
                             AnimeFollow follow = existing.get();
                             follow.setStatus(localStatus);
+                            follow.setBangumiSubjectId(subjectId);
+                            if (localAnimeId != null) follow.setAnimeId(localAnimeId);
                             if (title != null && (follow.getAnimeTitle() == null || follow.getAnimeTitle().isBlank())) {
                                 follow.setAnimeTitle(title);
                             }
@@ -211,14 +219,16 @@ public class BangumiSyncService {
                             animeFollowRepository.save(follow);
                             updated++;
                         } else {
+                            // 未匹配也入库
                             AnimeFollow follow = new AnimeFollow();
                             follow.setUserId(userId);
                             follow.setAnimeId(localAnimeId);
+                            follow.setBangumiSubjectId(subjectId);
                             follow.setAnimeTitle(title != null ? title : "未知番剧");
                             follow.setImageUrl(imageUrl);
                             follow.setStatus(localStatus);
                             animeFollowRepository.save(follow);
-                            created++;
+                            if (localAnimeId != null) created++; else created++;
                         }
                     } catch (Exception e) {
                         log.warn("Failed to sync Bangumi collection item: subjectId={}",
@@ -283,12 +293,12 @@ public class BangumiSyncService {
      */
     private String mapBangumiTypeToLocalStatus(int bgmType) {
         return switch (bgmType) {
-            case 1 -> "watching";  // Bangumi 想看暂不单独支持
+            case 1 -> "wish";
             case 2 -> "watched";
             case 3 -> "watching";
             case 4 -> "on_hold";
             case 5 -> "dropped";
-            default -> "watching";
+            default -> "wish";
         };
     }
 

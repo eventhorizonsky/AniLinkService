@@ -9,7 +9,7 @@ const loading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalElements = ref(0)
-const filterStatus = ref('watching')
+const filterStatus = ref('wish')
 const searchKeyword = ref('')
 const error = ref('')
 

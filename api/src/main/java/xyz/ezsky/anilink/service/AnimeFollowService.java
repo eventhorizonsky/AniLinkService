@@ -45,7 +45,7 @@ public class AnimeFollowService {
         if (existing.isPresent()) {
             // 更新状态
             follow = existing.get();
-            follow.setStatus(dto.getStatus() != null ? dto.getStatus() : "watching");
+            follow.setStatus(dto.getStatus() != null ? dto.getStatus() : "wish");
             follow.setTags(dto.getTags());
             follow.setUpdatedAt(LocalDateTime.now());
         } else {
@@ -55,15 +55,15 @@ public class AnimeFollowService {
             follow.setAnimeId(dto.getAnimeId());
             follow.setAnimeTitle(dto.getAnimeTitle());
             follow.setImageUrl(dto.getImageUrl());
-            follow.setStatus(dto.getStatus() != null ? dto.getStatus() : "watching");
+            follow.setStatus(dto.getStatus() != null ? dto.getStatus() : "wish");
             follow.setTags(dto.getTags());
         }
-        
+
         AnimeFollow saved = animeFollowRepository.save(follow);
         log.info("User {} followed anime {}", userId, dto.getAnimeId());
         // 异步同步到 Bangumi
         bangumiSyncService.syncFollowStatusToBangumi(userId, dto.getAnimeId(),
-                dto.getStatus() != null ? dto.getStatus() : "watching");
+                dto.getStatus() != null ? dto.getStatus() : "wish");
         return convertToVO(saved);
     }
     
@@ -176,6 +176,33 @@ public class AnimeFollowService {
         }
     }
     
+    /**
+     * 获取用户活跃追番（想看 + 在看），按状态优先级排序。
+     */
+    public List<AnimeFollowVO> getActiveFollows(Long userId) {
+        List<String> activeStatuses = List.of("wish", "watching");
+        return animeFollowRepository.findByUserIdAndStatusInOrderByUpdatedAtDesc(userId, activeStatuses)
+                .stream()
+                .map(this::convertToVO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 绑定未匹配的追番记录到本地番剧。
+     */
+    @Transactional
+    public AnimeFollowVO bindFollow(Long userId, Long followId, Long animeId, String animeTitle, String imageUrl) {
+        Optional<AnimeFollow> opt = animeFollowRepository.findById(followId);
+        if (opt.isEmpty()) return null;
+        AnimeFollow follow = opt.get();
+        if (!follow.getUserId().equals(userId)) return null;
+        follow.setAnimeId(animeId);
+        if (animeTitle != null) follow.setAnimeTitle(animeTitle);
+        if (imageUrl != null) follow.setImageUrl(imageUrl);
+        follow.setUpdatedAt(LocalDateTime.now());
+        return convertToVO(animeFollowRepository.save(follow));
+    }
+
     /**
      * 将实体转换为VO
      */
