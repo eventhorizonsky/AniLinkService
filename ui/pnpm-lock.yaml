@@ -12,8 +12,8 @@ importers:
         specifier: ^7.4.47
         version: 7.4.47
       artplayer:
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: ^5.4.0
+        version: 5.4.0
       artplayer-plugin-danmuku:
         specifier: ^5.2.0
         version: 5.2.0
@@ -534,8 +534,8 @@ packages:
   artplayer-plugin-vtt-thumbnail@1.1.0:
     resolution: {integrity: sha512-p5HIiaxBEN0CV4FWOWXCfy6hcQL59JuFIGUbQtVg9AcunPg2gJ1cJ8P0HEQ/ngH6tl1/puxrJIKydoAdX5L2dw==}
 
-  artplayer@5.3.0:
-    resolution: {integrity: sha512-yExO39MpEg4P+bxgChxx1eJfiUPE4q1QQRLCmqGhlsj+ANuaoEkR8hF93LdI5ZyrAcIbJkuEndxEiUoKobifDw==}
+  artplayer@5.4.0:
+    resolution: {integrity: sha512-2B+plbx8N2yNsjK4nJU3+EOG8TULm1LRZk/QPkWRAMEX2Ee/MSnZG/WJYz8kcoZxZuLKcQ3uXifqLuPxZOH29A==}
 
   asynckit@0.4.0:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
@@ -1559,7 +1559,7 @@ snapshots:
 
   artplayer-plugin-vtt-thumbnail@1.1.0: {}
 
-  artplayer@5.3.0:
+  artplayer@5.4.0:
     dependencies:
       option-validator: 2.0.6
 
