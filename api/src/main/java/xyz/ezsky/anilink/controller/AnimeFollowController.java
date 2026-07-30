@@ -80,10 +80,10 @@ public class AnimeFollowController {
     /**
      * 获取用户指定状态的追番列表
      */
-    @Operation(summary = "按状态获取追番", description = "获取用户指定状态(watching/completed/dropped)的追番列表")
+    @Operation(summary = "按状态获取追番", description = "获取用户指定状态的追番列表(wish/watched/watching/on_hold/dropped)")
     @GetMapping("/status/{status}")
     public ApiResponseVO<List<AnimeFollowVO>> getUserFollowsByStatus(
-            @Parameter(description = "追番状态：watching/completed/dropped", required = true)
+            @Parameter(description = "追番状态：wish(想看)/watched(看过)/watching(在看)/on_hold(搁置)/dropped(抛弃)", required = true)
             @PathVariable String status) {
         Long userId = StpUtil.getLoginIdAsLong();
         List<AnimeFollowVO> result = animeFollowService.getUserFollowsByStatus(userId, status);
@@ -127,7 +127,7 @@ public class AnimeFollowController {
     public ApiResponseVO<AnimeFollowVO> updateFollowStatus(
             @Parameter(description = "番剧ID", required = true)
             @PathVariable Long animeId,
-            @Parameter(description = "新状态：watching/completed/dropped", required = true)
+            @Parameter(description = "新状态：wish(想看)/watched(看过)/watching(在看)/on_hold(搁置)/dropped(抛弃)", required = true)
             @RequestParam String status) {
         Long userId = StpUtil.getLoginIdAsLong();
         AnimeFollowVO result = animeFollowService.updateFollowStatus(userId, animeId, status);

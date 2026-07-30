@@ -143,6 +143,7 @@ const error = ref(null)
 const isSummaryExpanded = ref(false)
 const isFavorited = ref(false)
 const isFollowing = ref(false)
+const followStatus = ref('watching')
 const followLoading = ref(false)
 const showResourceDialog = ref(false)
 const isSwitching = ref(false)
@@ -300,19 +301,23 @@ const checkFollowStatus = async () => {
   const token = localStorage.getItem('token')
   if (!token || !animeId.value) {
     isFollowing.value = false
+    followStatus.value = 'watching'
     return
   }
 
   try {
-    const response = await axios.get(`/api/follows/check/${animeId.value}`)
-    if (response.data?.code === 200) {
-      isFollowing.value = Boolean(response.data.data)
+    const response = await axios.get(`/api/follows/${animeId.value}`)
+    if (response.data?.code === 200 && response.data.data) {
+      isFollowing.value = true
+      followStatus.value = response.data.data.status || 'watching'
     } else {
       isFollowing.value = false
+      followStatus.value = 'watching'
     }
   } catch (e) {
     console.error('检查追番状态失败:', e)
     isFollowing.value = false
+    followStatus.value = 'watching'
   }
 }
 
@@ -651,6 +656,39 @@ const stopProgressSaveTimer = () => {
   if (progressSaveTimer) {
     clearInterval(progressSaveTimer)
     progressSaveTimer = null
+  }
+}
+
+/**
+ * 自动同步 Bangumi 剧集"已看"状态。
+ * 仅在用户已登录、已绑定 Bangumi、且当前剧集确实看完（>=85%）时触发。
+ * 失败静默，不影响用户观看体验。
+ */
+const syncEpisodeWatchedToBangumi = async () => {
+  const token = localStorage.getItem('token')
+  if (!token || !animeId.value || !episodeId.value) return
+
+  // 找到当前播放的剧集
+  const currentEp = animeData.value?.episodes?.find(
+    ep => String(ep.episodeId) === String(episodeId.value)
+  )
+  if (!currentEp?.episodeNumber) return
+
+  // 只有真正看完（>=85%）才同步，防止误触发
+  const currentTime = art.value?.currentTime || 0
+  const duration = art.value?.duration || 0
+  if (duration > 0 && currentTime / duration < 0.85) return
+
+  try {
+    await axios.post('/api/bangumi/sync/episode-watched', null, {
+      params: {
+        animeId: animeId.value,
+        episodeNumber: String(currentEp.episodeNumber)
+      }
+    })
+  } catch (e) {
+    // 静默失败 — 同步是最大努力，不应打扰用户
+    console.debug('Bangumi 剧集同步跳过:', e)
   }
 }
 
@@ -1628,6 +1666,8 @@ const createPlayerInstance = async () => {
       console.log('播放结束')
       savePlayProgress()
       stopProgressSaveTimer()
+      // 自动同步 Bangumi 剧集已看状态
+      syncEpisodeWatchedToBangumi()
     })
 
     art.value.on('error', (error) => {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
@@ -23,9 +23,19 @@ const followError = ref('')
 const followPage = ref(1)
 const followPageSize = ref(20)
 const followTotal = ref(0)
-const followStatus = ref('watching')
+const followStatus = ref('')  // 空字符串 = 显示全部，不筛选
 const followKeyword = ref('')
 const statusUpdatingAnimeId = ref(null)
+const pullingBangumi = ref(false)
+const mobileMenuAnimeId = ref(null)  // 移动端弹窗：当前打开的是哪个番剧
+
+// 确认对话框
+const confirmDialog = ref({ show: false, title: '', message: '', resolve: null })
+const showConfirm = (title, message) => {
+  return new Promise((resolve) => {
+    confirmDialog.value = { show: true, title, message, resolve }
+  })
+}
 
 const messages = ref([])
 const messagesLoading = ref(false)
@@ -73,9 +83,15 @@ const messageTypes = [
 ]
 
 const followStatuses = [
-  { label: '追番中', value: 'watching', color: 'primary' },
-  { label: '已完结', value: 'completed', color: 'success' },
-  { label: '已放弃', value: 'dropped', color: 'error' }
+  { label: '在看', value: 'watching', color: 'primary' },
+  { label: '看过', value: 'watched', color: 'success' },
+  { label: '搁置', value: 'on_hold', color: 'warning' },
+  { label: '抛弃', value: 'dropped', color: 'error' }
+]
+
+const followStatusOptions = [
+  { title: '全部', value: '' },
+  ...followStatuses.map(s => ({ title: s.label, value: s.value }))
 ]
 
 const syncTabQuery = (tab) => {
@@ -174,9 +190,8 @@ const markAllMessagesAsRead = async () => {
 }
 
 const deleteMessage = async (messageId) => {
-  if (!confirm('确定要删除这条消息吗？')) {
-    return
-  }
+  const ok = await showConfirm('删除消息', '确定要删除这条消息吗？')
+  if (!ok) return
 
   try {
     const response = await axios.delete(`/api/messages/${messageId}`)
@@ -302,7 +317,9 @@ const goToPlayer = (item) => {
 }
 
 const deleteHistoryItem = async (id) => {
-  if (!id || !confirm('确定删除这条播放历史吗？')) return
+  if (!id) return
+  const ok = await showConfirm('删除记录', '确定删除这条播放历史吗？')
+  if (!ok) return
   try {
     const response = await axios.delete(`/api/play-history/${id}`)
     if (response.data?.code === 200) {
@@ -320,7 +337,8 @@ const deleteHistoryItem = async (id) => {
 }
 
 const clearHistory = async () => {
-  if (!confirm('确定清空所有播放历史吗？该操作不可恢复。')) return
+  const ok = await showConfirm('清空历史', '确定清空所有播放历史吗？该操作不可恢复。')
+  if (!ok) return
   try {
     const response = await axios.delete('/api/play-history/clear')
     if (response.data?.code === 200) {
@@ -335,6 +353,8 @@ const clearHistory = async () => {
   }
 }
 
+const STATUS_ORDER = { watching: 1, watched: 2, on_hold: 3, dropped: 4 }
+
 const fetchFollowList = async () => {
   followLoading.value = true
   followError.value = ''
@@ -344,22 +364,28 @@ const fetchFollowList = async () => {
       pageSize: followPageSize.value
     }
 
+    // 按状态下拉框筛选（空=全部）
     const url = followStatus.value ? `/api/follows/status/${followStatus.value}` : '/api/follows'
     const response = await axios.get(url, { params })
 
     if (response.data?.code === 200) {
       if (Array.isArray(response.data.data)) {
         const keyword = followKeyword.value.trim().toLowerCase()
-        followList.value = response.data.data.filter((item) => {
+        const filtered = response.data.data.filter((item) => {
           return !keyword || String(item.animeTitle || '').toLowerCase().includes(keyword)
         })
+        // 按状态优先级排序：在看→看过→搁置→抛弃
+        filtered.sort((a, b) => (STATUS_ORDER[a.status] || 99) - (STATUS_ORDER[b.status] || 99))
+        followList.value = filtered
         followTotal.value = followList.value.length
       } else {
         const rawList = response.data.data?.content || []
         const keyword = followKeyword.value.trim().toLowerCase()
-        followList.value = rawList.filter((item) => {
+        const filtered = rawList.filter((item) => {
           return !keyword || String(item.animeTitle || '').toLowerCase().includes(keyword)
         })
+        filtered.sort((a, b) => (STATUS_ORDER[a.status] || 99) - (STATUS_ORDER[b.status] || 99))
+        followList.value = filtered
         followTotal.value = response.data.data?.totalElements || 0
       }
     } else {
@@ -378,18 +404,17 @@ const goToAnime = (animeId) => {
 }
 
 const statusLabel = (status) => {
-  const map = { watching: '追番中', completed: '已完成', dropped: '已放弃' }
+  const map = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
   return map[status] || status
 }
 
 const statusChipColor = (status) => {
-  const map = { watching: 'primary', completed: 'success', dropped: 'error' }
+  const map = { watching: 'primary', watched: 'success', on_hold: 'warning', dropped: 'error' }
   return map[status] || 'grey'
 }
 
-const getFollowTransitionStatuses = (currentStatus) => {
-  return followStatuses.filter((status) => status.value !== currentStatus)
-}
+const CASCADE_COLORS = { watching: '#ff9800', watched: '#4caf50', on_hold: '#ffc107', dropped: '#ef5350' }
+const cascadeColor = (s) => CASCADE_COLORS[s] || '#999'
 
 const changeFollowStatus = async (animeId, status) => {
   const currentFollow = followList.value.find((item) => item.animeId === animeId)
@@ -414,7 +439,8 @@ const changeFollowStatus = async (animeId, status) => {
 }
 
 const unfollow = async (animeId, animeTitle) => {
-  if (!confirm(`确定要取消追番《${animeTitle}》吗？`)) return
+  const ok = await showConfirm('取消追番', `确定要取消追番《${animeTitle}》吗？`)
+  if (!ok) return
   try {
     const response = await axios.delete(`/api/follows/${animeId}`)
     if (response.data?.code === 200) {
@@ -425,6 +451,29 @@ const unfollow = async (animeId, animeTitle) => {
   } catch (err) {
     console.error('取消追番失败:', err)
     showAppMessage('取消追番失败', 'error')
+  }
+}
+
+const pullBangumiCollections = async () => {
+  const ok = await showConfirm('拉取 Bangumi 追番',
+    '将从 Bangumi 拉取你的所有动画收藏并同步到本地追番列表。以 Bangumi 数据为准，同名番剧的状态将被覆盖。是否继续？')
+  if (!ok) return
+  pullingBangumi.value = true
+  try {
+    const res = await axios.post('/api/bangumi/sync/pull-collections')
+    if (res.data?.code === 200 && res.data?.data) {
+      const d = res.data.data
+      const msg = `同步完成：共 ${d.total} 条，新增 ${d.created} 条，更新 ${d.updated} 条，跳过 ${d.skipped} 条`
+      showAppMessage(msg, 'success')
+      await fetchFollowList()
+    } else {
+      showAppMessage(res.data?.msg || '拉取失败', 'error')
+    }
+  } catch (err) {
+    console.error('拉取 Bangumi 追番失败:', err)
+    showAppMessage('拉取 Bangumi 追番失败', 'error')
+  } finally {
+    pullingBangumi.value = false
   }
 }
 
@@ -546,7 +595,11 @@ const getProgressText = (item) => {
   return `${progress}s / ${duration}s (${Math.min(100, Math.max(0, percent))}%)`
 }
 
+const closeMobilePopup = () => { mobileMenuAnimeId.value = null }
 onMounted(async () => {
+  document.addEventListener('click', closeMobilePopup)
+  // Bangumi 状态始终拉取（追番页需要知道是否已绑定）
+  fetchBangumiStatus()
   if (activeTab.value === 'history') {
     await fetchPlayHistory()
   } else if (activeTab.value === 'follows') {
@@ -555,10 +608,9 @@ onMounted(async () => {
     await fetchDanmakuRecords()
   } else if (activeTab.value === 'messages') {
     await fetchMessages()
-  } else {
-    await fetchBangumiStatus()
   }
 })
+onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
 </script>
 
 <template>
@@ -629,21 +681,8 @@ onMounted(async () => {
                 <div class="profile-section-body">
               <v-alert v-if="followError" type="error" variant="tonal" class="mb-4">{{ followError }}</v-alert>
 
-              <div class="mb-4 d-flex flex-wrap gap-2">
-                <v-btn
-                  v-for="status in followStatuses"
-                  :key="status.value"
-                  :variant="followStatus === status.value ? 'flat' : 'tonal'"
-                  :color="followStatus === status.value ? status.color : 'grey'"
-                  size="small"
-                  rounded="pill"
-                  @click="followStatus = status.value; followPage = 1; fetchFollowList()"
-                >
-                  {{ status.label }}
-                </v-btn>
-              </div>
-
-              <div class="d-flex gap-2 mb-6">
+              <!-- 搜索 + 筛选 -->
+              <div class="follow-search-row">
                 <v-text-field
                   v-model="followKeyword"
                   placeholder="搜索番剧标题..."
@@ -651,45 +690,119 @@ onMounted(async () => {
                   variant="outlined"
                   hide-details
                   @keyup.enter="followPage = 1; fetchFollowList()"
+                >
+                  <template #prepend-inner>
+                    <i class="mdi mdi-magnify"></i>
+                  </template>
+                </v-text-field>
+                <v-select
+                  v-model="followStatus"
+                  :items="followStatusOptions"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  style="max-width: 110px;"
+                  @update:model-value="followPage = 1; fetchFollowList()"
                 />
-                <v-btn color="primary" @click="followPage = 1; fetchFollowList()">搜索</v-btn>
+                <v-btn color="primary" variant="tonal" @click="followPage = 1; fetchFollowList()">搜索</v-btn>
+                <v-btn
+                  v-if="bangumiStatus.bound"
+                  color="orange"
+                  variant="outlined"
+                  :loading="pullingBangumi"
+                  @click="pullBangumiCollections"
+                >
+                  <i class="mdi mdi-cloud-download mr-1"></i>拉取 Bangumi
+                </v-btn>
               </div>
 
-              <v-skeleton-loader v-if="followLoading" type="list-item-avatar-three-line@3" />
+              <v-skeleton-loader v-if="followLoading" type="card@3" />
 
-              <div v-else-if="followList.length > 0" class="follow-list">
-                <v-card v-for="follow in followList" :key="follow.id" class="mb-3" elevation="1">
-                  <div class="follow-row">
-                    <div>
-                      <h3 class="follow-title" @click="goToAnime(follow.animeId)">{{ follow.animeTitle }}</h3>
-                      <div class="mb-2">
-                        <v-chip :color="statusChipColor(follow.status)" size="small" variant="tonal">
-                          {{ statusLabel(follow.status) }}
-                        </v-chip>
-                      </div>
-                      <div class="follow-meta">追番时间: {{ formatDate(follow.followAt) }}</div>
-                      <div class="follow-meta">更新时间: {{ formatDate(follow.updatedAt) }}</div>
-                    </div>
-                    <div class="follow-actions">
-                      <v-btn color="primary" size="small" @click="goToAnime(follow.animeId)">查看详情</v-btn>
-                      <v-btn
-                        v-for="targetStatus in getFollowTransitionStatuses(follow.status)"
-                        :key="`${follow.id}-${targetStatus.value}`"
-                        size="small"
-                        variant="outlined"
-                        :color="targetStatus.color"
-                        :disabled="statusUpdatingAnimeId === follow.animeId"
-                        @click="changeFollowStatus(follow.animeId, targetStatus.value)"
+              <!-- 追番卡片列表 -->
+              <div v-else-if="followList.length > 0" class="follow-cards">
+                <v-card
+                  v-for="follow in followList"
+                  :key="follow.id"
+                  class="follow-cover-card"
+                  elevation="1"
+                  hover
+                  @click="goToAnime(follow.animeId)"
+                >
+                  <div class="follow-cover-inner">
+                    <!-- 封面 -->
+                    <div class="follow-cover-poster">
+                      <v-img
+                        v-if="follow.imageUrl"
+                        :src="follow.imageUrl"
+                        :alt="follow.animeTitle"
+                        cover
+                        class="follow-cover-img"
                       >
-                        标记{{ targetStatus.label }}
-                      </v-btn>
-                      <v-btn size="small" variant="outlined" color="error" @click="unfollow(follow.animeId, follow.animeTitle)">取消追番</v-btn>
+                        <template #placeholder>
+                          <v-skeleton-loader type="image" />
+                        </template>
+                      </v-img>
+                      <div v-else class="follow-cover-placeholder">
+                        <i class="mdi mdi-image-outline"></i>
+                      </div>
+                      <!-- 状态 Tag -->
+                      <v-chip
+                        class="follow-cover-tag"
+                        :color="statusChipColor(follow.status)"
+                        size="x-small"
+                        variant="elevated"
+                      >
+                        {{ statusLabel(follow.status) }}
+                      </v-chip>
+                    </div>
+                    <!-- 信息 -->
+                    <div class="follow-cover-info">
+                      <h3 class="follow-cover-title">{{ follow.animeTitle }}</h3>
+                      <div class="follow-cover-date">追番 {{ formatDate(follow.followAt) }}</div>
+                      <!-- 桌面端：级联按钮组 -->
+                      <div class="status-cascade status-cascade-desktop" @click.stop>
+                        <button
+                          v-for="s in followStatuses"
+                          :key="s.value"
+                          class="status-cascade-btn"
+                          :class="{ active: follow.status === s.value }"
+                          :style="{ '--cascade-color': cascadeColor(s.value) }"
+                          :disabled="statusUpdatingAnimeId === follow.animeId"
+                          :title="'标记为: ' + s.label"
+                          @click="changeFollowStatus(follow.animeId, s.value)"
+                        >{{ s.label }}</button>
+                      </div>
+                      <!-- 移动端：标记按钮 + 弹出选择 -->
+                      <div class="status-cascade-mobile" @click.stop>
+                        <button
+                          class="mobile-mark-btn"
+                          @click="mobileMenuAnimeId = (mobileMenuAnimeId === follow.animeId ? null : follow.animeId)"
+                        >
+                          <i class="mdi mdi-tag-outline"></i> 标记
+                        </button>
+                        <div v-if="mobileMenuAnimeId === follow.animeId" class="mobile-status-popup">
+                          <button
+                            v-for="s in followStatuses"
+                            :key="s.value"
+                            class="mobile-status-item"
+                            :class="{ active: follow.status === s.value }"
+                            @click="changeFollowStatus(follow.animeId, s.value); mobileMenuAnimeId = null"
+                          >
+                            <span class="mobile-status-dot" :style="{ background: cascadeColor(s.value) }"></span>
+                            {{ s.label }}
+                            <i v-if="follow.status === s.value" class="mdi mdi-check"></i>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </v-card>
               </div>
 
-              <v-alert v-else type="info" variant="tonal" class="text-center">暂无追番记录</v-alert>
+              <v-alert v-else type="info" variant="tonal" class="text-center">
+                <div class="text-h6 mb-2">还没有追番哦</div>
+                <div>快去首页发现喜欢的番剧吧！</div>
+              </v-alert>
 
               <div v-if="followTotalPages > 1" class="d-flex justify-center mt-6">
                 <v-pagination v-model="followPage" :length="followTotalPages" @update:model-value="fetchFollowList" />
@@ -789,63 +902,46 @@ onMounted(async () => {
                     class="mb-3"
                   />
 
-                  <div v-else-if="messages.length > 0">
-                    <v-card
+                  <div v-else-if="messages.length > 0" class="message-list">
+                    <div
                       v-for="message in messages"
                       :key="message.id"
-                      class="mb-3 message-card"
-                      :class="{ 'unread-message': !message.isRead }"
-                      elevation="1"
-                      hover
+                      class="message-item"
+                      :class="{ 'message-unread': !message.isRead }"
                       @click="selectMessage(message)"
                     >
-                      <div class="pa-4">
-                        <div class="d-flex align-start">
-                          <div class="mr-3 mt-1">
-                            <v-avatar
-                              :color="message.isRead ? 'grey-lighten-2' : 'primary'"
-                              size="8"
-                            />
+                      <div class="message-item-inner">
+                        <div class="message-dot" :class="{ 'dot-unread': !message.isRead }"></div>
+                        <div class="message-body">
+                          <div class="message-header">
+                            <v-chip
+                              :color="typeChipColor(message.type)"
+                              size="x-small"
+                              variant="tonal"
+                              class="mr-2 message-type-chip"
+                            >
+                              {{ typeLabel(message.type) }}
+                            </v-chip>
+                            <span class="message-title">{{ message.title }}</span>
                           </div>
-
-                          <div class="flex-grow-1">
-                            <div class="d-flex align-center mb-2">
-                              <v-chip
-                                :color="typeChipColor(message.type)"
-                                size="x-small"
-                                variant="tonal"
-                                class="mr-2"
-                              >
-                                {{ typeLabel(message.type) }}
-                              </v-chip>
-                              <h3 class="message-title">{{ message.title }}</h3>
-                            </div>
-
-                            <p class="message-content text-grey-darken-1 mb-2">
-                              {{ message.content }}
-                            </p>
-
-                            <div class="d-flex align-center gap-3">
-                              <v-chip
-                                v-if="message.animeTitle"
-                                size="x-small"
-                                variant="outlined"
-                                color="primary"
-                                @click.stop="goToAnime(message.animeId)"
-                              >
-                                {{ message.animeTitle }}
-                              </v-chip>
-                              <span class="text-caption text-grey">
-                                {{ formatDateTime(message.createdAt) }}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div class="ml-3">
+                          <p class="message-content">{{ message.content }}</p>
+                          <div class="message-footer">
+                            <v-chip
+                              v-if="message.animeTitle"
+                              size="x-small"
+                              variant="outlined"
+                              color="primary"
+                              class="message-anime-chip"
+                              @click.stop="goToAnime(message.animeId)"
+                            >
+                              {{ message.animeTitle }}
+                            </v-chip>
+                            <span class="message-time">{{ formatDateTime(message.createdAt) }}</span>
                             <v-btn
                               icon
-                              size="small"
+                              size="x-small"
                               variant="text"
+                              class="message-delete-btn"
                               @click.stop="deleteMessage(message.id)"
                             >
                               <i class="mdi mdi-delete-outline"></i>
@@ -853,7 +949,7 @@ onMounted(async () => {
                           </div>
                         </div>
                       </div>
-                    </v-card>
+                    </div>
                   </div>
 
                   <v-alert v-else type="info" variant="tonal" class="text-center">
@@ -994,12 +1090,27 @@ onMounted(async () => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- 通用确认对话框 -->
+    <v-dialog v-model="confirmDialog.show" max-width="420" persistent>
+      <v-card>
+        <v-card-title class="text-h6">{{ confirmDialog.title }}</v-card-title>
+        <v-card-text class="pt-2" style="white-space: pre-line;">{{ confirmDialog.message }}</v-card-text>
+        <v-card-actions class="d-flex justify-end gap-2 pa-4">
+          <v-btn variant="outlined" @click="confirmDialog.resolve(false); confirmDialog.show = false">取消</v-btn>
+          <v-btn color="primary" @click="confirmDialog.resolve(true); confirmDialog.show = false">确认</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <style scoped>
-.profile-page { padding: 0; min-height: calc(100vh - 140px); }
-.profile-page-card { border-radius: 16px; min-height: calc(100vh - 140px); display: flex; flex-direction: column; }
+.profile-page { padding: 0; min-height: calc(100vh - 140px); overflow-x: clip; }
+.profile-page :deep(.v-card-text) { overflow-x: clip; }
+.profile-page-card { border-radius: 16px; min-height: calc(100vh - 140px); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.profile-page-card :deep(.v-card-text) { min-width: 0; overflow: hidden; }
+.profile-container { min-width: 0; }
 .profile-container { padding: 0; }
 .profile-shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
 .profile-sidebar { display: grid; gap: 10px; position: sticky; top: 88px; }
@@ -1017,20 +1128,307 @@ onMounted(async () => {
 .follow-row { padding: 14px; display: flex; justify-content: space-between; gap: 14px; }
 .follow-title { margin: 0 0 8px; color: #2f2b28; cursor: pointer; }
 .follow-meta { color: #6b5f55; font-size: 0.86rem; }
-.follow-actions { display: flex; gap: 8px; align-items: flex-start; }
-.message-card { transition: all 0.25s ease; cursor: pointer; }
-.message-card:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important; }
-.unread-message { border-left: 4px solid #4b7bec; background-color: #f7fbff; }
-.message-title { font-size: 1rem; font-weight: 600; color: #2f2b28; line-height: 1.4; }
-.message-content {
-  font-size: 0.9rem;
-  line-height: 1.6;
-  display: -webkit-box;
-  line-clamp: 2;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+
+/* ===== 追番卡片列表 ===== */
+.follow-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
 }
+
+.follow-cover-card {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.follow-cover-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14) !important;
+}
+
+.follow-cover-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.follow-cover-poster {
+  position: relative;
+  aspect-ratio: 2/3;
+  overflow: hidden;
+  background: #f0ebe4;
+}
+
+.follow-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.follow-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e8e2da, #d5cec4);
+  color: #a39386;
+  font-size: 2.5rem;
+}
+
+.follow-cover-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.follow-cover-info {
+  padding: 12px 14px 14px;
+}
+
+.follow-cover-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2e241e;
+  line-height: 1.3;
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.follow-cover-date {
+  font-size: 0.75rem;
+  color: #a39386;
+  margin-bottom: 10px;
+}
+
+/* ===== 级联状态按钮组 ===== */
+.status-cascade {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e0d8cf;
+}
+
+.status-cascade-btn {
+  flex: 1;
+  border: none;
+  background: #faf7f3;
+  padding: 6px 0;
+  font-size: 0.7rem;
+  color: #8b7e74;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, font-weight 0.15s;
+  border-right: 1px solid #e0d8cf;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.status-cascade-btn:last-child {
+  border-right: none;
+}
+
+.status-cascade-btn:hover {
+  background: #f0e8dc;
+  color: #5f5148;
+}
+
+.status-cascade-btn.active {
+  background: var(--cascade-color, #ff9800);
+  color: #fff;
+  font-weight: 700;
+}
+
+.status-cascade-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== 搜索行 ===== */
+.follow-search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  align-items: center;
+}
+.follow-search-row > .v-text-field { flex: 1; min-width: 0; }
+.follow-search-row > .v-select { flex: 0 0 110px; }
+.follow-search-row > .v-btn { flex-shrink: 0; white-space: nowrap; }
+
+/* ===== 移动端标记按钮（默认隐藏） ===== */
+.status-cascade-mobile { display: none; }
+
+.mobile-mark-btn {
+  width: 100%;
+  border: 1px solid #e0d8cf;
+  border-radius: 8px;
+  background: #faf7f3;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+  color: #6b5f55;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.mobile-mark-btn:hover { background: #f0e8dc; }
+
+.mobile-status-popup {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.18);
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mobile-status-item {
+  flex: 1 1 calc(50% - 4px);
+  min-width: calc(50% - 4px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: #faf7f3;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #5f5148;
+  cursor: pointer;
+  text-align: left;
+}
+.mobile-status-item:hover { background: #f0e8dc; }
+.mobile-status-item.active { background: #fef9f5; color: #c45d2b; font-weight: 600; }
+
+.mobile-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mobile-status-item .mdi-check {
+  margin-left: auto;
+  color: #c45d2b;
+  font-size: 0.9rem;
+}
+.follow-actions { display: flex; gap: 8px; align-items: flex-start; }
+.profile-section-body { min-width: 0; overflow: clip; }
+
+/* ===== 消息列表（纯div，不再依赖 v-card） ===== */
+.message-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; overflow: clip; }
+
+.message-item {
+  border: 1px solid #e7ddd3;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+  min-width: 0;
+  overflow: hidden;
+  contain: layout style;
+  width: 100%;
+}
+.message-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.message-item.message-unread { border-left: 4px solid #4b7bec; background: #f7fbff; }
+
+.message-item-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.message-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d0d0d0;
+  margin-top: 6px;
+}
+.dot-unread { background: #4b7bec; }
+
+.message-body {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: clip;
+  contain: layout style;
+}
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.message-type-chip { flex-shrink: 0; }
+
+.message-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2f2b28;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.message-content {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #555;
+  margin: 0 0 8px;
+  max-height: calc(2 * 1.55em);
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.message-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.message-anime-chip {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 200px;
+}
+.message-anime-chip :deep(.v-chip__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.message-time {
+  font-size: 0.72rem;
+  color: #999;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.message-delete-btn { flex-shrink: 0; margin-left: auto; }
 .message-detail-content {
   font-size: 0.95rem;
   line-height: 1.8;
@@ -1043,13 +1441,32 @@ onMounted(async () => {
 .bangumi-user-name { font-size: 1rem; font-weight: 700; color: #2f2b28; }
 .bangumi-user-meta { color: #6b5f55; font-size: 0.88rem; line-height: 1.5; }
 @media (max-width: 960px) {
-  .profile-shell { grid-template-columns: 1fr; }
-  .profile-sidebar { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .profile-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  .profile-sidebar { position: static; display: flex; flex-wrap: wrap; gap: 8px; }
+  .profile-sidebar .profile-tab-btn { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+}
+@media (max-width: 500px) {
+  .profile-sidebar .profile-tab-btn { font-size: 0.82rem; padding: 10px 12px; }
 }
 @media (max-width: 760px) {
-  .history-main-card, .follow-row { flex-direction: column; align-items: stretch; }
+  .history-main-card { flex-direction: column; align-items: stretch; }
+  .follow-cards { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
   .history-actions, .follow-actions, .profile-sidebar, .integration-actions { width: 100%; }
   .history-actions :deep(.v-btn), .follow-actions :deep(.v-btn), .integration-actions :deep(.v-btn) { flex: 1; }
+
+  /* 搜索行移动端换行 */
+  .follow-search-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .follow-search-row > .v-text-field { flex: 1 1 100%; }
+  .follow-search-row > .v-select { flex: 0 0 100px; min-width: 100px; }
+  .follow-search-row > .v-select :deep(.v-field__input) { min-width: 80px; }
+  .follow-search-row > .v-btn { flex: 1; min-width: 0; font-size: 0.82rem; }
+
+  /* 级联按钮组：桌面端隐藏，移动端显示弹出式 */
+  .status-cascade-desktop { display: none; }
+  .status-cascade-mobile { display: block; position: relative; }
 }
 
 @media (max-width: 600px) {
@@ -1058,4 +1475,14 @@ onMounted(async () => {
     min-height: calc(100vh - 110px);
   }
 }
+</style>
+
+<style>
+/* 消息卡片宽度收敛 — 非 scoped，contain 创建隔离边界 */
+.profile-container,
+.profile-container .v-container,
+.message-list,
+.message-item,
+.message-item-inner,
+.message-body { min-width: 0 !important; max-width: 100% !important; overflow: clip !important; contain: layout style !important; }
 </style>

@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 25-follow-status-rename-completed-to-watched
+      author: anilink
+      changes:
+        - update:
+            tableName: anime_follow
+            columns:
+              - column:
+                  name: status
+                  value: watched
+            where: status = 'completed'

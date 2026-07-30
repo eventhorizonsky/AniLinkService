@@ -39,7 +39,8 @@ public class AnimeFollow {
     private String imageUrl;
     
     /**
-     * 追番状态：watching(追番中)、completed(已完成)、dropped(已放弃)
+     * 追番状态，与 Bangumi 收藏类型对齐：
+     * wish(想看/1)、watched(看过/2)、watching(在看/3)、on_hold(搁置/4)、dropped(抛弃/5)
      */
     @Column(name = "status", nullable = false, length = 20)
     private String status = "watching";

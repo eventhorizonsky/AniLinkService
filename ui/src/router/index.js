@@ -33,6 +33,12 @@ const routes = [
         component: () => import('../views/AnimeDetail.vue')
       },
       {
+        path: 'anime/bgm/:subjectId',
+        name: 'AnimeDetailBgm',
+        component: () => import('../views/AnimeDetail.vue'),
+        props: { bgmMode: true }
+      },
+      {
         path: 'play/:videoId',
         name: 'Player',
         component: () => import('../views/Player.vue')

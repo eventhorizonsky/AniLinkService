@@ -6,6 +6,9 @@ import axios from 'axios'
 const router = useRouter()
 const API_BASE = '/api'
 
+const STATUS_LABEL_MAP = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
+const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
+
 // ===================== Follow List =====================
 const followList = ref([])
 const followLoading = ref(false)
@@ -141,7 +144,7 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
                 <div class="card-info">
                   <p class="card-title" :title="a.animeTitle">{{ a.animeTitle }}</p>
                   <span class="card-meta" :class="a.status === 'watching' ? 'meta-active' : 'meta-done'">
-                    {{ a.status === 'watching' ? '追番中' : a.status === 'completed' ? '已完成' : '已弃' }}
+                    {{ statusLabel(a.status) }}
                   </span>
                 </div>
               </router-link>

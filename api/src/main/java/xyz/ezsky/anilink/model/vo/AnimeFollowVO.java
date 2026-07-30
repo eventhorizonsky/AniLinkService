@@ -27,7 +27,7 @@ public class AnimeFollowVO {
     private String imageUrl;
     
     /**
-     * 追番状态：watching(追番中)、completed(已完成)、dropped(已放弃)
+     * 追番状态：wish(想看)/watched(看过)/watching(在看)/on_hold(搁置)/dropped(抛弃)
      */
     private String status;
     

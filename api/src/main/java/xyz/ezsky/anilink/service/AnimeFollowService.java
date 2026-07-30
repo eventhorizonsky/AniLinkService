@@ -29,6 +29,9 @@ public class AnimeFollowService {
     
     @Autowired
     private AnimeFollowRepository animeFollowRepository;
+
+    @Autowired
+    private BangumiSyncService bangumiSyncService;
     
     /**
      * 添加追番
@@ -58,6 +61,9 @@ public class AnimeFollowService {
         
         AnimeFollow saved = animeFollowRepository.save(follow);
         log.info("User {} followed anime {}", userId, dto.getAnimeId());
+        // 异步同步到 Bangumi
+        bangumiSyncService.syncFollowStatusToBangumi(userId, dto.getAnimeId(),
+                dto.getStatus() != null ? dto.getStatus() : "watching");
         return convertToVO(saved);
     }
     
@@ -139,6 +145,8 @@ public class AnimeFollowService {
             entity.setStatus(status);
             entity.setUpdatedAt(LocalDateTime.now());
             AnimeFollow saved = animeFollowRepository.save(entity);
+            // 异步同步到 Bangumi
+            bangumiSyncService.syncFollowStatusToBangumi(userId, animeId, status);
             return convertToVO(saved);
         }
         return null;

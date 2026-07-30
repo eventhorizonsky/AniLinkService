@@ -28,6 +28,9 @@ public class Anime {
     @Column(name = "image_url", length = 1000)
     private String imageUrl;
 
+    @Column(name = "bangumi_subject_id")
+    private Long bangumiSubjectId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 

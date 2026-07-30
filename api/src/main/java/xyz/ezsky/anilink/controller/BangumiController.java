@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.Map;
+
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,7 @@ import xyz.ezsky.anilink.model.entity.User;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.model.vo.BangumiBindingStatusVO;
 import xyz.ezsky.anilink.service.BangumiApiService;
+import xyz.ezsky.anilink.service.BangumiSyncService;
 import xyz.ezsky.anilink.service.UserService;
 
 /**
@@ -36,6 +39,9 @@ public class BangumiController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private BangumiSyncService bangumiSyncService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -250,6 +256,31 @@ public class BangumiController {
         }
 
         return ApiResponseVO.success("ok", "已同步到 Bangumi");
+    }
+
+    @SaCheckLogin
+    @PostMapping("/sync/episode-watched")
+    @Operation(summary = "同步单集已看状态到 Bangumi", description = "将当前用户已看完的剧集标记为 Bangumi '看过'。异步执行，即发即忘。")
+    public ApiResponseVO<String> syncEpisodeWatched(
+            @Parameter(description = "本地番剧 ID（弹弹 animeId）", required = true)
+            @RequestParam Long animeId,
+            @Parameter(description = "集数（如 \"5\"）", required = true)
+            @RequestParam String episodeNumber) {
+        Long userId = Long.valueOf(StpUtil.getLoginId().toString());
+        bangumiSyncService.syncEpisodeWatchedToBangumi(userId, animeId, episodeNumber);
+        return ApiResponseVO.success("ok");
+    }
+
+    @SaCheckLogin
+    @PostMapping("/sync/pull-collections")
+    @Operation(summary = "从 Bangumi 拉取追番数据", description = "拉取当前绑定 Bangumi 账号的所有动画收藏，同步到本地追番列表。以 Bangumi 数据为准。")
+    public ApiResponseVO<Map<String, Object>> pullBangumiCollections() {
+        Long userId = Long.valueOf(StpUtil.getLoginId().toString());
+        Map<String, Object> result = bangumiSyncService.pullBangumiCollections(userId);
+        if (Boolean.FALSE.equals(result.get("success"))) {
+            return ApiResponseVO.fail(400, String.valueOf(result.getOrDefault("message", "同步失败")));
+        }
+        return ApiResponseVO.success(result);
     }
 
     private User getCurrentUser() {

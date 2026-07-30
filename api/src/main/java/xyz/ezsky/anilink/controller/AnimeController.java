@@ -150,4 +150,21 @@ public class AnimeController {
             return ApiResponseVO.fail(500, "新番原始JSON数据解析失败");
         }
     }
+
+    @Operation(summary = "通过 Bangumi subjectId 获取番剧原始JSON", description = "代理弹弹 /api/v2/bangumi/bgmtv/{subjectId}")
+    @GetMapping("/bangumi/{subjectId}/raw-json")
+    public ApiResponseVO<Object> getRawJsonByBangumiSubjectId(
+            @Parameter(description = "Bangumi subject ID", required = true)
+            @PathVariable Long subjectId) {
+        String rawJson = animeService.getRawJsonByBangumiSubjectId(subjectId);
+        if (rawJson == null) {
+            return ApiResponseVO.fail(404, "未找到对应番剧数据");
+        }
+        try {
+            Object json = new ObjectMapper().readValue(rawJson, Object.class);
+            return ApiResponseVO.success(json);
+        } catch (JsonProcessingException e) {
+            return ApiResponseVO.fail(500, "番剧数据解析失败");
+        }
+    }
 }

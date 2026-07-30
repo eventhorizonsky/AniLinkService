@@ -54,6 +54,12 @@ databaseChangeLog:
   - include:
       file: common/db.changelog-v18-danmaku-records.yaml
       relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-v19-bangumi-subject-id.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: common/db.changelog-v20-follow-status-alignment.yaml
+      relativeToChangelogFile: true
   # Database-specific changelogs
   - include:
       file: h2/db.changelog-h2-init.yaml

@@ -8,6 +8,11 @@ const followList = ref([])
 const loading = ref(false)
 const error = ref('')
 
+const STATUS_LABEL_MAP = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
+const STATUS_COLOR_MAP = { watching: 'primary', watched: 'success', on_hold: 'warning', dropped: 'error' }
+const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
+const statusColor = (s) => STATUS_COLOR_MAP[s] || 'grey'
+
 const emit = defineEmits(['select-anime'])
 const props = defineProps({
   isLoggedIn: {
@@ -121,10 +126,10 @@ onMounted(() => {
                 v-if="anime.status"
                 size="x-small"
                 variant="tonal"
-                :color="anime.status === 'watching' ? 'primary' : (anime.status === 'completed' ? 'success' : 'grey')"
+                :color="statusColor(anime.status)"
                 class="status-chip"
               >
-                {{ anime.status === 'watching' ? '追番中' : (anime.status === 'completed' ? '已完成' : '已放弃') }}
+                {{ statusLabel(anime.status) }}
               </v-chip>
             </div>
             <div class="meta-row">

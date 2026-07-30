@@ -523,7 +523,7 @@ public class AniLinkMcpToolsFactory {
                         "animeId":{"type":"integer"},
                         "animeTitle":{"type":"string"},
                         "imageUrl":{"type":"string"},
-                        "status":{"type":"string","description":"watching/completed/dropped"},
+                        "status":{"type":"string","description":"wish/watched/watching/on_hold/dropped"},
                         "tags":{"type":"string"}
                         }}
                         """))
@@ -574,7 +574,7 @@ public class AniLinkMcpToolsFactory {
                         """
                         {"type":"object","required":["animeId","status"],"properties":{
                         "animeId":{"type":"integer"},
-                        "status":{"type":"string","description":"watching/completed/dropped"}
+                        "status":{"type":"string","description":"wish/watched/watching/on_hold/dropped"}
                         }}
                         """))
                 .callHandler((ex, req) -> {

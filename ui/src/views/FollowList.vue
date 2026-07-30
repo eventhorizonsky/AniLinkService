@@ -14,9 +14,10 @@ const searchKeyword = ref('')
 const error = ref('')
 
 const statuses = [
-  { label: '追番中', value: 'watching', color: 'primary' },
-  { label: '已完成', value: 'completed', color: 'success' },
-  { label: '已放弃', value: 'dropped', color: 'error' }
+  { label: '在看', value: 'watching', color: 'primary' },
+  { label: '看过', value: 'watched', color: 'success' },
+  { label: '搁置', value: 'on_hold', color: 'warning' },
+  { label: '抛弃', value: 'dropped', color: 'error' }
 ]
 
 const statusLabel = (status) => {

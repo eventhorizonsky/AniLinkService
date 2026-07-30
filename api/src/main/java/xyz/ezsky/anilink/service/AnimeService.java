@@ -26,6 +26,8 @@ import lombok.extern.log4j.Log4j2;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -160,6 +162,8 @@ public class AnimeService {
             String type = readTextField(data, "type", null);
             String typeDesc = readTextField(data, "typeDescription", null);
             String imageUrl = readTextField(data, "imageUrl", null);
+            String bangumiUrl = readTextField(data, "bangumiUrl", null);
+            Long bangumiSubjectId = extractBangumiSubjectId(bangumiUrl);
 
             // 优先用 typeDescription（更可读），没有则用 type
             String resolvedType = (typeDesc != null && !typeDesc.isBlank()) ? typeDesc : type;
@@ -176,11 +180,15 @@ public class AnimeService {
                             existing.setImageUrl(imageUrl);
                             changed = true;
                         }
+                        if (existing.getBangumiSubjectId() == null && bangumiSubjectId != null) {
+                            existing.setBangumiSubjectId(bangumiSubjectId);
+                            changed = true;
+                        }
                         if (changed) {
                             existing.setUpdatedAt(LocalDateTime.now());
                             animeRepository.save(existing);
-                            log.info("Enriched existing anime record: animeId={}, type={}, imageUrl={}",
-                                    animeId, resolvedType, imageUrl);
+                            log.info("Enriched existing anime record: animeId={}, type={}, imageUrl={}, bangumiSubjectId={}",
+                                    animeId, resolvedType, imageUrl, bangumiSubjectId);
                         }
                     },
                     () -> {
@@ -190,6 +198,7 @@ public class AnimeService {
                         anime.setTitle(title);
                         anime.setType(resolvedType);
                         anime.setImageUrl(imageUrl);
+                        anime.setBangumiSubjectId(bangumiSubjectId);
                         saveAnimeSafely(anime, "upsertAnimeFromRawJson", animeId);
                     }
             );
@@ -207,6 +216,30 @@ public class AnimeService {
             }
         }
         return defaultValue;
+    }
+
+    private static final Pattern BANGUMI_SUBJECT_ID_PATTERN = Pattern.compile("/subject/(\\d+)");
+
+    /**
+     * 从 Bangumi URL 中提取 subject ID。
+     * 例如: "https://bgm.tv/subject/12345" → 12345L
+     *
+     * @param bangumiUrl Bangumi 条目 URL，可能为 null
+     * @return subject ID，无法提取时返回 null
+     */
+    private Long extractBangumiSubjectId(String bangumiUrl) {
+        if (bangumiUrl == null || bangumiUrl.isBlank()) {
+            return null;
+        }
+        Matcher matcher = BANGUMI_SUBJECT_ID_PATTERN.matcher(bangumiUrl);
+        if (matcher.find()) {
+            try {
+                return Long.parseLong(matcher.group(1));
+            } catch (NumberFormatException e) {
+                log.warn("Failed to parse Bangumi subject ID from URL: {}", bangumiUrl);
+            }
+        }
+        return null;
     }
 
     /**
@@ -342,6 +375,76 @@ public class AnimeService {
 
         // 路径 D：完全无数据，从媒体库兜底基本信息
         tryCreateAnimeFromMediaFiles(animeId);
+        return null;
+    }
+
+    /**
+     * 通过 Bangumi subjectId 获取番剧 raw JSON。
+     * 调用 Dandan 的 /api/v2/bangumi/bgmtv/{subjectId} 接口，
+     * 返回结构与普通 animeId 接口相同。
+     *
+     * @param subjectId Bangumi subject ID
+     * @return 原始 JSON 字符串，找不到对应番剧时返回 null
+     */
+    public String getRawJsonByBangumiSubjectId(Long subjectId) {
+        String cacheKey = "dandan:bgmtv:" + subjectId;
+        LocalDateTime now = LocalDateTime.now();
+
+        // 检查缓存
+        Optional<ApiCache> validCache = apiCacheRepository.findByCacheKeyAndExpireTimeAfter(cacheKey, now);
+        String validValue = extractUsableJsonCacheValue(validCache, cacheKey);
+        if (validValue != null) {
+            // 从响应中提取 animeId 并补建/更新
+            Long animeId = extractAnimeIdFromBangumiResponse(validValue);
+            if (animeId != null) {
+                upsertAnimeFromRawJson(animeId, validValue);
+            }
+            return validValue;
+        }
+
+        String path = "/api/v2/bangumi/bgmtv/" + subjectId;
+        try {
+            ResponseEntity<String> response = dandanClientUtil.get(siteConfigService.getDandanBaseUrl(), path);
+            String responseBody = response.getBody();
+            if (response.getStatusCode().is2xxSuccessful() && StringUtils.hasText(responseBody)) {
+                upsertCache(cacheKey, responseBody, now.plusMinutes(BANGUMI_CACHE_TTL_MINUTES));
+                Long animeId = extractAnimeIdFromBangumiResponse(responseBody);
+                if (animeId != null) {
+                    upsertAnimeFromRawJson(animeId, responseBody);
+                }
+                return responseBody;
+            }
+            log.warn("Dandan bgmtv request returned non-success for subjectId={}, status={}",
+                    subjectId, response.getStatusCode());
+        } catch (Exception ex) {
+            log.error("Dandan bgmtv request failed for subjectId={}", subjectId, ex);
+        }
+
+        // 过期缓存兜底
+        Optional<ApiCache> staleCache = apiCacheRepository.findByCacheKey(cacheKey);
+        String staleValue = extractUsableJsonCacheValue(staleCache, cacheKey);
+        if (staleValue != null) {
+            log.warn("Returning stale bgmtv cache for subjectId={}", subjectId);
+            return staleValue;
+        }
+        return null;
+    }
+
+    /**
+     * 从 Dandan BangumiDetailsResponse 中提取 animeId。
+     * 响应格式: { success: true, bangumi: { animeId: 18319, ... } }
+     */
+    private Long extractAnimeIdFromBangumiResponse(String json) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode data = root.has("bangumi") ? root.get("bangumi") : root;
+            JsonNode animeIdNode = data.get("animeId");
+            if (animeIdNode != null && animeIdNode.isNumber()) {
+                return animeIdNode.asLong();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract animeId from bgmtv response", e);
+        }
         return null;
     }
 

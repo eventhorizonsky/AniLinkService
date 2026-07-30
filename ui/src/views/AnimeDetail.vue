@@ -34,7 +34,7 @@
       <!-- 左侧：头部信息和分集 -->
       <div class="anime-left-column">
         <!-- 头部信息 -->
-        <AnimeHeroSection 
+        <AnimeHeroSection
           :anime-data="animeData"
           :title-info="titleInfo"
           :is-on-air="isOnAir"
@@ -48,10 +48,12 @@
           :is-summary-expanded="isSummaryExpanded"
           :is-favorited="isFavorited"
           :is-following="isFollowing"
+          :follow-status="followStatus"
           :follow-loading="followLoading"
           @update:is-summary-expanded="isSummaryExpanded = $event"
           @toggleFavorite="toggleFavorite"
           @toggleFollow="toggleFollow"
+          @set-follow-status="setFollowStatus"
         />
 
         <AnimeLastWatchSection
@@ -136,7 +138,6 @@
                   <span>收藏状态</span>
                   <template v-if="bgmCollectionEditMode">
                     <select v-model.number="bgmCollectionForm.type" :disabled="bgmCollectionLoading || bgmCollectionSaving">
-                      <option :value="1">想看</option>
                       <option :value="2">看过</option>
                       <option :value="3">在看</option>
                       <option :value="4">搁置</option>
@@ -290,7 +291,12 @@ import AnimeLastWatchSection from '../components/anime/AnimeLastWatchSection.vue
 const props = defineProps({
   animeId: {
     type: [String, Number],
-    required: true
+    required: false,
+    default: null
+  },
+  bgmMode: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -302,6 +308,7 @@ const error = ref(null);
 const isSummaryExpanded = ref(false);
 const isFavorited = ref(false);
 const isFollowing = ref(false);
+const followStatus = ref('watching');
 const followLoading = ref(false);
 const route = useRoute();
 const router = useRouter();
@@ -324,6 +331,9 @@ const bgmCollectionForm = ref({
 const animeResume = ref(null);
 const resumeLoading = ref(false);
 
+// bgmMode 下 animeId 来自 API 响应，否则来自路由参数
+const resolvedAnimeId = ref(null);
+
 const snackbarShow = ref(false);
 const snackbarMsg = ref('');
 const snackbarColor = ref('success');
@@ -338,18 +348,33 @@ const fetchAnimeData = async () => {
   try {
     loading.value = true;
     error.value = null;
-    const response = await fetch(`/api/animes/${route.params.animeId}/raw-json`);
+
+    // 根据模式决定调用哪个 API
+    let targetAnimeId = resolvedAnimeId.value || route.params.animeId;
+    let url;
+    if (props.bgmMode && route.params.subjectId) {
+      url = `/api/animes/bangumi/${route.params.subjectId}/raw-json`;
+    } else {
+      url = `/api/animes/${targetAnimeId}/raw-json`;
+    }
+
+    const response = await fetch(url);
     const result = await response.json();
     if (result.code === 200 && result.data && result.data.bangumi) {
       animeData.value = result.data.bangumi;
+      // bgmMode 下从响应中提取 animeId 用于后续接口调用
+      if (props.bgmMode && result.data.bangumi.animeId) {
+        targetAnimeId = result.data.bangumi.animeId;
+      }
+      resolvedAnimeId.value = targetAnimeId;
       // 检查是否已追番
-      checkFollowStatus();
+      checkFollowStatus(targetAnimeId);
     } else {
       throw new Error('Unexpected response structure');
     }
 
     try {
-      const episodesResponse = await fetch(`/api/animes/${route.params.animeId}/episodes?page=1&pageSize=9999`);
+      const episodesResponse = await fetch(`/api/animes/${targetAnimeId}/episodes?page=1&pageSize=9999`);
       const episodesResult = await episodesResponse.json();
       if (episodesResult.code === 200 && episodesResult.data && Array.isArray(episodesResult.data.content)) {
         existingEpisodes.value = episodesResult.data.content;
@@ -378,7 +403,7 @@ const fetchAnimeResume = async () => {
   }
   resumeLoading.value = true;
   try {
-    const response = await axios.get(`/api/play-history/anime/${route.params.animeId}/resume`);
+    const response = await axios.get(`/api/play-history/anime/${resolvedAnimeId.value}/resume`);
     if (response.data?.code === 200) {
       animeResume.value = response.data.data ?? null;
     } else {
@@ -391,55 +416,90 @@ const fetchAnimeResume = async () => {
   }
 };
 
-// 检查是否已追番
-const checkFollowStatus = async () => {
+// 检查是否已追番（获取完整状态）
+const checkFollowStatus = async (animeIdOverride) => {
   const token = localStorage.getItem('token');
   if (!token || !animeData.value) {
     isFollowing.value = false;
+    followStatus.value = 'watching';
     return;
   }
-  
+
+  const aid = animeIdOverride || resolvedAnimeId.value;
   try {
-    const response = await axios.get(`/api/follows/check/${route.params.animeId}`);
-    if (response.data.code === 200) {
-      isFollowing.value = response.data.data || false;
+    const response = await axios.get(`/api/follows/${aid}`);
+    if (response.data.code === 200 && response.data.data) {
+      isFollowing.value = true;
+      followStatus.value = response.data.data.status || 'watching';
+    } else {
+      isFollowing.value = false;
+      followStatus.value = 'watching';
     }
   } catch (error) {
     console.error('Failed to check follow status:', error);
     isFollowing.value = false;
+    followStatus.value = 'watching';
   }
 };
 
-// 切换追番状态
+// 设置追番状态（支持5种状态）
+const setFollowStatus = async (status) => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    showAppMessage('请先登录', 'warning');
+    return;
+  }
+
+  if (!animeData.value) {
+    showAppMessage('请等待数据加载完成', 'warning');
+    return;
+  }
+
+  followLoading.value = true;
+  try {
+    if (isFollowing.value) {
+      // 已追番 → 更新状态
+      await axios.put(`/api/follows/${resolvedAnimeId.value}/status`, null, { params: { status } });
+    } else {
+      // 未追番 → 创建追番并设置状态
+      await axios.post('/api/follows', {
+        animeId: resolvedAnimeId.value,
+        animeTitle: animeData.value.titles?.[0]?.title || '未知',
+        imageUrl: animeData.value.imageUrl || '',
+        status: status
+      });
+    }
+    isFollowing.value = true;
+    followStatus.value = status;
+    const labels = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' };
+    showAppMessage(`已标记为「${labels[status] || status}」`, 'success');
+  } catch (error) {
+    console.error('Failed to set follow status:', error);
+    showAppMessage('操作失败，请重试', 'error');
+  } finally {
+    followLoading.value = false;
+  }
+};
+
+// 切换追番状态（取消追番）
 const toggleFollow = async () => {
   const token = localStorage.getItem('token');
   if (!token) {
     showAppMessage('请先登录', 'warning');
     return;
   }
-  
+
   if (!animeData.value) {
     showAppMessage('请等待数据加载完成', 'warning');
     return;
   }
-  
+
   followLoading.value = true;
   try {
-    if (isFollowing.value) {
-      // 取消追番
-      await axios.delete(`/api/follows/${route.params.animeId}`);
-      isFollowing.value = false;
-      showAppMessage('已取消追番', 'success');
-    } else {
-      // 添加追番
-      await axios.post('/api/follows', {
-        animeId: route.params.animeId,
-        animeTitle: animeData.value.titles?.[0]?.title || '未知',
-        imageUrl: animeData.value.imageUrl || ''
-      });
-      isFollowing.value = true;
-      showAppMessage('追番成功', 'success');
-    }
+    await axios.delete(`/api/follows/${resolvedAnimeId.value}`);
+    isFollowing.value = false;
+    followStatus.value = 'watching';
+    showAppMessage('已取消追番', 'success');
   } catch (error) {
     console.error('Failed to toggle follow:', error);
     showAppMessage('操作失败，请重试', 'error');
@@ -454,7 +514,7 @@ onMounted(async () => {
 });
 
 // Watch route params
-watch(() => route.params.animeId, () => {
+watch(() => resolvedAnimeId.value, () => {
   closeResourceDialog();
   isSummaryExpanded.value = false;
   activeSection.value = 'episodes';
@@ -800,7 +860,7 @@ const goToPlayer = (resource) => {
     name: 'Player',
     params: { videoId: String(resource.id) },
     query: {
-      animeId: String(route.params.animeId),
+      animeId: String(resolvedAnimeId.value),
       episodeId: String(resource.episodeId ?? '')
     }
   });
@@ -823,7 +883,7 @@ const continueFromHistory = () => {
     name: 'Player',
     params: { videoId: String(h.videoId) },
     query: {
-      animeId: String(route.params.animeId),
+      animeId: String(resolvedAnimeId.value),
       episodeId: String(h.episodeId ?? ''),
     },
   });

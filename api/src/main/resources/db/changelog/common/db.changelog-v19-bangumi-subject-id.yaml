@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 24-bangumi-subject-id
+      author: anilink
+      changes:
+        - addColumn:
+            tableName: anime
+            columns:
+              - column:
+                  name: bangumi_subject_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true

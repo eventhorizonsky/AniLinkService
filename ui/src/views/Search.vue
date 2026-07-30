@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { formatAnimeType } from '../utils/animeType'
@@ -137,7 +137,6 @@ onMounted(() => {
   syncAndFetch()
   fetchSeasons()
 })
-onBeforeUnmount(() => { window.removeEventListener('resize', onResize) })
 </script>
 
 <template>
