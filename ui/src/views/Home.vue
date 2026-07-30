@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -33,6 +33,24 @@ const trendingLoading = ref(false)
 const trendingError = ref('')
 
 const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+
+// ===================== Responsive =====================
+const windowWidth = ref(window.innerWidth)
+const onWindowResize = () => { windowWidth.value = window.innerWidth }
+const isMobile = computed(() => windowWidth.value <= 768)
+
+// 首页追番列表：移动端最多6个，PC端全部
+const displayedFollowList = computed(() => {
+  return isMobile.value ? followList.value.slice(0, 6) : followList.value
+})
+
+// 追番区域横向滚动
+const followGridRef = ref(null)
+const onFollowWheel = (e) => {
+  if (isMobile.value) return
+  e.preventDefault()
+  followGridRef.value.scrollLeft += e.deltaY
+}
 
 // ===================== Fetch =====================
 const fetchFollowList = async () => {
@@ -105,7 +123,8 @@ const fmtScore = (v) => {
   const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
 }
 
-onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchFollowList() })
+onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchFollowList(); window.addEventListener('resize', onWindowResize) })
+onBeforeUnmount(() => { window.removeEventListener('resize', onWindowResize) })
 </script>
 
 <template>
@@ -131,8 +150,8 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
               <i class="mdi mdi-movie-open-star-outline"></i> <span>还没有追番，去</span>
               <button class="link" @click="goToSearch">发现番剧</button>
             </div>
-            <div v-else class="card-grid">
-              <router-link v-for="a in followList" :key="a.id" :to="'/anime/' + a.animeId" class="anime-card">
+            <div v-else ref="followGridRef" class="card-grid follow-grid" @wheel="onFollowWheel">
+              <router-link v-for="a in displayedFollowList" :key="a.id" :to="'/anime/' + a.animeId" class="anime-card">
                 <div class="card-poster">
                   <img :src="a.imageUrl || 'https://assets.anixplayer.net/image/poster/default.jpg'" :alt="a.animeTitle" loading="lazy" />
                   <div class="poster-gradient"></div>
@@ -264,7 +283,7 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
   flex: 1; display: grid;
   grid-template-columns: 1fr 320px; gap: 14px; min-height: 0;
 }
-.home-left  { display:flex; flex-direction:column; gap:12px; min-height:0; }
+.home-left  { display:flex; flex-direction:column; gap:12px; min-height:0; min-width:0; }
 .home-right { display:flex; flex-direction:column; gap:12px; min-height:0; }
 
 /* ========================= SECTION ========================= */
@@ -273,7 +292,8 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
   border: 1px solid #e7ddd3;
   border-radius: 14px;
   display: flex; flex-direction: column;
-  overflow: hidden;  /* ensures all 4 corners round */
+  overflow: hidden;
+  min-width: 0;
 }
 .follow-section   { flex-shrink: 0; }
 .schedule-section { flex: 1; min-height: 0; }
@@ -324,6 +344,22 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
   gap: 10px;
+}
+
+/* 追番区域：PC端只显示一排 */
+.follow-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+.follow-grid::-webkit-scrollbar { display: none; }
+.follow-grid .anime-card {
+  flex: 0 0 105px;
 }
 
 .anime-card {
@@ -487,6 +523,8 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
   .home-right { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .trending-panel { flex: none; max-height: 380px; }
   .schedule-section { flex: none; max-height: 420px; }
+  .follow-grid { display: grid; flex-wrap: unset; min-width: unset; overflow: unset; }
+  .follow-grid .anime-card { flex: unset; }
 }
 
 @media (max-width: 768px) {
@@ -494,6 +532,8 @@ onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchF
   .trending-panel { max-height: 340px; }
   .schedule-section { max-height: 380px; }
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
+  .follow-grid { display: grid; flex-wrap: unset; min-width: unset; overflow: unset; }
+  .follow-grid .anime-card { flex: unset; }
   .card-info { height: 46px; }
   .card-title { font-size: .68rem; }
   .section-header { padding: 7px 12px; }
