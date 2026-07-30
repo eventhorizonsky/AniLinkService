@@ -595,8 +595,9 @@ const savePlayProgress = async () => {
       return
     }
     
-    const isCompleted = currentTime / duration >= 0.9 // 播放超过90%认为已完成
-    
+    const isCompleted = currentTime / duration >= 0.8 // 播放超过80%认为已完成
+    if (isCompleted) syncEpisodeWatchedToBangumi()    // 达到80%即时同步
+
     await axios.post('/api/play-history/progress', {
       videoId: videoId.value,
       videoName: `Episode ${episodeId.value || ''}`,
@@ -664,9 +665,15 @@ const stopProgressSaveTimer = () => {
  * 仅在用户已登录、已绑定 Bangumi、且当前剧集确实看完（>=85%）时触发。
  * 失败静默，不影响用户观看体验。
  */
+let _lastSyncedKey = ''
+
 const syncEpisodeWatchedToBangumi = async () => {
   const token = localStorage.getItem('token')
   if (!token || !animeId.value || !episodeId.value) return
+
+  // 去重：同集不重复同步
+  const key = `${animeId.value}:${episodeId.value}`
+  if (key === _lastSyncedKey) return
 
   // 找到当前播放的剧集
   const currentEp = animeData.value?.episodes?.find(
@@ -674,11 +681,12 @@ const syncEpisodeWatchedToBangumi = async () => {
   )
   if (!currentEp?.episodeNumber) return
 
-  // 只有真正看完（>=85%）才同步，防止误触发
+  // 播放 >= 80% 才同步
   const currentTime = art.value?.currentTime || 0
   const duration = art.value?.duration || 0
-  if (duration > 0 && currentTime / duration < 0.85) return
+  if (duration > 0 && currentTime / duration < 0.8) return
 
+  _lastSyncedKey = key
   try {
     await axios.post('/api/bangumi/sync/episode-watched', null, {
       params: {
