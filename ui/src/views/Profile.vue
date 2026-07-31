@@ -850,12 +850,13 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
                       <!-- 移动端：标记按钮 + 弹出选择 -->
                       <div class="status-cascade-mobile" @click.stop>
                         <button
+                          v-if="follow.animeId"
                           class="mobile-mark-btn"
                           @click="mobileMenuAnimeId = (mobileMenuAnimeId === follow.animeId ? null : follow.animeId)"
                         >
                           <i class="mdi mdi-tag-outline"></i> 标记
                         </button>
-                        <div v-if="mobileMenuAnimeId === follow.animeId" class="mobile-status-popup">
+                        <div v-if="follow.animeId && mobileMenuAnimeId === follow.animeId" class="mobile-status-popup">
                           <button
                             v-for="s in followStatuses"
                             :key="s.value"
@@ -1611,7 +1612,15 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
 }
 @media (max-width: 760px) {
   .history-main-card { flex-direction: column; align-items: stretch; }
-  .follow-cards { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  /* 追番卡片移动端固定两列，minmax(0,1fr) 允许收窄避免挤压换行 */
+  .follow-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .follow-cover-info { padding: 10px 12px 12px; }
+  .follow-cover-title { font-size: 0.82rem; }
+  .follow-cover-date { font-size: 0.68rem; }
+  .follow-cover-unmatch-hint { font-size: 0.66rem; }
   .history-actions, .follow-actions, .profile-sidebar, .integration-actions { width: 100%; }
   .history-actions :deep(.v-btn), .follow-actions :deep(.v-btn), .integration-actions :deep(.v-btn) { flex: 1; }
 
