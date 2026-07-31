@@ -61,9 +61,11 @@ public class AnimeFollowController {
             @Parameter(description = "页码，从1开始", required = false)
             @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小", required = false)
-            @RequestParam(defaultValue = "20") Integer pageSize) {
+            @RequestParam(defaultValue = "20") Integer pageSize,
+            @Parameter(description = "标题搜索关键词", required = false)
+            @RequestParam(required = false) String keyword) {
         Long userId = StpUtil.getLoginIdAsLong();
-        PageVO<AnimeFollowVO> result = animeFollowService.getUserFollows(userId, page, pageSize);
+        PageVO<AnimeFollowVO> result = animeFollowService.getUserFollows(userId, page, pageSize, keyword);
         return ApiResponseVO.success(result);
     }
     
@@ -72,9 +74,11 @@ public class AnimeFollowController {
      */
     @Operation(summary = "获取所有追番", description = "获取用户的所有追番列表（不分页，按更新时间倒序）")
     @GetMapping("/all")
-    public ApiResponseVO<List<AnimeFollowVO>> getUserFollowsList() {
+    public ApiResponseVO<List<AnimeFollowVO>> getUserFollowsList(
+            @Parameter(description = "标题搜索关键词", required = false)
+            @RequestParam(required = false) String keyword) {
         Long userId = StpUtil.getLoginIdAsLong();
-        List<AnimeFollowVO> result = animeFollowService.getUserFollowsList(userId);
+        List<AnimeFollowVO> result = animeFollowService.getUserFollowsList(userId, keyword);
         return ApiResponseVO.success(result);
     }
     
@@ -85,9 +89,11 @@ public class AnimeFollowController {
     @GetMapping("/status/{status}")
     public ApiResponseVO<List<AnimeFollowVO>> getUserFollowsByStatus(
             @Parameter(description = "追番状态：wish(想看)/watched(看过)/watching(在看)/on_hold(搁置)/dropped(抛弃)", required = true)
-            @PathVariable String status) {
+            @PathVariable String status,
+            @Parameter(description = "标题搜索关键词", required = false)
+            @RequestParam(required = false) String keyword) {
         Long userId = StpUtil.getLoginIdAsLong();
-        List<AnimeFollowVO> result = animeFollowService.getUserFollowsByStatus(userId, status);
+        List<AnimeFollowVO> result = animeFollowService.getUserFollowsByStatus(userId, status, keyword);
         return ApiResponseVO.success(result);
     }
     
@@ -140,9 +146,11 @@ public class AnimeFollowController {
 
     @Operation(summary = "获取活跃追番", description = "获取用户想看+在看状态的追番（首页用）")
     @GetMapping("/active")
-    public ApiResponseVO<List<AnimeFollowVO>> getActiveFollows() {
+    public ApiResponseVO<List<AnimeFollowVO>> getActiveFollows(
+            @Parameter(description = "标题搜索关键词", required = false)
+            @RequestParam(required = false) String keyword) {
         Long userId = StpUtil.getLoginIdAsLong();
-        List<AnimeFollowVO> result = animeFollowService.getActiveFollows(userId);
+        List<AnimeFollowVO> result = animeFollowService.getActiveFollows(userId, keyword);
         return ApiResponseVO.success(result);
     }
 

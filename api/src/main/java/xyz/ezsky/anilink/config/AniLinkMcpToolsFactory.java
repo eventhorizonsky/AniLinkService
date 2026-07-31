@@ -503,7 +503,7 @@ public class AniLinkMcpToolsFactory {
                     }
                     Map<String, Object> a = req.arguments();
                     return jsonOk(animeFollowService.getUserFollows(userId, intArg(a, "page", 1),
-                            intArg(a, "pageSize", 20)));
+                            intArg(a, "pageSize", 20), null));
                 })
                 .build());
 
@@ -512,7 +512,7 @@ public class AniLinkMcpToolsFactory {
                 .callHandler((ex, req) -> {
                     Long userId = userIdFrom(ex);
                     return userId == null ? err("缺少用户上下文")
-                            : jsonOk(animeFollowService.getUserFollowsList(userId));
+                            : jsonOk(animeFollowService.getUserFollowsList(userId, null));
                 })
                 .build());
 

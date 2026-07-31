@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import xyz.ezsky.anilink.model.dto.AnimeFollowDTO;
 import xyz.ezsky.anilink.model.entity.Anime;
 import xyz.ezsky.anilink.model.entity.AnimeFollow;
@@ -88,12 +89,15 @@ public class AnimeFollowService {
     }
     
     /**
-     * 获取用户的追番列表（分页）
+     * 获取用户的追番列表（分页），支持按标题关键词搜索
      */
-    public PageVO<AnimeFollowVO> getUserFollows(Long userId, int page, int pageSize) {
+    public PageVO<AnimeFollowVO> getUserFollows(Long userId, int page, int pageSize, String keyword) {
         selfHealDuplicateFollows(userId);
         Pageable pageable = PageRequest.of(page - 1, pageSize);
-        Page<AnimeFollow> followPage = animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId, pageable);
+        Page<AnimeFollow> followPage = StringUtils.hasText(keyword)
+                ? animeFollowRepository.findByUserIdAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
+                        userId, keyword.trim(), pageable)
+                : animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId, pageable);
         
         List<AnimeFollowVO> data = followPage.getContent().stream()
                 .map(this::convertToVO)
@@ -109,21 +113,29 @@ public class AnimeFollowService {
     }
     
     /**
-     * 获取用户的追番列表（不分页，按更新时间倒序）
+     * 获取用户的追番列表（不分页，按更新时间倒序），支持按标题关键词搜索
      */
-    public List<AnimeFollowVO> getUserFollowsList(Long userId) {
+    public List<AnimeFollowVO> getUserFollowsList(Long userId, String keyword) {
         selfHealDuplicateFollows(userId);
-        return animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId).stream()
+        List<AnimeFollow> follows = StringUtils.hasText(keyword)
+                ? animeFollowRepository.findByUserIdAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
+                        userId, keyword.trim())
+                : animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+        return follows.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
     }
     
     /**
-     * 获取用户指定状态的追番列表
+     * 获取用户指定状态的追番列表，支持按标题关键词搜索
      */
-    public List<AnimeFollowVO> getUserFollowsByStatus(Long userId, String status) {
+    public List<AnimeFollowVO> getUserFollowsByStatus(Long userId, String status, String keyword) {
         selfHealDuplicateFollows(userId);
-        return animeFollowRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status).stream()
+        List<AnimeFollow> follows = StringUtils.hasText(keyword)
+                ? animeFollowRepository.findByUserIdAndStatusAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
+                        userId, status, keyword.trim())
+                : animeFollowRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status);
+        return follows.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
     }
@@ -186,13 +198,16 @@ public class AnimeFollowService {
     }
     
     /**
-     * 获取用户活跃追番（想看 + 在看），按状态优先级排序。
+     * 获取用户活跃追番（想看 + 在看），支持按标题关键词搜索。
      */
-    public List<AnimeFollowVO> getActiveFollows(Long userId) {
+    public List<AnimeFollowVO> getActiveFollows(Long userId, String keyword) {
         selfHealDuplicateFollows(userId);
         List<String> activeStatuses = List.of("wish", "watching");
-        return animeFollowRepository.findByUserIdAndStatusInOrderByUpdatedAtDesc(userId, activeStatuses)
-                .stream()
+        List<AnimeFollow> follows = StringUtils.hasText(keyword)
+                ? animeFollowRepository.findByUserIdAndStatusInAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
+                        userId, activeStatuses, keyword.trim())
+                : animeFollowRepository.findByUserIdAndStatusInOrderByUpdatedAtDesc(userId, activeStatuses);
+        return follows.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
     }

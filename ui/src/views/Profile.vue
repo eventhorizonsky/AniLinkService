@@ -423,7 +423,8 @@ const fetchFollowList = async () => {
   try {
     const params = {
       page: followPage.value,
-      pageSize: followPageSize.value
+      pageSize: followPageSize.value,
+      keyword: followKeyword.value.trim()
     }
 
     // 按状态下拉框筛选（active=活跃, 空=全部, 其他=具体状态）
@@ -434,20 +435,14 @@ const fetchFollowList = async () => {
 
     if (response.data?.code === 200) {
       if (Array.isArray(response.data.data)) {
-        const keyword = followKeyword.value.trim().toLowerCase()
-        const filtered = response.data.data.filter((item) => {
-          return !keyword || String(item.animeTitle || '').toLowerCase().includes(keyword)
-        })
+        const filtered = [...response.data.data]
         // 按状态优先级排序：在看→看过→搁置→抛弃
         filtered.sort((a, b) => (STATUS_ORDER[a.status] || 99) - (STATUS_ORDER[b.status] || 99))
         followList.value = filtered
         followTotal.value = followList.value.length
       } else {
         const rawList = response.data.data?.content || []
-        const keyword = followKeyword.value.trim().toLowerCase()
-        const filtered = rawList.filter((item) => {
-          return !keyword || String(item.animeTitle || '').toLowerCase().includes(keyword)
-        })
+        const filtered = [...rawList]
         filtered.sort((a, b) => (STATUS_ORDER[a.status] || 99) - (STATUS_ORDER[b.status] || 99))
         followList.value = filtered
         followTotal.value = response.data.data?.totalElements || 0
