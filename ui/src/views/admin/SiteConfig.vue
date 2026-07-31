@@ -33,9 +33,8 @@ const form = ref({
   thumbnailPlaybackEnabled: false
 })
 
-// Bangumi 代理
-form.value.bangumiProxyHost = ''
-form.value.bangumiProxyPort = null
+// Bangumi 镜像
+form.value.bangumiMirrorBaseUrl = ''
 
 // Dandan 字段
 form.value.dandanAppId = ''
@@ -85,8 +84,7 @@ const fetchConfig = async () => {
         smtpStarttlsEnabled: !!res.data.data.smtpStarttlsEnabled,
         smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured,
         thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled,
-        bangumiProxyHost: res.data.data.bangumiProxyHost || '',
-        bangumiProxyPort: res.data.data.bangumiProxyPort || null
+        bangumiMirrorBaseUrl: res.data.data.bangumiMirrorBaseUrl || ''
       }
     }
   } catch (error) {
@@ -127,8 +125,7 @@ const saveConfig = async () => {
         smtpSslEnabled: form.value.smtpSslEnabled,
         smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
         thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
-        bangumiProxyHost: form.value.bangumiProxyHost || null,
-        bangumiProxyPort: form.value.bangumiProxyPort || null
+        bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null
     })
 
     if (res.data?.code === 200) {
@@ -414,39 +411,23 @@ onMounted(() => {
               <v-divider class="my-4" />
 
               <h3 class="text-h6 mb-4 text-primary font-weight-medium">
-                <v-icon start color="primary">mdi-shield-key</v-icon>
-                Bangumi API 代理配置
+                <v-icon start color="primary">mdi-server-network</v-icon>
+                Bangumi API 镜像配置
               </h3>
               <p class="text-body-2 text-medium-emphasis mb-4">
-                为 Bangumi.tv API（bgm.tv）请求配置 HTTP 代理，用于网络受限环境。
+                配置 Bangumi API 镜像地址，所有 Bangumi 请求将走镜像；留空则使用官方地址。
               </p>
-              <v-row dense>
-                <v-col cols="12" md="8">
-                  <v-text-field
-                    v-model="form.bangumiProxyHost"
-                    label="代理主机"
-                    prepend-inner-icon="mdi-server-network"
-                    variant="outlined"
-                    color="primary"
-                    hint="例如 127.0.0.1，留空则不使用代理"
-                    persistent-hint
-                    class="mb-3"
-                  />
-                </v-col>
-                <v-col cols="12" md="4">
-                  <v-text-field
-                    v-model.number="form.bangumiProxyPort"
-                    label="代理端口"
-                    type="number"
-                    prepend-inner-icon="mdi-numeric"
-                    variant="outlined"
-                    color="primary"
-                    hint="例如 7890"
-                    persistent-hint
-                    class="mb-3"
-                  />
-                </v-col>
-              </v-row>
+              <v-text-field
+                v-model="form.bangumiMirrorBaseUrl"
+                label="Bangumi API 镜像地址"
+                prepend-inner-icon="mdi-web"
+                variant="outlined"
+                color="primary"
+                placeholder="https://api.bgm.tv"
+                hint="例如 https://mirror.example.com，留空则使用官方地址"
+                persistent-hint
+                class="mb-3"
+              />
             </v-window-item>
 
             <v-window-item value="remote-access">

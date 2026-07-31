@@ -9,8 +9,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -44,7 +42,7 @@ public class BangumiApiService {
      * @return 原始 JSON 字符串，失败返回 null
      */
     public String getSubjectComments(Long subjectId, Integer limit, Integer offset) {
-        ResponseEntity<String> response = execute(BANGUMI_NEXT_BASE, "GET", "/p1/subjects/" + subjectId + "/comments",
+        ResponseEntity<String> response = execute(resolveBaseUrl(BANGUMI_NEXT_BASE), "GET", "/p1/subjects/" + subjectId + "/comments",
                 null, null, Map.of("limit", String.valueOf(limit), "offset", String.valueOf(offset)));
 
         if (response.getStatusCode().is2xxSuccessful()) {
@@ -54,15 +52,15 @@ public class BangumiApiService {
     }
 
     public ResponseEntity<String> getMe(String accessToken) {
-        return execute(BANGUMI_API_BASE, "GET", "/v0/me", accessToken, null, null);
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "GET", "/v0/me", accessToken, null, null);
     }
 
     public ResponseEntity<String> getUserCollection(String accessToken, String username, Long subjectId) {
-        return execute(BANGUMI_API_BASE, "GET", "/v0/users/" + username + "/collections/" + subjectId, accessToken, null, null);
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "GET", "/v0/users/" + username + "/collections/" + subjectId, accessToken, null, null);
     }
 
     public ResponseEntity<String> postUserCollection(String accessToken, Long subjectId, String payloadJson) {
-        return execute(BANGUMI_API_BASE, "POST", "/v0/users/-/collections/" + subjectId, accessToken, payloadJson, null);
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "POST", "/v0/users/-/collections/" + subjectId, accessToken, payloadJson, null);
     }
 
     /**
@@ -83,7 +81,7 @@ public class BangumiApiService {
         if (collectionType != null) params.put("type", String.valueOf(collectionType));
         params.put("limit", String.valueOf(limit != null ? Math.min(limit, 50) : 30));
         params.put("offset", String.valueOf(offset != null ? offset : 0));
-        return execute(BANGUMI_API_BASE, "GET", "/v0/users/" + username + "/collections",
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "GET", "/v0/users/" + username + "/collections",
                 accessToken, null, params);
     }
 
@@ -98,7 +96,7 @@ public class BangumiApiService {
      * @param offset    偏移量
      */
     public ResponseEntity<String> getEpisodes(Long subjectId, Integer type, Integer limit, Integer offset) {
-        return execute(BANGUMI_API_BASE, "GET", "/v0/episodes", null, null,
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "GET", "/v0/episodes", null, null,
                 buildEpisodeQueryParams(subjectId, type, limit, offset));
     }
 
@@ -111,7 +109,7 @@ public class BangumiApiService {
      * @param limit       每页数量（最大 1000）
      */
     public ResponseEntity<String> getUserSubjectEpisodeCollection(String accessToken, Long subjectId, Integer offset, Integer limit) {
-        return execute(BANGUMI_API_BASE, "GET", "/v0/users/-/collections/" + subjectId + "/episodes",
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "GET", "/v0/users/-/collections/" + subjectId + "/episodes",
                 accessToken, null, Map.of("offset", String.valueOf(offset != null ? offset : 0),
                         "limit", String.valueOf(limit != null ? limit : 100)));
     }
@@ -125,7 +123,7 @@ public class BangumiApiService {
      * @param payloadJson 请求体 JSON 字符串
      */
     public ResponseEntity<String> patchUserSubjectEpisodeCollection(String accessToken, Long subjectId, String payloadJson) {
-        return execute(BANGUMI_API_BASE, "PATCH", "/v0/users/-/collections/" + subjectId + "/episodes",
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "PATCH", "/v0/users/-/collections/" + subjectId + "/episodes",
                 accessToken, payloadJson, null);
     }
 
@@ -138,7 +136,7 @@ public class BangumiApiService {
      * @param payloadJson 请求体 JSON 字符串
      */
     public ResponseEntity<String> putUserEpisodeCollection(String accessToken, Long episodeId, String payloadJson) {
-        return execute(BANGUMI_API_BASE, "PUT", "/v0/users/-/collections/-/episodes/" + episodeId,
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "PUT", "/v0/users/-/collections/-/episodes/" + episodeId,
                 accessToken, payloadJson, null);
     }
 
@@ -166,7 +164,7 @@ public class BangumiApiService {
                 .method(method, buildRequestBody(method, payloadJson))
                 .build();
 
-        OkHttpClient client = buildClientWithProxy();
+        OkHttpClient client = baseClient;
 
         try (Response response = client.newCall(request).execute()) {
             String body = response.body() != null ? response.body().string() : "";
@@ -196,13 +194,14 @@ public class BangumiApiService {
         return RequestBody.create(bytes, MediaType.parse("application/json"));
     }
 
-    private OkHttpClient buildClientWithProxy() {
-        String host = siteConfigService.getBangumiProxyHost();
-        Integer port = siteConfigService.getBangumiProxyPort();
-        if (host == null || host.isBlank() || port == null || port <= 0) {
-            return baseClient;
+    /**
+     * 解析请求基础地址：配置了 Bangumi 镜像地址时使用镜像，否则使用官方地址。
+     */
+    private String resolveBaseUrl(String defaultBase) {
+        String mirror = siteConfigService.getBangumiMirrorBaseUrl();
+        if (StringUtils.hasText(mirror)) {
+            return mirror.endsWith("/") ? mirror.substring(0, mirror.length() - 1) : mirror;
         }
-        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host.trim(), port));
-        return baseClient.newBuilder().proxy(proxy).build();
+        return defaultBase;
     }
 }
