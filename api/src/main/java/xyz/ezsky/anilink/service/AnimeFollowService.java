@@ -235,7 +235,10 @@ public class AnimeFollowService {
         if (!follow.getUserId().equals(userId)) return null;
         follow.setAnimeId(animeId);
         if (animeTitle != null) follow.setAnimeTitle(animeTitle);
-        if (imageUrl != null) follow.setImageUrl(imageUrl);
+        // 封面优先保留已有的 Bangumi 图片，仅缺失时用弹弹的补充
+        if (imageUrl != null && (follow.getImageUrl() == null || follow.getImageUrl().isBlank())) {
+            follow.setImageUrl(imageUrl);
+        }
         // 双向关联：把追番上的 Bangumi subjectId 回写到本地番剧记录，便于后续同步匹配
         animeService.attachBangumiSubjectId(animeId, follow.getBangumiSubjectId());
         follow.setUpdatedAt(LocalDateTime.now());
@@ -286,9 +289,7 @@ public class AnimeFollowService {
         if (anime.getTitle() != null && !anime.getTitle().isBlank()) {
             follow.setAnimeTitle(anime.getTitle());
         }
-        if (anime.getImageUrl() != null && !anime.getImageUrl().isBlank()) {
-            follow.setImageUrl(anime.getImageUrl());
-        }
+        // 封面保持 Bangumi 图片，匹配时不再改成弹弹的
         follow.setUpdatedAt(LocalDateTime.now());
         AnimeFollow saved = animeFollowRepository.save(follow);
 

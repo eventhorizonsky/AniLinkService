@@ -219,7 +219,8 @@ public class BangumiSyncService {
                             if (title != null && (follow.getAnimeTitle() == null || follow.getAnimeTitle().isBlank())) {
                                 follow.setAnimeTitle(title);
                             }
-                            if (imageUrl != null && (follow.getImageUrl() == null || follow.getImageUrl().isBlank())) {
+                            // 封面以 Bangumi 返回为准（比弹弹的清晰），同步时直接覆盖
+                            if (imageUrl != null && !imageUrl.isBlank()) {
                                 follow.setImageUrl(imageUrl);
                             }
                             follow.setUpdatedAt(LocalDateTime.now());
