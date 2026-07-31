@@ -36,11 +36,9 @@ const fetchFollowList = async () => {
       }
     })
     if (response.data.code === 200) {
-      if (Array.isArray(response.data.data)) {
-        followList.value = response.data.data.slice(0, 12)
-      } else {
-        followList.value = (response.data.data.content || []).slice(0, 12)
-      }
+      const list = Array.isArray(response.data.data) ? response.data.data : (response.data.data.content || [])
+      // 首页只展示已绑定本地番剧的追番，animeId 为空（未匹配）的不展示
+      followList.value = list.filter((item) => item.animeId).slice(0, 12)
     } else {
       error.value = response.data.msg || '加载失败'
     }
@@ -53,6 +51,10 @@ const fetchFollowList = async () => {
 }
 
 const goToAnime = (animeId) => {
+  if (!animeId) {
+    goToFollowList()
+    return
+  }
   emit('select-anime', animeId)
 }
 

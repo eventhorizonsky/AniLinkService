@@ -19,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 /**
  * Bangumi 自动同步编排服务。
@@ -47,9 +48,6 @@ public class BangumiSyncService {
 
     @Autowired
     private UserService userService;
-
-    @Autowired
-    private AnimeService animeService;
 
     @Autowired
     private AnimeFollowRepository animeFollowRepository;
@@ -152,7 +150,16 @@ public class BangumiSyncService {
             return result;
         }
 
-        // 2. 分页拉取 Bangumi 动画收藏（subject_type=2）
+        // 2. 预加载本地番剧库的 subjectId -> animeId 映射。
+        //    同步时只做本地匹配，不再批量调用弹弹接口，避免触发风控。
+        Map<Long, Long> subjectToAnimeId = new HashMap<>();
+        for (Anime anime : animeRepository.findAll()) {
+            if (anime.getBangumiSubjectId() != null) {
+                subjectToAnimeId.putIfAbsent(anime.getBangumiSubjectId(), anime.getAnimeId());
+            }
+        }
+
+        // 3. 分页拉取 Bangumi 动画收藏（subject_type=2）
         int offset = 0;
         int limit = 50;
         try {
@@ -188,8 +195,8 @@ public class BangumiSyncService {
                             }
                         }
 
-                        // 尝试通过 Dandan 的 bgmtv 接口查找本地 animeId
-                        Long localAnimeId = findLocalAnimeIdByBangumiSubject(subjectId);
+                        // 仅按本地番剧库匹配；查不到则保持未绑定，由用户点击时再触发查询
+                        Long localAnimeId = subjectToAnimeId.get(subjectId);
 
                         // 查找已有记录：优先按 subjectId 匹配，其次按 animeId
                         Optional<AnimeFollow> existing = Optional.empty();
@@ -228,7 +235,7 @@ public class BangumiSyncService {
                             follow.setImageUrl(imageUrl);
                             follow.setStatus(localStatus);
                             animeFollowRepository.save(follow);
-                            if (localAnimeId != null) created++; else created++;
+                            created++;
                         }
                     } catch (Exception e) {
                         log.warn("Failed to sync Bangumi collection item: subjectId={}",
@@ -249,43 +256,110 @@ public class BangumiSyncService {
             return result;
         }
 
+        // 兜底：清理历史污染数据（animeId / subjectId 重复的追番记录）
+        int mergedDuplicates = 0;
+        try {
+            mergedDuplicates = mergeDuplicateFollows(userId);
+        } catch (Exception e) {
+            log.warn("Failed to merge duplicate follows for userId={}: {}", userId, e.getMessage());
+        }
+
         result.put("success", true);
         result.put("total", total);
         result.put("created", created);
         result.put("updated", updated);
         result.put("skipped", skipped);
+        result.put("mergedDuplicates", mergedDuplicates);
         if (!errors.isEmpty()) result.put("errors", errors);
         return result;
     }
 
     /**
-     * 通过 Bangumi subjectId 查找本地 animeId。
-     * 先查数据库 anime 表的 bangumi_subject_id 字段，查不到再调用 Dandan bgmtv 接口。
+     * 兜底清理：合并当前用户重复的追番记录。
+     * 主要处理上线前因接口异常、后续再匹配等产生的污染数据：
+     * 1) animeId 相同的多条记录合并为一条；
+     * 2) bangumiSubjectId 相同（含 animeId 为空）的残留记录合并。
+     * 在同步完成后调用，同时供追番查询路径调用，实现查询即自愈。
+     *
+     * @return 合并时删除的重复记录条数
      */
-    private Long findLocalAnimeIdByBangumiSubject(Long subjectId) {
-        // 1. 先查本地 anime 表
-        List<Anime> animes = animeRepository.findAll();
-        Optional<Anime> match = animes.stream()
-                .filter(a -> subjectId.equals(a.getBangumiSubjectId()))
-                .findFirst();
-        if (match.isPresent()) return match.get().getAnimeId();
+    public int mergeDuplicateFollows(Long userId) {
+        int removed = 0;
 
-        // 2. 通过 Dandan bgmtv 接口查找
-        try {
-            String rawJson = animeService.getRawJsonByBangumiSubjectId(subjectId);
-            if (rawJson != null) {
-                // getRawJsonByBangumiSubjectId 内部已经调用了 upsertAnimeFromRawJson，
-                // 所以现在 anime 表应该有这条记录了
-                List<Anime> refreshed = animeRepository.findAll();
-                Optional<Anime> refreshedMatch = refreshed.stream()
-                        .filter(a -> subjectId.equals(a.getBangumiSubjectId()))
-                        .findFirst();
-                if (refreshedMatch.isPresent()) return refreshedMatch.get().getAnimeId();
+        // 1. 按 animeId 分组去重
+        Map<Long, List<AnimeFollow>> byAnimeId = animeFollowRepository
+                .findByUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(f -> f.getAnimeId() != null)
+                .collect(Collectors.groupingBy(AnimeFollow::getAnimeId));
+        for (List<AnimeFollow> group : byAnimeId.values()) {
+            if (group.size() > 1) {
+                removed += mergeFollowGroup(group);
             }
-        } catch (Exception e) {
-            log.debug("Dandan bgmtv lookup failed for subjectId={}: {}", subjectId, e.getMessage());
         }
-        return null;
+
+        // 2. 按 bangumiSubjectId 分组去重（覆盖 animeId 为空但 subjectId 相同的残留记录）
+        Map<Long, List<AnimeFollow>> bySubjectId = animeFollowRepository
+                .findByUserIdOrderByUpdatedAtDesc(userId).stream()
+                .filter(f -> f.getBangumiSubjectId() != null)
+                .collect(Collectors.groupingBy(AnimeFollow::getBangumiSubjectId));
+        for (List<AnimeFollow> group : bySubjectId.values()) {
+            if (group.size() > 1) {
+                removed += mergeFollowGroup(group);
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * 合并一组重复追番：保留最完整的一条，其余删除并把缺失字段合并到保留记录上。
+     *
+     * @return 删除的记录条数
+     */
+    private int mergeFollowGroup(List<AnimeFollow> group) {
+        // 保留优先级：有 subjectId > 有 animeId > updatedAt 更新 > id 更小
+        Comparator<AnimeFollow> comparator = Comparator
+                .comparing((AnimeFollow f) -> f.getBangumiSubjectId() != null)
+                .thenComparing(f -> f.getAnimeId() != null)
+                .thenComparing(AnimeFollow::getUpdatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(AnimeFollow::getId, Comparator.reverseOrder());
+        AnimeFollow primary = group.stream().max(comparator).orElse(null);
+        if (primary == null) return 0;
+
+        int removed = 0;
+        for (AnimeFollow other : group) {
+            if (other.getId().equals(primary.getId())) continue;
+            mergeFollowFields(primary, other);
+            animeFollowRepository.delete(other);
+            removed++;
+        }
+        if (removed > 0) {
+            primary.setUpdatedAt(LocalDateTime.now());
+            animeFollowRepository.save(primary);
+            log.info("Merged {} duplicate follow records into followId={} for userId={}",
+                    removed, primary.getId(), primary.getUserId());
+        }
+        return removed;
+    }
+
+    /**
+     * 将 other 的字段合并到 primary（仅补充 primary 缺失的字段）。
+     */
+    private void mergeFollowFields(AnimeFollow primary, AnimeFollow other) {
+        if (primary.getAnimeId() == null) primary.setAnimeId(other.getAnimeId());
+        if (primary.getBangumiSubjectId() == null) primary.setBangumiSubjectId(other.getBangumiSubjectId());
+        if (!StringUtils.hasText(primary.getAnimeTitle()) && StringUtils.hasText(other.getAnimeTitle())) {
+            primary.setAnimeTitle(other.getAnimeTitle());
+        }
+        if (!StringUtils.hasText(primary.getImageUrl()) && StringUtils.hasText(other.getImageUrl())) {
+            primary.setImageUrl(other.getImageUrl());
+        }
+        if (!StringUtils.hasText(primary.getTags()) && StringUtils.hasText(other.getTags())) {
+            primary.setTags(other.getTags());
+        }
+        if (primary.getFollowAt() == null
+                || (other.getFollowAt() != null && other.getFollowAt().isBefore(primary.getFollowAt()))) {
+            primary.setFollowAt(other.getFollowAt());
+        }
     }
 
     /**

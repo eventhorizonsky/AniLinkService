@@ -59,7 +59,8 @@ const fetchFollowList = async () => {
   try {
     const res = await axios.get(`${API_BASE}/follows/active`)
     if (res.data?.code === 200) {
-      followList.value = Array.isArray(res.data.data) ? res.data.data : []
+      // 首页只展示已绑定本地番剧的追番，animeId 为空（未匹配）的不展示
+      followList.value = (Array.isArray(res.data.data) ? res.data.data : []).filter((item) => item.animeId)
     }
   } catch (e) { console.error('Fetch follow list failed:', e) }
   finally { followLoading.value = false }

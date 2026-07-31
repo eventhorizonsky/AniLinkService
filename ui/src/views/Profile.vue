@@ -31,6 +31,8 @@ const mobileMenuAnimeId = ref(null)  // 移动端弹窗：当前打开的是哪�
 
 // 未匹配番剧绑定
 const bindDialog = ref({ show: false, follow: null, keyword: '', results: [], searched: false, searching: false })
+// 自动匹配 loading 弹窗
+const matchDialog = ref({ show: false, follow: null })
 const openBindDialog = (follow) => {
   bindDialog.value = { show: true, follow, keyword: follow.animeTitle || '', results: [], searched: false, searching: false }
 }
@@ -59,6 +61,31 @@ const bindAnime = async (follow, anime) => {
     await fetchFollowList()
   } catch (e) {
     showAppMessage('绑定失败', 'error')
+  }
+}
+
+const autoMatchFollow = async (follow) => {
+  matchDialog.value = { show: true, follow }
+  try {
+    const res = await axios.post(`/api/follows/${follow.id}/match`)
+    const body = res.data
+    if (body?.code === 200 && body.data?.matched) {
+      matchDialog.value = { show: false, follow: null }
+      showAppMessage(`已匹配并绑定「${body.data.animeTitle || follow.animeTitle}」`, 'success')
+      await fetchFollowList()
+      return
+    }
+    // 查不到：关闭 loading，弹出手动绑定
+    matchDialog.value = { show: false, follow: null }
+    if (body?.code === 200) {
+      openBindDialog(follow)
+    } else {
+      showAppMessage(body?.msg || '自动匹配失败', 'error')
+    }
+  } catch (err) {
+    matchDialog.value = { show: false, follow: null }
+    console.error('自动匹配失败:', err)
+    showAppMessage(err.response?.data?.msg || '自动匹配失败', 'error')
   }
 }
 
@@ -501,7 +528,8 @@ const pullBangumiCollections = async () => {
     const res = await axios.post('/api/bangumi/sync/pull-collections')
     if (res.data?.code === 200 && res.data?.data) {
       const d = res.data.data
-      const msg = `同步完成：共 ${d.total} 条，新增 ${d.created} 条，更新 ${d.updated} 条，跳过 ${d.skipped} 条`
+      const msg = `同步完成：共 ${d.total} 条，新增 ${d.created} 条，更新 ${d.updated} 条，跳过 ${d.skipped} 条` +
+        (d.mergedDuplicates ? `，合并重复 ${d.mergedDuplicates} 条` : '')
       showAppMessage(msg, 'success')
       await fetchFollowList()
     } else {
@@ -764,7 +792,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
                   class="follow-cover-card"
                   elevation="1"
                   hover
-                  @click="follow.animeId ? goToAnime(follow.animeId) : openBindDialog(follow)"
+                  @click="follow.animeId ? goToAnime(follow.animeId) : autoMatchFollow(follow)"
                 >
                   <div class="follow-cover-inner">
                     <!-- 封面 -->
@@ -808,8 +836,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
                       <h3 class="follow-cover-title">{{ follow.animeTitle }}</h3>
                       <div class="follow-cover-date">追番 {{ formatDate(follow.followAt) }}</div>
                       <!-- 未匹配提示 -->
-                      <div v-if="!follow.animeId" class="follow-cover-unmatch-hint" @click.stop="openBindDialog(follow)">
-                        <i class="mdi mdi-link-variant-off"></i> 点击绑定番剧
+                      <div v-if="!follow.animeId" class="follow-cover-unmatch-hint" @click.stop="autoMatchFollow(follow)">
+                        <i class="mdi mdi-link-variant-off"></i> 点击自动匹配番剧
                       </div>
                       <!-- 桌面端：级联按钮组 -->
                       <div class="status-cascade status-cascade-desktop" @click.stop>
@@ -1143,12 +1171,23 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMobilePopup))
       </v-card>
     </v-dialog>
 
+    <!-- 自动匹配 loading 弹窗 -->
+    <v-dialog v-model="matchDialog.show" max-width="380" persistent>
+      <v-card>
+        <v-card-text class="pa-6 text-center">
+          <v-progress-circular indeterminate color="primary" class="mb-3" />
+          <div class="text-body-1">正在为「{{ matchDialog.follow?.animeTitle }}」匹配番剧…</div>
+          <div class="text-caption text-grey mt-2">番剧库中已存在时会自动合并绑定</div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <!-- 未匹配番剧绑定对话框 -->
     <v-dialog v-model="bindDialog.show" max-width="480">
       <v-card>
         <v-card-title class="text-h6">绑定番剧</v-card-title>
         <v-card-text>
-          <p class="mb-3">为「{{ bindDialog.follow?.animeTitle }}」搜索弹弹play中的对应番剧：</p>
+          <p class="mb-3">未在番剧库中找到「{{ bindDialog.follow?.animeTitle }}」，请手动搜索弹弹play中的对应番剧：</p>
           <v-text-field
             v-model="bindDialog.keyword"
             placeholder="输入关键词搜索..."

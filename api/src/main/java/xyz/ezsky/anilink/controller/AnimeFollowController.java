@@ -162,4 +162,21 @@ public class AnimeFollowController {
         }
         return ApiResponseVO.success(result);
     }
+
+    /**
+     * 自动匹配未绑定追番：通过 Bangumi subjectId 查询弹弹并绑定本地番剧。
+     * 查不到（matched=false）时由前端弹出手动绑定。
+     */
+    @Operation(summary = "自动匹配并绑定未匹配追番", description = "通过 Bangumi subjectId 查询弹弹，若找到对应番剧则自动绑定到本地番剧库；查不到时返回 matched=false，由前端弹出手动绑定")
+    @PostMapping("/{followId}/match")
+    public ApiResponseVO<Map<String, Object>> matchFollow(
+            @Parameter(description = "追番记录ID", required = true)
+            @PathVariable Long followId) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        Map<String, Object> result = animeFollowService.matchAndBindFollow(userId, followId);
+        if (result == null) {
+            return ApiResponseVO.fail(404, "追番记录不存在");
+        }
+        return ApiResponseVO.success(result);
+    }
 }

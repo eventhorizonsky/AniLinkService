@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import xyz.ezsky.anilink.model.dto.AnimeFollowDTO;
+import xyz.ezsky.anilink.model.entity.Anime;
 import xyz.ezsky.anilink.model.entity.AnimeFollow;
 import xyz.ezsky.anilink.model.vo.AnimeFollowVO;
 import xyz.ezsky.anilink.model.vo.PageVO;
@@ -16,7 +17,9 @@ import xyz.ezsky.anilink.repository.AnimeFollowRepository;
 import lombok.extern.log4j.Log4j2;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -32,6 +35,9 @@ public class AnimeFollowService {
 
     @Autowired
     private BangumiSyncService bangumiSyncService;
+
+    @Autowired
+    private AnimeService animeService;
     
     /**
      * 添加追番
@@ -85,6 +91,7 @@ public class AnimeFollowService {
      * 获取用户的追番列表（分页）
      */
     public PageVO<AnimeFollowVO> getUserFollows(Long userId, int page, int pageSize) {
+        selfHealDuplicateFollows(userId);
         Pageable pageable = PageRequest.of(page - 1, pageSize);
         Page<AnimeFollow> followPage = animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId, pageable);
         
@@ -105,6 +112,7 @@ public class AnimeFollowService {
      * 获取用户的追番列表（不分页，按更新时间倒序）
      */
     public List<AnimeFollowVO> getUserFollowsList(Long userId) {
+        selfHealDuplicateFollows(userId);
         return animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId).stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
@@ -114,6 +122,7 @@ public class AnimeFollowService {
      * 获取用户指定状态的追番列表
      */
     public List<AnimeFollowVO> getUserFollowsByStatus(Long userId, String status) {
+        selfHealDuplicateFollows(userId);
         return animeFollowRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status).stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
@@ -180,11 +189,24 @@ public class AnimeFollowService {
      * 获取用户活跃追番（想看 + 在看），按状态优先级排序。
      */
     public List<AnimeFollowVO> getActiveFollows(Long userId) {
+        selfHealDuplicateFollows(userId);
         List<String> activeStatuses = List.of("wish", "watching");
         return animeFollowRepository.findByUserIdAndStatusInOrderByUpdatedAtDesc(userId, activeStatuses)
                 .stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 查询前自愈：合并当前用户重复的追番记录（同 animeId / 同 subjectId）。
+     * 清理失败不影响查询主流程。
+     */
+    private void selfHealDuplicateFollows(Long userId) {
+        try {
+            bangumiSyncService.mergeDuplicateFollows(userId);
+        } catch (Exception e) {
+            log.warn("Failed to self-heal duplicate follows for userId={}: {}", userId, e.getMessage());
+        }
     }
 
     /**
@@ -199,8 +221,67 @@ public class AnimeFollowService {
         follow.setAnimeId(animeId);
         if (animeTitle != null) follow.setAnimeTitle(animeTitle);
         if (imageUrl != null) follow.setImageUrl(imageUrl);
+        // 双向关联：把追番上的 Bangumi subjectId 回写到本地番剧记录，便于后续同步匹配
+        animeService.attachBangumiSubjectId(animeId, follow.getBangumiSubjectId());
         follow.setUpdatedAt(LocalDateTime.now());
         return convertToVO(animeFollowRepository.save(follow));
+    }
+
+    /**
+     * 自动匹配未绑定追番：通过 Bangumi subjectId 查询弹弹并绑定本地番剧。
+     * 查不到时返回 matched=false，由前端弹出手动绑定。
+     *
+     * @return null 表示追番记录不存在或不属于当前用户；
+     *         否则返回包含 matched / follow / animeId / animeTitle 的结果 Map
+     */
+    @Transactional
+    public Map<String, Object> matchAndBindFollow(Long userId, Long followId) {
+        Optional<AnimeFollow> opt = animeFollowRepository.findById(followId);
+        if (opt.isEmpty()) return null;
+        AnimeFollow follow = opt.get();
+        if (!follow.getUserId().equals(userId)) return null;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        // 已绑定则直接返回
+        if (follow.getAnimeId() != null) {
+            result.put("matched", true);
+            result.put("alreadyBound", true);
+            result.put("follow", convertToVO(follow));
+            return result;
+        }
+
+        Long subjectId = follow.getBangumiSubjectId();
+        if (subjectId == null) {
+            result.put("matched", false);
+            result.put("message", "该追番缺少 Bangumi subjectId，无法自动匹配");
+            result.put("follow", convertToVO(follow));
+            return result;
+        }
+
+        Anime anime = animeService.matchAnimeByBangumiSubjectId(subjectId);
+        if (anime == null || anime.getAnimeId() == null) {
+            result.put("matched", false);
+            result.put("message", "弹弹中未找到对应番剧");
+            result.put("follow", convertToVO(follow));
+            return result;
+        }
+
+        follow.setAnimeId(anime.getAnimeId());
+        if (anime.getTitle() != null && !anime.getTitle().isBlank()) {
+            follow.setAnimeTitle(anime.getTitle());
+        }
+        if (anime.getImageUrl() != null && !anime.getImageUrl().isBlank()) {
+            follow.setImageUrl(anime.getImageUrl());
+        }
+        follow.setUpdatedAt(LocalDateTime.now());
+        AnimeFollow saved = animeFollowRepository.save(follow);
+
+        result.put("matched", true);
+        result.put("animeId", anime.getAnimeId());
+        result.put("animeTitle", anime.getTitle());
+        result.put("follow", convertToVO(saved));
+        return result;
     }
 
     /**

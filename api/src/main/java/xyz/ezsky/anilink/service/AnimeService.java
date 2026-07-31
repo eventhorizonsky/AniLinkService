@@ -431,6 +431,58 @@ public class AnimeService {
     }
 
     /**
+     * 通过 Bangumi subjectId 匹配本地番剧。
+     * 先在本地番剧库查找；查不到再调用弹弹 bgmtv 接口查询并入库。
+     * 该方法是用户点击时才触发（单次请求），避免同步时批量调用触发风控。
+     *
+     * @param subjectId Bangumi subject ID
+     * @return 匹配到的本地 Anime；查不到对应番剧时返回 null
+     */
+    public Anime matchAnimeByBangumiSubjectId(Long subjectId) {
+        if (subjectId == null) {
+            return null;
+        }
+        // 1. 先查本地番剧库
+        Optional<Anime> local = animeRepository.findAll().stream()
+                .filter(a -> subjectId.equals(a.getBangumiSubjectId()))
+                .findFirst();
+        if (local.isPresent()) {
+            return local.get();
+        }
+
+        // 2. 调用弹弹 bgmtv 接口查询（单次请求），成功时内部已 upsert 到本地番剧库
+        String rawJson = getRawJsonByBangumiSubjectId(subjectId);
+        if (rawJson == null) {
+            return null;
+        }
+        Long animeId = extractAnimeIdFromBangumiResponse(rawJson);
+        if (animeId == null) {
+            return null;
+        }
+        return animeRepository.findByAnimeId(animeId).orElse(null);
+    }
+
+    /**
+     * 将 Bangumi subjectId 关联到本地番剧记录（若尚未关联）。
+     *
+     * @param animeId   本地番剧 ID
+     * @param subjectId Bangumi subject ID
+     */
+    public void attachBangumiSubjectId(Long animeId, Long subjectId) {
+        if (animeId == null || subjectId == null) {
+            return;
+        }
+        animeRepository.findByAnimeId(animeId).ifPresent(anime -> {
+            if (anime.getBangumiSubjectId() == null) {
+                anime.setBangumiSubjectId(subjectId);
+                anime.setUpdatedAt(LocalDateTime.now());
+                animeRepository.save(anime);
+                log.info("Attached bangumiSubjectId={} to anime {}", subjectId, animeId);
+            }
+        });
+    }
+
+    /**
      * 从 Dandan BangumiDetailsResponse 中提取 animeId。
      * 响应格式: { success: true, bangumi: { animeId: 18319, ... } }
      */
