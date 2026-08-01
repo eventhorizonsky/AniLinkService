@@ -51,6 +51,21 @@ public class BangumiApiService {
         return null;
     }
 
+    /**
+     * Get the episode comments (吐槽 box) from Bangumi.
+     *
+     * @param episodeId Bangumi episode ID
+     * @return raw JSON array of comments, or null on failure
+     */
+    public String getEpisodeComments(Long episodeId) {
+        ResponseEntity<String> response = execute(resolveBaseUrl(BANGUMI_NEXT_BASE), "GET",
+                "/p1/episodes/" + episodeId + "/comments", null, null, null);
+        if (response.getStatusCode().is2xxSuccessful()) {
+            return response.getBody();
+        }
+        return null;
+    }
+
     public ResponseEntity<String> getMe(String accessToken) {
         return execute(resolveBaseUrl(BANGUMI_API_BASE), "GET", "/v0/me", accessToken, null, null);
     }
@@ -206,7 +221,14 @@ public class BangumiApiService {
      * 解析请求基础地址：配置了 Bangumi 镜像地址时使用镜像，否则使用官方地址。
      */
     private String resolveBaseUrl(String defaultBase) {
-        String mirror = siteConfigService.getBangumiMirrorBaseUrl();
+        // next.bgm.tv (p1) 与 api.bgm.tv (v0) 可能使用不同的镜像服务，分开配置。
+        // 未配置 next 镜像时回退到旧的统一镜像配置，兼容已有部署。
+        String mirror = BANGUMI_NEXT_BASE.equals(defaultBase)
+                ? siteConfigService.getBangumiNextMirrorBaseUrl()
+                : siteConfigService.getBangumiMirrorBaseUrl();
+        if (!StringUtils.hasText(mirror) && BANGUMI_NEXT_BASE.equals(defaultBase)) {
+            mirror = siteConfigService.getBangumiMirrorBaseUrl();
+        }
         if (StringUtils.hasText(mirror)) {
             return mirror.endsWith("/") ? mirror.substring(0, mirror.length() - 1) : mirror;
         }

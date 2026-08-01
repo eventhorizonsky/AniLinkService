@@ -68,6 +68,9 @@ public class UpdateSiteConfigRequest {
     @Schema(description = "Bangumi API 镜像地址", example = "https://api.bgm.tv")
     private String bangumiMirrorBaseUrl;
 
+    @Schema(description = "Bangumi Next API 镜像地址（next.bgm.tv）", example = "https://next.bgm.tv")
+    private String bangumiNextMirrorBaseUrl;
+
     @Schema(description = "是否开放注册", example = "false")
     private Boolean authRegisterEnabled;
 

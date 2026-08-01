@@ -35,6 +35,7 @@ const form = ref({
 
 // Bangumi 镜像
 form.value.bangumiMirrorBaseUrl = ''
+form.value.bangumiNextMirrorBaseUrl = ''
 
 // Dandan 字段
 form.value.dandanAppId = ''
@@ -84,7 +85,8 @@ const fetchConfig = async () => {
         smtpStarttlsEnabled: !!res.data.data.smtpStarttlsEnabled,
         smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured,
         thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled,
-        bangumiMirrorBaseUrl: res.data.data.bangumiMirrorBaseUrl || ''
+        bangumiMirrorBaseUrl: res.data.data.bangumiMirrorBaseUrl || '',
+        bangumiNextMirrorBaseUrl: res.data.data.bangumiNextMirrorBaseUrl || ''
       }
     }
   } catch (error) {
@@ -125,7 +127,8 @@ const saveConfig = async () => {
         smtpSslEnabled: form.value.smtpSslEnabled,
         smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
         thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
-        bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null
+        bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null,
+        bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
     })
 
     if (res.data?.code === 200) {
@@ -415,7 +418,7 @@ onMounted(() => {
                 Bangumi API 镜像配置
               </h3>
               <p class="text-body-2 text-medium-emphasis mb-4">
-                配置 Bangumi API 镜像地址，所有 Bangumi 请求将走镜像；留空则使用官方地址。
+                分别配置 api.bgm.tv 与 next.bgm.tv 的镜像地址；留空则使用官方地址。
               </p>
               <v-text-field
                 v-model="form.bangumiMirrorBaseUrl"
@@ -425,6 +428,17 @@ onMounted(() => {
                 color="primary"
                 placeholder="https://api.bgm.tv"
                 hint="例如 https://mirror.example.com，留空则使用官方地址"
+                persistent-hint
+                class="mb-3"
+              />
+              <v-text-field
+                v-model="form.bangumiNextMirrorBaseUrl"
+                label="Bangumi Next API 镜像地址"
+                prepend-inner-icon="mdi-web"
+                variant="outlined"
+                color="primary"
+                placeholder="https://next.bgm.tv"
+                hint="例如 https://next.bangumi.lol，用于 next.bgm.tv (p1) 接口，如单集吐槽"
                 persistent-hint
                 class="mb-3"
               />

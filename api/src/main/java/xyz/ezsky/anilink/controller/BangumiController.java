@@ -83,6 +83,28 @@ public class BangumiController {
         }
     }
 
+    /**
+     * Get Bangumi 吐槽 (episode comments) for the currently playing episode.
+     * <p>
+     * The backend maps the dandan episode number to a Bangumi episode by the
+     * position in the Bangumi main-episode list, then returns the comments.
+     *
+     * @param animeId       local anime id (dandan animeId)
+     * @param episodeNumber dandan episode number, e.g. "1"
+     * @return comments list with matched episode info
+     */
+    @Operation(summary = "获取单集 Bangumi 吐槽", description = "根据本地番剧与集数匹配 Bangumi 剧集并返回吐槽箱内容")
+    @GetMapping("/episodes/comments")
+    public ApiResponseVO<Object> getEpisodeComments(
+            @Parameter(description = "本地番剧 ID（弹弹 animeId）", required = true)
+            @RequestParam Long animeId,
+            @Parameter(description = "集数（如 \"1\"）", required = true)
+            @RequestParam String episodeNumber) {
+
+        Map<String, Object> result = bangumiSyncService.getEpisodeCommentsForAnime(animeId, episodeNumber);
+        return ApiResponseVO.success(result);
+    }
+
     @SaCheckLogin
     @GetMapping("/account/status")
     @Operation(summary = "获取当前用户 Bangumi 绑定状态", description = "验证当前已绑定 token 是否有效，并返回 Bangumi 用户信息")

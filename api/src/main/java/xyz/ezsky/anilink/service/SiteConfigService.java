@@ -47,6 +47,7 @@ public class SiteConfigService {
     private static final String RSS_PROXY_HOST = "rss_proxy_host";
     private static final String RSS_PROXY_PORT = "rss_proxy_port";
     private static final String BANGUMI_MIRROR_BASE_URL = "bangumi_mirror_base_url";
+    private static final String BANGUMI_NEXT_MIRROR_BASE_URL = "bangumi_next_mirror_base_url";
     private static final String AUTH_REGISTER_ENABLED = "auth_register_enabled";
     private static final String REMOTE_ACCESS_ENABLED = "remote_access_enabled";
     private static final String REMOTE_ACCESS_TOKEN_REQUIRED = "remote_access_token_required";
@@ -122,6 +123,7 @@ public class SiteConfigService {
         vo.setRssProxyHost(getRssProxyHost());
         vo.setRssProxyPort(getRssProxyPort());
         vo.setBangumiMirrorBaseUrl(getBangumiMirrorBaseUrl());
+        vo.setBangumiNextMirrorBaseUrl(getBangumiNextMirrorBaseUrl());
 
         vo.setAuthRegisterEnabled(isRegisterEnabled());
         vo.setRemoteAccessEnabled(isRemoteAccessEnabled());
@@ -302,6 +304,9 @@ public class SiteConfigService {
         if (request.getBangumiMirrorBaseUrl() != null) {
             saveOrUpdateConfig(BANGUMI_MIRROR_BASE_URL, request.getBangumiMirrorBaseUrl().trim(), "Bangumi API 镜像地址");
         }
+        if (request.getBangumiNextMirrorBaseUrl() != null) {
+            saveOrUpdateConfig(BANGUMI_NEXT_MIRROR_BASE_URL, request.getBangumiNextMirrorBaseUrl().trim(), "Bangumi Next API 镜像地址");
+        }
         if (request.getAuthRegisterEnabled() != null) {
             saveOrUpdateConfig(AUTH_REGISTER_ENABLED, String.valueOf(request.getAuthRegisterEnabled()), "是否开放注册");
         }
@@ -425,6 +430,11 @@ public class SiteConfigService {
 
     public String getBangumiMirrorBaseUrl() {
         String url = getConfigValue(BANGUMI_MIRROR_BASE_URL);
+        return url == null ? null : url.trim();
+    }
+
+    public String getBangumiNextMirrorBaseUrl() {
+        String url = getConfigValue(BANGUMI_NEXT_MIRROR_BASE_URL);
         return url == null ? null : url.trim();
     }
 

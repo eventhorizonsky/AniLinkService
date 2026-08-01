@@ -63,7 +63,7 @@
           </div>
 
           <!-- 分集列表 -->
-          <div class="episode-panel-list">
+          <div v-if="episodeTab !== 'comments'" class="episode-panel-list">
             <button
               v-for="ep in displayedEpisodes"
               :key="ep.episodeId"
@@ -79,6 +79,14 @@
               <span class="episode-item-title">{{ ep.episodeTitle || '' }}</span>
               <span class="episode-item-date">{{ formatEpisodeDate(ep.airDate) }}</span>
             </button>
+          </div>
+
+          <!-- Bangumi 单集吐槽 -->
+          <div v-else class="episode-panel-comments">
+            <EpisodeComments
+              :anime-id="animeId"
+              :episode-number="currentEpisodeNumber"
+            />
           </div>
         </div>
       </div>
@@ -117,6 +125,7 @@ import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
+import EpisodeComments from '../components/anime/EpisodeComments.vue'
 
 
 const route = useRoute()
@@ -394,7 +403,8 @@ const episodeTab = ref('main')
 const episodeTabs = [
   { label: '正片', value: 'main' },
   { label: '特典', value: 'special' },
-  { label: '全部', value: 'all' }
+  { label: '全部', value: 'all' },
+  { label: '吐槽', value: 'comments' }
 ]
 
 const displayedEpisodes = computed(() => {
@@ -402,6 +412,13 @@ const displayedEpisodes = computed(() => {
   if (episodeTab.value === 'main') return mainEpisodes.value
   if (episodeTab.value === 'special') return specialEpisodes.value
   return [...eps].sort((a, b) => new Date(a.airDate) - new Date(b.airDate))
+})
+
+const currentEpisodeNumber = computed(() => {
+  const currentEp = animeData.value?.episodes?.find(
+    ep => String(ep.episodeId) === String(episodeId.value)
+  )
+  return currentEp?.episodeNumber != null ? String(currentEp.episodeNumber) : ''
 })
 
 const episodeNumberDisplay = (ep) => {
@@ -1998,6 +2015,13 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  padding: 6px 10px;
+}
+
+.episode-panel-comments {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: 6px 10px;
 }
 

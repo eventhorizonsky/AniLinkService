@@ -2,6 +2,7 @@ package xyz.ezsky.anilink.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +53,9 @@ public class BangumiSyncService {
     @Autowired
     private AnimeFollowRepository animeFollowRepository;
 
+    @Autowired
+    private SiteConfigService siteConfigService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -71,10 +75,22 @@ public class BangumiSyncService {
 
     private static class CachedEpisodeId {
         final Long episodeId;
+        final double sort;
+        final String name;
+        final String nameCn;
+        final String airdate;
         final long createdAt;
 
         CachedEpisodeId(Long episodeId) {
+            this(episodeId, 0, null, null, null);
+        }
+
+        CachedEpisodeId(Long episodeId, double sort, String name, String nameCn, String airdate) {
             this.episodeId = episodeId;
+            this.sort = sort;
+            this.name = name;
+            this.nameCn = nameCn;
+            this.airdate = airdate;
             this.createdAt = System.currentTimeMillis();
         }
 
@@ -84,6 +100,173 @@ public class BangumiSyncService {
     }
 
     // ==================== 公开方法 ====================
+
+    /**
+     * Get Bangumi episode comments (tucao box) for a local anime episode.
+     * <p>
+     * Resolves the Bangumi subject from the local anime record, maps the dandan
+     * episode number to a Bangumi episode by its position in the main-episode
+     * (type=0) list (instead of matching sort/ep values), then fetches the
+     * comments from Bangumi.
+     *
+     * @param animeId       local anime id (dandan animeId)
+     * @param episodeNumber dandan episode number, e.g. "1"
+     * @return map with keys: available, message (on failure), subjectId,
+     *         episodeId, episode, comments (on success)
+     */
+    public Map<String, Object> getEpisodeCommentsForAnime(Long animeId, String episodeNumber) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (animeId == null || !StringUtils.hasText(episodeNumber)) {
+            result.put("available", false);
+            result.put("message", "Missing animeId or episodeNumber");
+            return result;
+        }
+
+        Long subjectId = getBangumiSubjectId(animeId);
+        if (subjectId == null) {
+            result.put("available", false);
+            result.put("message", "Anime is not linked to a Bangumi subject");
+            return result;
+        }
+        result.put("subjectId", subjectId);
+        // 图片 CDN 基地址：跟随 api.bgm.tv 镜像配置（https://api.xxx -> https://lain.xxx）
+        result.put("imageBaseUrl", resolveBangumiImageBase());
+
+        JsonNode matchedEpisode = resolveBangumiEpisode(subjectId, episodeNumber);
+        if (matchedEpisode == null) {
+            result.put("available", false);
+            result.put("message", "No matching Bangumi episode found for episodeNumber=" + episodeNumber);
+            return result;
+        }
+
+        long bangumiEpisodeId = matchedEpisode.path("id").asLong(-1);
+        if (bangumiEpisodeId <= 0) {
+            result.put("available", false);
+            result.put("message", "Matched Bangumi episode has no id");
+            return result;
+        }
+        result.put("episodeId", bangumiEpisodeId);
+
+        Map<String, Object> episodeInfo = new LinkedHashMap<>();
+        episodeInfo.put("id", bangumiEpisodeId);
+        episodeInfo.put("sort", matchedEpisode.path("sort").asDouble(0));
+        episodeInfo.put("name", matchedEpisode.path("name").asText(null));
+        episodeInfo.put("nameCn", matchedEpisode.path("name_cn").asText(null));
+        episodeInfo.put("airdate", matchedEpisode.path("airdate").asText(null));
+        result.put("episode", episodeInfo);
+
+        String raw = bangumiApiService.getEpisodeComments(bangumiEpisodeId);
+        if (!StringUtils.hasText(raw)) {
+            result.put("available", false);
+            result.put("message", "Failed to fetch Bangumi episode comments");
+            return result;
+        }
+
+        try {
+            JsonNode parsed = objectMapper.readTree(raw);
+            if (parsed != null && parsed.isArray()) {
+                result.put("comments", objectMapper.readValue(raw, Object.class));
+                result.put("available", true);
+            } else {
+                // Some mirrors return HTTP 200 with a Bangumi error body such as
+                // {"request": "...", "code": 404, "error": "Not Found"}.
+                String code = parsed != null ? parsed.path("code").asText("") : "";
+                String error = parsed != null ? parsed.path("error").asText("") : "";
+                log.warn("Bangumi episode comments returned error for episodeId={}: code={}, error={}",
+                        bangumiEpisodeId, code, error);
+                result.put("available", false);
+                result.put("message", StringUtils.hasText(error)
+                        ? "Bangumi: " + error
+                        : "Failed to fetch Bangumi episode comments");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse Bangumi episode comments for episodeId={}", bangumiEpisodeId, e);
+            result.put("available", false);
+            result.put("message", "Failed to parse Bangumi episode comments");
+        }
+        return result;
+    }
+
+    /**
+     * Resolve a dandan episode number to the matching Bangumi episode node.
+     * <p>
+     * The episode is picked by its position in the ordered Bangumi main-episode
+     * list (episodeNumber 1 -> first item), not by matching sort or ep fields.
+     * Some subjects keep a global sort numbering across seasons (e.g. Re:Zero
+     * S4E1 has sort=47) while dandan restarts episodeNumber at 1.
+     */
+    private JsonNode resolveBangumiEpisode(Long subjectId, String episodeNumber) {
+        int targetNumber;
+        try {
+            targetNumber = Integer.parseInt(episodeNumber.trim());
+        } catch (Exception e) {
+            return null;
+        }
+        if (targetNumber < 1) {
+            return null;
+        }
+
+        String cacheKey = subjectId + ":order:" + targetNumber;
+        CachedEpisodeId cached = episodeIdCache.get(cacheKey);
+        if (cached != null && !cached.isExpired()) {
+            ObjectNode stub = objectMapper.createObjectNode();
+            stub.put("id", cached.episodeId);
+            stub.put("sort", cached.sort);
+            if (cached.name != null) stub.put("name", cached.name);
+            if (cached.nameCn != null) stub.put("name_cn", cached.nameCn);
+            if (cached.airdate != null) stub.put("airdate", cached.airdate);
+            return stub;
+        }
+
+        try {
+            ResponseEntity<String> response = bangumiApiService.getEpisodes(subjectId, 0, 200, 0);
+            if (!response.getStatusCode().is2xxSuccessful() || !StringUtils.hasText(response.getBody())) {
+                log.warn("Bangumi getEpisodes failed: HTTP {} for subjectId={}",
+                        response.getStatusCode().value(), subjectId);
+                return null;
+            }
+
+            JsonNode root = objectMapper.readTree(response.getBody());
+            JsonNode data = root.get("data");
+            if (data == null || !data.isArray()) {
+                log.warn("Bangumi getEpisodes returned unexpected format for subjectId={}", subjectId);
+                return null;
+            }
+
+            List<JsonNode> eps = new ArrayList<>();
+            for (JsonNode ep : data) {
+                eps.add(ep);
+            }
+            eps.sort(Comparator.comparingDouble(e -> e.path("sort").asDouble(0)));
+
+            if (targetNumber <= eps.size()) {
+                JsonNode matched = eps.get(targetNumber - 1);
+                long epId = matched.path("id").asLong(-1);
+                if (epId > 0) {
+                    episodeIdCache.put(cacheKey, new CachedEpisodeId(
+                            epId,
+                            matched.path("sort").asDouble(0),
+                            matched.path("name").asText(null),
+                            matched.path("name_cn").asText(null),
+                            matched.path("airdate").asText(null)));
+                    return matched;
+                }
+            }
+
+            // Fallback to the legacy ep-based mapping when order matching fails.
+            Long legacyId = getBangumiEpisodeId(subjectId, episodeNumber);
+            if (legacyId == null) {
+                return null;
+            }
+            ObjectNode legacyNode = objectMapper.createObjectNode();
+            legacyNode.put("id", legacyId);
+            return legacyNode;
+        } catch (Exception e) {
+            log.warn("Bangumi episode order mapping failed for subjectId={}, episodeNumber={}: {}",
+                    subjectId, episodeNumber, e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * 将追番状态变更同步到 Bangumi。
@@ -573,6 +756,24 @@ public class BangumiSyncService {
     private Long getBangumiSubjectId(Long animeId) {
         Optional<Anime> animeOpt = animeRepository.findByAnimeId(animeId);
         return animeOpt.map(Anime::getBangumiSubjectId).orElse(null);
+    }
+
+    /**
+     * Resolve the image CDN base URL from the api.bgm.tv mirror config.
+     * The api mirror itself also serves the static image resources, so the
+     * mirror base URL is used directly. Falls back to the official lain.bgm.tv
+     * when no mirror is configured.
+     */
+    private String resolveBangumiImageBase() {
+        String mirror = siteConfigService.getBangumiMirrorBaseUrl();
+        if (!StringUtils.hasText(mirror)) {
+            return "https://lain.bgm.tv";
+        }
+        String base = mirror.trim();
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base;
     }
 
     /**
