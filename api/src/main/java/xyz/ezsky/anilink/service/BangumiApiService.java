@@ -64,6 +64,14 @@ public class BangumiApiService {
     }
 
     /**
+     * 修改用户单个条目收藏（PATCH）。
+     * 所有请求体字段可选；条目未收藏时返回 404（不会自动创建）。
+     */
+    public ResponseEntity<String> patchUserCollection(String accessToken, Long subjectId, String payloadJson) {
+        return execute(resolveBaseUrl(BANGUMI_API_BASE), "PATCH", "/v0/users/-/collections/" + subjectId, accessToken, payloadJson, null);
+    }
+
+    /**
      * 获取用户收藏列表（支持分页和类型筛选）。
      *
      * @param accessToken 用户 access token

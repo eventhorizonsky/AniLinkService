@@ -105,6 +105,28 @@ public class BangumiSyncService {
     }
 
     /**
+     * 本地放弃追番时同步到 Bangumi。
+     * <p>
+     * 官方公开/私人 API（dist.json、openapi.json）均未提供删除收藏的操作，
+     * 因此降级为将 Bangumi 收藏标记为"抛弃"（type=5）。
+     * 异步执行，失败静默。
+     *
+     * @param userId           本地用户 ID
+     * @param animeId          本地番剧 ID（可为 null，用于兜底反查 subjectId）
+     * @param bangumiSubjectId 追番记录上的 Bangumi subjectId（可为 null，会通过 animeId 反查）
+     */
+    public void syncUnfollowToBangumi(Long userId, Long animeId, Long bangumiSubjectId) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                doSyncUnfollow(userId, animeId, bangumiSubjectId);
+            } catch (Exception e) {
+                log.warn("Bangumi sync failed: unfollow for userId={}, animeId={}, subjectId={}: {}",
+                        userId, animeId, bangumiSubjectId, e.getMessage());
+            }
+        }, syncExecutor);
+    }
+
+    /**
      * 将单集"已看"状态同步到 Bangumi。
      * 异步执行，失败静默。
      *
@@ -420,6 +442,46 @@ public class BangumiSyncService {
         } else {
             log.warn("Bangumi sync failed: HTTP {} for userId={}, subjectId={}, payload={}",
                     response.getStatusCode().value(), userId, subjectId, payload);
+        }
+    }
+
+    /**
+     * 将本地"放弃追番"同步为 Bangumi 收藏的"抛弃"状态（type=5）。
+     */
+    private void doSyncUnfollow(Long userId, Long animeId, Long bangumiSubjectId) {
+        // 1. 获取用户 access token
+        String accessToken = getBangumiAccessToken(userId);
+        if (accessToken == null) {
+            log.debug("Bangumi unfollow sync skipped: no access token for userId={}", userId);
+            return;
+        }
+
+        // 2. 确定 Bangumi subject ID：优先用追番记录上的，缺失时通过 animeId 反查
+        if (bangumiSubjectId == null && animeId != null) {
+            bangumiSubjectId = getBangumiSubjectId(animeId);
+        }
+        if (bangumiSubjectId == null) {
+            log.debug("Bangumi unfollow sync skipped: no bangumiSubjectId for userId={}, animeId={}",
+                    userId, animeId);
+            return;
+        }
+
+        // 3. 调用"修改收藏"接口，把收藏标记为"抛弃"。
+        //    使用 PATCH 而非 POST：未收藏时返回 404 直接跳过，避免误新建一条"抛弃"收藏。
+        String payload = "{\"type\":" + BANGUMI_TYPE_DROPPED + "}";
+        ResponseEntity<String> response = bangumiApiService.patchUserCollection(accessToken, bangumiSubjectId, payload);
+
+        if (response.getStatusCode().is2xxSuccessful()) {
+            log.info("Bangumi unfollow sync success: userId={}, animeId={}, subjectId={} -> type={} (dropped)",
+                    userId, animeId, bangumiSubjectId, BANGUMI_TYPE_DROPPED);
+        } else if (response.getStatusCode().value() == 401) {
+            log.warn("Bangumi unfollow sync failed: token expired for userId={}", userId);
+        } else if (response.getStatusCode().value() == 404) {
+            log.debug("Bangumi unfollow sync skipped: subject not collected for userId={}, subjectId={}",
+                    userId, bangumiSubjectId);
+        } else {
+            log.warn("Bangumi unfollow sync failed: HTTP {} for userId={}, subjectId={}, payload={}",
+                    response.getStatusCode().value(), userId, bangumiSubjectId, payload);
         }
     }
 

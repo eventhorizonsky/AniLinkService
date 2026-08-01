@@ -81,8 +81,12 @@ public class AnimeFollowService {
     public boolean unfollowAnime(Long userId, Long animeId) {
         Optional<AnimeFollow> follow = animeFollowRepository.findByUserIdAndAnimeId(userId, animeId);
         if (follow.isPresent()) {
+            // 删除前取出 Bangumi subjectId，供删除后同步（记录删除后无法再查询）
+            Long bangumiSubjectId = follow.get().getBangumiSubjectId();
             animeFollowRepository.delete(follow.get());
             log.info("User {} unfollowed anime {}", userId, animeId);
+            // 异步同步到 Bangumi：官方接口无删除收藏操作，降级为标记"抛弃"
+            bangumiSyncService.syncUnfollowToBangumi(userId, animeId, bangumiSubjectId);
             return true;
         }
         return false;
