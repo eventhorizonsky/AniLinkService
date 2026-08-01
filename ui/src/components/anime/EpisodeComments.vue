@@ -314,6 +314,13 @@ const sanitizeUrl = (raw) => {
   return /^https?:\/\//i.test(url) ? url : ''
 }
 
+const sanitizeColor = (raw) => {
+  const v = String(raw || '').trim().toLowerCase()
+  if (/^#[0-9a-f]{3,8}$/.test(v)) return v
+  if (/^[a-z]{3,20}$/.test(v)) return v
+  return ''
+}
+
 const unescapeAttr = (s) => String(s || '')
   .replace(/&quot;/g, '"')
   .replace(/&#39;/g, "'")
@@ -324,7 +331,7 @@ const renderBBCode = (content) => {
   let html = escapeHtml(content)
 
   // [img]URL[/img] -> 受限尺寸的图片，点击查看大图
-  html = html.replace(/\[img\]([^\[]*?)\[\/img\]/gi, (m, url) => {
+  html = html.replace(/\[img(?:=(\d{1,4})(?:,(\d{1,4}))?)?\]([^\[]*?)\[\/img\]/gi, (m, w, h, url) => {
     const clean = sanitizeUrl(unescapeAttr(url))
     if (!clean) return ''
     return `<img class="bgm-ep-img" src="${escapeHtml(clean)}" alt="图片" loading="lazy" referrerpolicy="no-referrer" />`
@@ -342,6 +349,10 @@ const renderBBCode = (content) => {
       px = Math.min(32, Math.max(10, px))
       return `<span style="font-size:${px}px">${inner}</span>`
     })
+    .replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, (m, color, inner) => {
+      const clean = sanitizeColor(unescapeAttr(color))
+      return clean ? `<span style="color:${clean}">${inner}</span>` : inner
+    })
 
   // 链接
   html = html
@@ -353,6 +364,18 @@ const renderBBCode = (content) => {
       const clean = sanitizeUrl(unescapeAttr(url))
       return clean ? `<a href="${escapeHtml(clean)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(clean)}</a>` : ''
     })
+
+  // alignment tags: [left] / [center] / [right]
+  html = html
+    .replace(/\[right\]([\s\S]*?)\[\/right\]/gi, '<div class="bgm-ep-align-right">$1</div>')
+    .replace(/\[center\]([\s\S]*?)\[\/center\]/gi, '<div class="bgm-ep-align-center">$1</div>')
+    .replace(/\[left\]([\s\S]*?)\[\/left\]/gi, '<div class="bgm-ep-align-left">$1</div>')
+
+  // markdown-style links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, url) => {
+    const clean = sanitizeUrl(unescapeAttr(url))
+    return clean ? `<a href="${escapeHtml(clean)}" target="_blank" rel="noopener noreferrer nofollow">${text}</a>` : m
+  })
 
   // mask spoiler tag: hidden until hover
   html = html.replace(/\[mask\]([\s\S]*?)\[\/mask\]/gi, '<span class="bgm-ep-mask">$1</span>')
@@ -403,6 +426,18 @@ onMounted(fetchComments)
   vertical-align: -0.3em;
   margin: 0 2px;
   border-radius: 2px;
+}
+
+.bgm-ep-content .bgm-ep-align-right {
+  text-align: right;
+}
+
+.bgm-ep-content .bgm-ep-align-center {
+  text-align: center;
+}
+
+.bgm-ep-content .bgm-ep-align-left {
+  text-align: left;
 }
 
 .bgm-ep-content .bgm-ep-mask {
