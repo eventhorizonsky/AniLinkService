@@ -154,6 +154,15 @@ public class AnimeService {
      * @param rawJson 从缓存或上游获取的原始 JSON
      */
     private void upsertAnimeFromRawJson(Long animeId, String rawJson) {
+        // Only create/enrich Anime records when the media library actually contains episodes
+        // for this anime, so raw-json fetches never produce orphan records without episodes.
+        if (animeId == null) {
+            return;
+        }
+        if (!mediaFileRepository.existsByAnimeId(animeId)) {
+            log.debug("Skip upsert anime from raw JSON: no media files found for animeId={}", animeId);
+            return;
+        }
         try {
             JsonNode root = objectMapper.readTree(rawJson);
             // 弹弹 bangumi API 响应格式为 { success, bangumi: {...} }，先解包
