@@ -275,6 +275,10 @@ README 只保留项目概览和常用启动方式；更详细的部署、配置�
 - 媒体分析：FFmpeg / ffprobe
 - 下载组件：jlibtorrent
 
+## 联系我们
+
+[QQ群组](doc/img/README/qrcode.jpg)
+
 ## 致谢
 
 - Sa-Token: https://sa-token.cc/
