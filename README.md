@@ -34,19 +34,19 @@ https://www.dandanplay.com/
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230025996.png" alt="首页" />
+      <img src="doc/img/README/image-20260321230025996.jpg" alt="首页" />
       <br />
       <sub>首页：新番时间表与常用入口</sub>
     </td>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230139361.png" alt="播放页" />
+      <img src="doc/img/README/image-20260321230139361.jpg" alt="播放页" />
       <br />
       <sub>播放页：视频、弹幕与字幕联动</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230119368.png" alt="番剧详情" />
+      <img src="doc/img/README/image-20260321230119368.jpg" alt="番剧详情" />
       <br />
       <sub>番剧详情：海报、剧集与追番信息</sub>
     </td>
