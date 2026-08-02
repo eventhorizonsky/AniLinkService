@@ -34,36 +34,36 @@ https://www.dandanplay.com/
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230025996.jpg" alt="首页" />
+      <img src="doc/img/README/home.jpg" alt="首页" />
       <br />
       <sub>首页：新番时间表与常用入口</sub>
     </td>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230139361.jpg" alt="播放页" />
+      <img src="doc/img/README/player.jpg" alt="播放页" />
       <br />
       <sub>播放页：视频、弹幕与字幕联动</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230119368.jpg" alt="番剧详情" />
+      <img src="doc/img/README/anime-detail.jpg" alt="番剧详情" />
       <br />
       <sub>番剧详情：海报、剧集与追番信息</sub>
     </td>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230218519.png" alt="评论区" />
+      <img src="doc/img/README/comments.png" alt="评论区" />
       <br />
       <sub>评论区：聚合 Bangumi 讨论内容</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321230254549.png" alt="资源搜索和下载" />
+      <img src="doc/img/README/resource-download.png" alt="资源搜索和下载" />
       <br />
       <sub>后台：资源搜索、下载和管理</sub>
     </td>
     <td align="center" width="50%">
-      <img src="doc/img/README/image-20260321231041588.png" alt="字幕管理" />
+      <img src="doc/img/README/subtitle-management.png" alt="字幕管理" />
       <br />
       <sub>后台：内封、外挂字幕管理</sub>
     </td>
