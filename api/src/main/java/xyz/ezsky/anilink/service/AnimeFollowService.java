@@ -272,14 +272,12 @@ public class AnimeFollowService {
             result.put("follow", convertToVO(follow));
             return result;
         }
+        log.info("[match] matchAndBindFollow followId={} animeTitle={} subjectId={}",
+                followId, follow.getAnimeTitle(), follow.getBangumiSubjectId());
 
-        // 策略1：按 Bangumi subjectId 匹配（本地仓库 → 弹弹 bgmtv 接口）
+        // 按 Bangumi subjectId 匹配（本地仓库 → 弹弹 bgmtv 接口）
         Anime anime = animeService.matchAnimeByBangumiSubjectId(follow.getBangumiSubjectId());
-
-        // 策略2：按标题匹配（本地仓库 → 弹弹搜索接口）
-        if (anime == null || anime.getAnimeId() == null) {
-            anime = animeService.matchAnimeByTitle(follow.getAnimeTitle());
-        }
+        log.info("[match] subjectId 匹配结果: {}", anime == null ? "null" : ("animeId=" + anime.getAnimeId()));
 
         if (anime == null || anime.getAnimeId() == null) {
             result.put("matched", false);
