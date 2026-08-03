@@ -59,7 +59,7 @@ const goToAnime = (animeId) => {
 }
 
 const goToFollowList = () => {
-  router.push({ path: '/profile', query: { tab: 'follows' } })
+  router.push('/profile/follows')
 }
 
 const goToSearch = () => {

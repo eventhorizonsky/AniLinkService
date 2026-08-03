@@ -472,6 +472,76 @@ public class AnimeService {
     }
 
     /**
+     * 按标题匹配本地番剧。
+     * 先在本地番剧库按标题查找（精确 → 包含）；查不到再请求弹弹搜索接口取第一条结果，
+     * 且仅当该番剧已存在于本地仓库（有媒体）时才返回，避免绑定无法播放的番剧。
+     *
+     * @param title 追番标题
+     * @return 匹配到的本地 Anime；未找到时返回 null
+     */
+    public Anime matchAnimeByTitle(String title) {
+        if (!StringUtils.hasText(title)) {
+            return null;
+        }
+        String t = title.trim();
+
+        // 1. 本地仓库按标题匹配：先精确（忽略大小写），再包含
+        Optional<Anime> exact = animeRepository.findAll().stream()
+                .filter(a -> t.equalsIgnoreCase(a.getTitle() == null ? "" : a.getTitle()))
+                .findFirst();
+        if (exact.isPresent()) {
+            return exact.get();
+        }
+        Optional<Anime> contains = animeRepository.findAll().stream()
+                .filter(a -> a.getTitle() != null && a.getTitle().contains(t))
+                .findFirst();
+        if (contains.isPresent()) {
+            return contains.get();
+        }
+
+        // 2. 请求弹弹搜索接口，取第一条结果
+        String json = searchDandanAnime(t);
+        Long animeId = extractFirstAnimeIdFromSearch(json);
+        if (animeId == null) {
+            return null;
+        }
+        // 弹弹搜到的番剧必须在本地仓库中存在（有媒体）才能绑定
+        return animeRepository.findByAnimeId(animeId).orElse(null);
+    }
+
+    /**
+     * 从弹弹搜索响应中提取第一个 animeId。
+     * 响应格式: { success: true, animes: [{ animeId: 112, ... }, ...] }
+     */
+    private Long extractFirstAnimeIdFromSearch(String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode data = root.has("animes") ? root : (root.has("data") ? root.get("data") : root);
+            JsonNode animes = data.get("animes");
+            if (animes != null && animes.isArray() && animes.size() > 0) {
+                JsonNode first = animes.get(0);
+                JsonNode id = first.get("animeId");
+                if (id != null && id.isNumber()) {
+                    return id.asLong();
+                }
+                if (id != null && id.isTextual()) {
+                    try {
+                        return Long.parseLong(id.asText());
+                    } catch (NumberFormatException ignored) {
+                        // fall through
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to extract animeId from search response", e);
+        }
+        return null;
+    }
+
+    /**
      * 将 Bangumi subjectId 关联到本地番剧记录（若尚未关联）。
      *
      * @param animeId   本地番剧 ID

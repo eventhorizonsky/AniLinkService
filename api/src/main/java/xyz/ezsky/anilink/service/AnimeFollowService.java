@@ -273,18 +273,17 @@ public class AnimeFollowService {
             return result;
         }
 
-        Long subjectId = follow.getBangumiSubjectId();
-        if (subjectId == null) {
-            result.put("matched", false);
-            result.put("message", "该追番缺少 Bangumi subjectId，无法自动匹配");
-            result.put("follow", convertToVO(follow));
-            return result;
+        // 策略1：按 Bangumi subjectId 匹配（本地仓库 → 弹弹 bgmtv 接口）
+        Anime anime = animeService.matchAnimeByBangumiSubjectId(follow.getBangumiSubjectId());
+
+        // 策略2：按标题匹配（本地仓库 → 弹弹搜索接口）
+        if (anime == null || anime.getAnimeId() == null) {
+            anime = animeService.matchAnimeByTitle(follow.getAnimeTitle());
         }
 
-        Anime anime = animeService.matchAnimeByBangumiSubjectId(subjectId);
         if (anime == null || anime.getAnimeId() == null) {
             result.put("matched", false);
-            result.put("message", "弹弹中未找到对应番剧");
+            result.put("message", "本地仓库与弹弹中均未找到可绑定的番剧");
             result.put("follow", convertToVO(follow));
             return result;
         }

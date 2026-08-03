@@ -1,36 +1,94 @@
 <template>
   <div class="main-layout">
-    <!-- 顶部导航栏 -->
-    <header class="nav-header">
-      <div class="nav-container">
-        <!-- Logo 和站点名称 -->
-        <div class="nav-logo">
-          <router-link to="/" class="logo-link">
-            <i class="mdi mdi-magic-staff"></i>
-            <span class="site-name">{{ siteConfig?.siteName || 'AniLink' }}</span>
+    <!-- ===== 侧边栏 ===== -->
+    <aside class="app-sidebar" :class="{ open: sidebarOpen }">
+      <div class="sidebar-brand">
+        <i class="mdi mdi-magic-staff brand-icon"></i>
+        <div class="brand-text">
+          <h1>{{ siteConfig?.siteName || DEFAULT_SITE_NAME }}</h1>
+          <span>AniLink · 追番</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-label">导航</div>
+        <router-link
+          v-for="item in navPrimary"
+          :key="'p' + item.label"
+          :to="item.to"
+          class="nav-link"
+          :active-class="item.exactOnly ? undefined : 'nav-active'"
+          exact-active-class="nav-active"
+          @click="sidebarOpen = false"
+        >
+          <i class="mdi" :class="item.icon"></i>
+          <span class="nav-text">{{ item.label }}</span>
+        </router-link>
+
+        <template v-if="isLoggedIn">
+          <div class="nav-label">我的</div>
+          <router-link
+            v-for="item in navMine"
+            :key="'m' + item.label"
+            :to="item.to"
+            class="nav-link"
+            :active-class="item.exactOnly ? undefined : 'nav-active'"
+            exact-active-class="nav-active"
+            @click="sidebarOpen = false"
+          >
+            <i class="mdi" :class="item.icon"></i>
+            <span class="nav-text">{{ item.label }}</span>
           </router-link>
+        </template>
+      </nav>
+
+      <div class="sidebar-footer">
+        <router-link v-if="isAdmin" to="/admin" class="footer-link">
+          <i class="mdi mdi-cog"></i> 后台管理
+        </router-link>
+        <a v-if="isLoggedIn" href="#" class="footer-link" @click.prevent="handleLogout">
+          <i class="mdi mdi-logout"></i> 退出登录
+        </a>
+        <a v-else href="#" class="footer-link" @click.prevent="showLoginDialog = true">
+          <i class="mdi mdi-login"></i> 登录 / 注册
+        </a>
+      </div>
+    </aside>
+
+    <!-- 移动端遮罩 -->
+    <div class="sidebar-overlay" :class="{ show: sidebarOpen }" @click="sidebarOpen = false"></div>
+
+    <!-- ===== 主区 ===== -->
+    <main class="app-main">
+      <!-- 内容区（顶部栏作为内容区首行，随内容滚动，与参考布局一致） -->
+      <div class="app-content">
+        <!-- 顶部栏 -->
+        <header class="app-topbar">
+          <button class="menu-toggle" aria-label="切换侧栏" @click="sidebarOpen = !sidebarOpen">
+          <i class="mdi mdi-menu"></i>
+        </button>
+
+        <div class="search-wrap">
+          <i class="mdi mdi-magnify"></i>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索动漫、角色、声优…"
+            @keyup.enter="handleSearch"
+          />
+          <span class="shortcut">⌘K</span>
         </div>
 
-        <!-- 中间导航菜单 -->
-        <nav class="nav-menu">
-          <router-link to="/" class="nav-item" exact-active-class="active">首页</router-link>
-          <router-link to="/search" class="nav-item" active-class="active">发现</router-link>
-
-          <router-link v-if="isRemoteAccessVisible" to="/remote-access" class="nav-item" active-class="active">远程访问</router-link>
-          <router-link v-if="isLoggedIn" to="/profile" class="nav-item" active-class="active">个人中心</router-link>
-        </nav>
-
-        <!-- 搜索框和用户菜单 -->
-        <div class="nav-right">
+        <div class="topbar-actions">
           <!-- 消息按钮和下拉 -->
           <div v-if="isLoggedIn" class="message-wrapper">
             <button @click="handleMessageBtnClick" class="message-btn" :title="`消息${unreadCount > 0 ? ' (' + unreadCount + ')' : ''}`">
-              <i class="mdi mdi-bell"></i>
+              <i class="mdi mdi-bell-outline"></i>
               <span v-if="unreadCount > 0" class="unread-dot"></span>
             </button>
-            
+
             <!-- 消息下拉窗 -->
-            <div v-if="messageMenuOpen" class="message-dropdown" @click.stop>
+            <div v-if="messageMenuOpen" class="message-dropdown" @click.stop @wheel.stop>
               <div class="message-dropdown-header">
                 <span>消息通知</span>
                 <div class="message-header-actions">
@@ -45,13 +103,13 @@
                   </button>
                 </div>
               </div>
-              
+
               <div class="message-list">
                 <div v-if="loadingMessages" class="message-loading">
                   <i class="mdi mdi-loading mdi-spin"></i>
                   <span>加载中...</span>
                 </div>
-                
+
                 <template v-else-if="recentMessages.length > 0">
                   <div
                     v-for="msg in recentMessages"
@@ -70,13 +128,13 @@
                     </div>
                   </div>
                 </template>
-                
+
                 <div v-else class="message-empty">
                   <i class="mdi mdi-bell-off-outline"></i>
                   <span>暂无消息</span>
                 </div>
               </div>
-              
+
               <div class="message-dropdown-footer">
                 <button @click="messageMenuOpen = false; goToMessages()" class="view-all-messages-btn">
                   查看全部消息
@@ -85,23 +143,13 @@
             </div>
           </div>
 
-          <!-- 搜索框 -->
-          <div class="search-box">
-            <i class="mdi mdi-magnify"></i>
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="搜索动画..."
-              @keyup.enter="handleSearch"
-            />
-          </div>
-
           <!-- 用户菜单 -->
           <div class="user-menu-wrapper">
-            <button class="user-btn" @click="userMenuOpen = !userMenuOpen">
-              <i class="mdi mdi-account"></i>
+            <button class="avatar" :title="isLoggedIn ? currentUser : '登录'" @click="userMenuOpen = !userMenuOpen">
+              <template v-if="isLoggedIn">{{ avatarChar }}</template>
+              <i v-else class="mdi mdi-account"></i>
             </button>
-            <div v-if="userMenuOpen" class="user-dropdown">
+            <div v-if="userMenuOpen" class="user-dropdown" @wheel.stop>
               <a v-if="!isLoggedIn" href="#" @click.prevent="showLoginDialog = true; userMenuOpen = false" class="dropdown-item">
                 <i class="mdi mdi-login"></i>
                 <span>登录</span>
@@ -124,10 +172,6 @@
                   <i class="mdi mdi-account-circle"></i>
                   <span>个人中心</span>
                 </a>
-                <a href="#" @click.prevent="goToFollows" class="dropdown-item">
-                  <i class="mdi mdi-bookmark-multiple"></i>
-                  <span>我的追番</span>
-                </a>
                 <div class="dropdown-divider"></div>
                 <a v-if="isAdmin" href="#" @click.prevent="goToAdmin" class="dropdown-item">
                   <i class="mdi mdi-cog"></i>
@@ -141,16 +185,9 @@
             </div>
           </div>
         </div>
-      </div>
-    </header>
+        </header>
 
-    <!-- 主内容区域 -->
-    <main class="main-content">
-      <div class="content-wrapper">
         <router-view />
-        <p v-if="siteConfig?.siteDescription" class="site-description-note">
-          {{ siteConfig.siteDescription }}
-        </p>
       </div>
     </main>
 
@@ -263,6 +300,7 @@ const registerLoading = ref(false)
 const sendCodeLoading = ref(false)
 const sendCodeCountdown = ref(0)
 const userMenuOpen = ref(false)
+const sidebarOpen = ref(false)
 const siteConfig = ref(null)
 const userInfo = ref(null)
 const captchaId = ref('')
@@ -292,13 +330,34 @@ const markingAllRead = ref(false)
 
 let countdownTimer = null
 
+// 侧边栏导航（显隐规则沿用旧版顶部导航）
+const navPrimary = computed(() => [
+  { label: '首页', icon: 'mdi-home', to: '/', exactOnly: true },
+  { label: '发现', icon: 'mdi-compass', to: '/search' },
+  { label: '新番时间表', icon: 'mdi-calendar-week', to: '/schedule' },
+  ...(isRemoteAccessVisible.value ? [{ label: '远程访问', icon: 'mdi-lan-connect', to: '/remote-access' }] : [])
+])
+
+const navMine = [
+  { label: '观看历史', icon: 'mdi-history', to: '/profile/history', exactOnly: true },
+  { label: '我的追番', icon: 'mdi-bookmark-multiple', to: '/profile/follows', exactOnly: true },
+  { label: '我的弹幕', icon: 'mdi-comment-text-multiple', to: '/profile/danmaku', exactOnly: true },
+  { label: '消息中心', icon: 'mdi-bell-outline', to: '/profile/messages', exactOnly: true },
+  { label: '账号绑定', icon: 'mdi-link-variant', to: '/profile/binding', exactOnly: true }
+]
+
+const avatarChar = computed(() => {
+  const name = userInfo.value?.username
+  return name ? name.charAt(0).toUpperCase() : '用'
+})
+
 // 获取未读消息数
 const fetchUnreadCount = async () => {
   if (!isLoggedIn.value) {
     unreadCount.value = 0
     return
   }
-  
+
   try {
     const res = await axios.get(`${API_BASE}/messages/unread-count`)
     // 后端 success 统一返回 code=200，兼容历史 code=0 的情况
@@ -319,7 +378,7 @@ const fetchRecentMessages = async () => {
     recentMessages.value = []
     return
   }
-  
+
   loadingMessages.value = true
   try {
     const res = await axios.get(`${API_BASE}/messages`, {
@@ -369,7 +428,7 @@ const formatMessageTime = (dateString) => {
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)
   const diffDays = Math.floor(diffMs / 86400000)
-  
+
   if (diffMins < 1) return '刚刚'
   if (diffMins < 60) return `${diffMins}分钟前`
   if (diffHours < 24) return `${diffHours}小时前`
@@ -380,7 +439,7 @@ const formatMessageTime = (dateString) => {
 // 处理消息点击
 const handleMessageClick = async (message) => {
   messageMenuOpen.value = false
-  
+
   // 标记为已读
   if (!message.isRead) {
     try {
@@ -391,7 +450,7 @@ const handleMessageClick = async (message) => {
       console.error('标记消息已读失败:', error)
     }
   }
-  
+
   // 如果是剧集更新消息且有视频ID，跳转到播放页
   if (message.type === 'episode_update' && message.videoId) {
     const routeData = router.resolve({
@@ -437,7 +496,7 @@ const toggleMessageMenu = () => {
 let unreadCountTimer = null
 const startUnreadCountPolling = () => {
   if (!isLoggedIn.value) return
-  
+
   if (!unreadCountTimer) {
     fetchUnreadCount()
     unreadCountTimer = setInterval(fetchUnreadCount, 180000) // 每3分钟检查一次
@@ -572,7 +631,7 @@ const syncDocumentTitle = () => {
   document.title = siteConfig.value?.siteName || DEFAULT_SITE_NAME
 }
 
-// 点击外部关闭下拉菜单
+// 点击外部关闭下拉菜单 / 移动端收起侧边栏
 const handleClickOutside = (event) => {
   if (messageMenuOpen.value) {
     const messageWrapper = event.target.closest('.message-wrapper')
@@ -588,6 +647,18 @@ const handleClickOutside = (event) => {
   }
 }
 
+// 键盘快捷键：Ctrl/⌘ + K 聚焦搜索；Escape 收起侧边栏
+const onKeydown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    const input = document.querySelector('.search-wrap input')
+    if (input) input.focus()
+  }
+  if (e.key === 'Escape' && sidebarOpen.value) {
+    sidebarOpen.value = false
+  }
+}
+
 watch(
   () => siteConfig.value?.siteName,
   () => {
@@ -600,6 +671,7 @@ onMounted(() => {
   loadSiteConfig()
   checkLoginStatus()
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
@@ -609,6 +681,7 @@ onBeforeUnmount(() => {
   }
   stopUnreadCountPolling()
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', onKeydown)
 })
 
 const loadSiteConfig = () => {
@@ -801,12 +874,12 @@ const goToProfile = () => {
 
 const goToFollows = () => {
   userMenuOpen.value = false
-  router.push({ path: '/profile', query: { tab: 'follows' } })
+  router.push('/profile/follows')
 }
 
 const goToMessages = () => {
   userMenuOpen.value = false
-  router.push({ path: '/profile', query: { tab: 'messages' } })
+  router.push('/profile/messages')
 }
 
 const goToAdmin = () => {
@@ -840,7 +913,6 @@ body {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  overflow-y: hidden;
 }
 
 #app {
@@ -848,261 +920,354 @@ body {
   overflow: hidden;
 }
 
+/* ===== 主布局：侧边栏 + 主区 ===== */
 .main-layout {
   display: flex;
-  flex-direction: column;
   height: 100vh;
-  background: linear-gradient(135deg, #faf8f5 0%, #f4eee7 50%, #ede8df 100%);
   overflow: hidden;
-}
-
-/* ===== Navigation Header ===== */
-.nav-header {
+  background: #ffffff;
   position: relative;
-  height: 70px;
-  background: #fdfbf9;
-  border-bottom: 1px solid var(--border-light);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  z-index: 1000;
-  flex-shrink: 0;
 }
 
-.nav-container {
-  padding: 0 24px;
+/* ===== 侧边栏 ===== */
+.app-sidebar {
+  flex: 0 0 230px;
+  width: 230px;
   height: 100%;
+  background: linear-gradient(180deg, rgba(255, 253, 251, 0.92) 0%, rgba(253, 248, 243, 0.9) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(196, 93, 43, 0.14);
+  padding: 28px 16px 24px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 40px;
-  max-width: 100%;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 2px 0 24px rgba(0, 0, 0, 0.02);
+  transition: transform 0.35s ease;
 }
 
-/* Logo */
-.nav-logo {
-  flex-shrink: 0;
-}
-
-.logo-link {
+.sidebar-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  text-decoration: none;
-  color: var(--primary-dark);
+  padding: 0 6px 28px 6px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 20px;
+}
+.sidebar-brand .brand-icon {
+  font-size: 28px;
+  line-height: 1;
+  color: var(--anime-accent-red);
+}
+.brand-text h1 {
+  font-size: 18px;
   font-weight: 700;
-  font-size: 1.15rem;
-  transition: 0.2s;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  color: var(--anime-accent-red);
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .brand-text h1 {
+    background: linear-gradient(135deg, var(--anime-accent-red), #e0a050);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+.brand-text span {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--anime-text-secondary);
+  display: block;
+  margin-top: 2px;
+  -webkit-text-fill-color: var(--anime-text-secondary);
 }
 
-.logo-link:hover {
-  color: var(--accent-red);
-  transform: scale(1.05);
-}
-
-.logo-link i {
-  font-size: 1.35rem;
-  color: var(--accent-red);
-}
-
-.site-name {
-  letter-spacing: 0.5px;
-}
-
-/* Menu */
-.nav-menu {
-  display: flex;
-  gap: 32px;
+.sidebar-nav {
   flex: 1;
-  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-
-.nav-item {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 0.95rem;
-  transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-  position: relative;
-  padding: 8px 12px;
-  margin: 0 -12px;
-  border-radius: 6px;
-}
-
-.nav-item:hover {
-  color: var(--accent-red);
-  background: rgba(196, 93, 43, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(196, 93, 43, 0.2);
-  transform: translateY(-1px);
-}
-
-.nav-item::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 12px;
-  right: 12px;
-  width: auto;
-  height: 3px;
-  background: var(--accent-red);
-  transform: scaleX(0);
-  transition: transform 0.3s ease;
-  border-radius: 1px;
-}
-
-.nav-item:hover::after {
-  transform: scaleX(1);
-}
-
-.nav-item.active::after {
-  transform: scaleX(1);
-}
-
-.nav-item.active {
-  color: var(--accent-red);
+.nav-label {
+  font-size: 11px;
   font-weight: 600;
-  background: rgba(196, 93, 43, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(196, 93, 43, 0.18);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #b3a494;
+  padding: 14px 12px 8px;
 }
 
-.nav-item:focus-visible {
-  outline: 2px solid rgba(196, 93, 43, 0.45);
-  outline-offset: 2px;
-}
-
-/* Right Section */
-.nav-right {
+.sidebar-nav a.nav-link {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #7a6e61;
+  text-decoration: none;
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+.sidebar-nav a.nav-link i {
+  width: 20px;
+  font-size: 16px;
+  text-align: center;
+  color: #b3a494;
+  transition: 0.3s;
+}
+.sidebar-nav a.nav-link:hover {
+  background: #f6efe7;
+  color: var(--anime-text-main);
+}
+.sidebar-nav a.nav-link:hover i {
+  color: var(--anime-accent-red);
+}
+
+/* ★ 选中项 — 棕色胶囊 */
+.sidebar-nav a.nav-link.nav-active {
+  background: rgba(196, 93, 43, 0.13);
+  color: #8a3d12;
+  font-weight: 600;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(196, 93, 43, 0.15);
+}
+.sidebar-nav a.nav-link.nav-active i {
+  color: var(--anime-accent-red);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--anime-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-footer .footer-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--anime-text-secondary);
+  text-decoration: none;
+  transition: 0.3s;
+}
+.sidebar-footer .footer-link i {
+  width: 20px;
+  font-size: 15px;
+  text-align: center;
+  color: var(--anime-text-secondary);
+}
+.sidebar-footer .footer-link:hover {
+  background: var(--anime-bg-cream);
+  color: var(--anime-text-main);
+}
+
+/* 移动端遮罩 */
+.sidebar-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 95;
+  backdrop-filter: blur(4px);
+}
+.sidebar-overlay.show {
+  display: block;
+}
+
+/* ===== 主区 ===== */
+.app-main {
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ===== 顶部栏（内容区首行，随内容滚动） ===== */
+.app-topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 4px 0 20px;
+  flex-wrap: wrap;
+}
+
+.search-wrap {
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+.search-wrap > i {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 15px;
+  pointer-events: none;
+}
+.search-wrap input {
+  width: 100%;
+  padding: 12px 18px 12px 48px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 400;
+  background: #f9fafb;
+  color: #1f2937;
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  font-family: inherit;
+}
+.search-wrap input::placeholder {
+  color: #9ca3af;
+  font-weight: 300;
+}
+.search-wrap input:focus {
+  border-color: var(--anime-accent-red);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.15);
+}
+.search-wrap .shortcut {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 500;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 2px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.3px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-shrink: 0;
 }
 
-.search-box {
+/* 圆角图标按钮（消息 / 菜单） */
+.message-btn,
+.menu-toggle {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 999px;
+  background: var(--anime-bg-cream);
+  color: var(--anime-text-secondary);
+  font-size: 17px;
+  cursor: pointer;
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #e0d5ca;
-  border-radius: 24px;
-  padding: 8px 16px;
-  transition: 0.2s;
-  width: 200px;
+  justify-content: center;
+  position: relative;
+  border: 1px solid transparent;
+}
+.message-btn:hover,
+.menu-toggle:hover {
+  background: rgba(196, 93, 43, 0.08);
+  color: var(--anime-accent-red);
+  border-color: rgba(196, 93, 43, 0.2);
+}
+.menu-toggle {
+  display: none;
 }
 
-.search-box:focus-within {
-  border-color: var(--accent-brown);
-  box-shadow: 0 0 0 3px rgba(185, 154, 126, 0.08);
+/* 用户头像 */
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(196, 93, 43, 0.18), rgba(179, 129, 91, 0.25));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--anime-accent-red);
+  cursor: pointer;
+  border: 2px solid rgba(196, 93, 43, 0.2);
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+}
+.avatar:hover {
+  border-color: var(--anime-accent-red);
+  transform: scale(1.03);
+}
+.avatar i {
+  font-size: 22px;
+  color: var(--anime-text-secondary);
 }
 
-.search-box i {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.search-box input {
-  border: none;
-  background: transparent;
-  outline: none;
-  color: var(--text-main);
-  font-size: 0.9rem;
-  width: 100%;
-}
-
-.search-box input::placeholder {
-  color: var(--text-secondary);
-}
-
-/* User Menu */
 .user-menu-wrapper {
   position: relative;
 }
 
-.user-btn {
-  width: 40px;
-  height: 40px;
+.unread-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
   border-radius: 50%;
-  background: #fff;
-  border: 1px solid #e0d5ca;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  cursor: pointer;
-  transition: 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border: 2px solid #fff;
 }
 
-.user-btn:hover {
-  background: #faf8f5;
-  color: var(--primary-dark);
-  border-color: var(--accent-brown);
+/* ===== 内容区 ===== */
+.app-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 36px 48px;
 }
 
-/* Message Button */
+/* ===== Message Dropdown ===== */
 .message-wrapper {
   position: relative;
 }
 
-.message-btn {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1px solid #e0d5ca;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  cursor: pointer;
-  transition: 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.message-btn:hover {
-  background: #faf8f5;
-  color: var(--primary-dark);
-  border-color: var(--accent-brown);
-}
-
-.unread-dot {
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  width: 10px;
-  height: 10px;
-  background: #e74c3c;
-  border-radius: 50%;
-  border: 2px solid white;
-  box-shadow: 0 0 0 1px rgba(231, 76, 60, 0.25);
-}
-
-/* Message Dropdown */
 .message-dropdown {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   background: white;
   border-radius: 12px;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--anime-border-light);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   width: 360px;
   max-height: 500px;
   overflow: hidden;
+  overscroll-behavior: contain;
   animation: slideDown 0.2s ease;
   z-index: 1001;
 }
 
 .message-dropdown-header {
   padding: 16px;
-  border-bottom: 1px solid var(--border-light);
-  background: var(--bg-cream);
+  border-bottom: 1px solid var(--anime-border-light);
+  background: var(--anime-bg-cream);
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-weight: 600;
   font-size: 0.95rem;
-  color: white;
-  color: var(--primary-dark);
+  color: var(--anime-primary-dark);
 }
 
 .unread-count-badge {
@@ -1123,9 +1288,9 @@ body {
 }
 
 .mark-all-read-btn {
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--anime-border-light);
   background: #fff;
-  color: var(--accent-red);
+  color: var(--anime-accent-red);
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1136,8 +1301,8 @@ body {
 }
 
 .mark-all-read-btn:hover:not(:disabled) {
-  background: var(--bg-beige);
-  border-color: var(--accent-brown);
+  background: var(--anime-bg-beige);
+  border-color: var(--anime-accent-brown);
 }
 
 .mark-all-read-btn:disabled {
@@ -1153,7 +1318,7 @@ body {
 .message-loading {
   padding: 40px 20px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--anime-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1174,7 +1339,7 @@ body {
 }
 
 .message-item:hover {
-  background: var(--bg-cream);
+  background: var(--anime-bg-cream);
 }
 
 .message-item.unread {
@@ -1210,7 +1375,7 @@ body {
 .message-item-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-main);
+  color: var(--anime-text-main);
   margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1219,7 +1384,7 @@ body {
 
 .message-item-text {
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--anime-text-secondary);
   margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1232,14 +1397,14 @@ body {
 
 .message-item-time {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--anime-text-secondary);
   opacity: 0.7;
 }
 
 .message-empty {
   padding: 40px 20px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--anime-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1253,7 +1418,7 @@ body {
 
 .message-dropdown-footer {
   padding: 12px 16px;
-  border-top: 1px solid var(--border-light);
+  border-top: 1px solid var(--anime-border-light);
   background: #fff;
 }
 
@@ -1261,9 +1426,9 @@ body {
   width: 100%;
   padding: 8px;
   background: transparent;
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--anime-border-light);
   border-radius: 8px;
-  color: var(--accent-red);
+  color: var(--anime-accent-red);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -1271,22 +1436,25 @@ body {
 }
 
 .view-all-messages-btn:hover {
-  background: var(--bg-cream);
-  border-color: var(--accent-brown);
+  background: var(--anime-bg-cream);
+  border-color: var(--anime-accent-brown);
 }
 
+/* ===== User Dropdown ===== */
 .user-dropdown {
   position: absolute;
   top: 100%;
   right: 0;
-  background: white;
-  border-radius: 12px;
-  border: 1px solid var(--border-light);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  min-width: 180px;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #eceff3;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
+  min-width: 190px;
   margin-top: 8px;
-  overflow: hidden;
+  padding: 6px;
+  overscroll-behavior: contain;
   animation: slideDown 0.2s ease;
+  z-index: 1001;
 }
 
 @keyframes slideDown {
@@ -1301,31 +1469,32 @@ body {
 }
 
 .dropdown-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-light);
-  background: var(--bg-cream);
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 4px;
 }
 
 .username {
-  color: var(--primary-dark);
-  font-weight: 600;
-  font-size: 0.9rem;
+  color: var(--anime-text-main);
+  font-weight: 700;
+  font-size: 0.92rem;
 }
 
 .dropdown-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
-  color: var(--text-main);
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--anime-text-secondary);
   text-decoration: none;
-  transition: 0.2s;
+  transition: 0.15s;
   font-size: 0.9rem;
 }
 
 .dropdown-item:hover {
-  background: var(--bg-cream);
-  color: var(--accent-red);
+  background: rgba(196, 93, 43, 0.08);
+  color: var(--anime-accent-red);
 }
 
 .dropdown-item i {
@@ -1335,42 +1504,24 @@ body {
 }
 
 .dropdown-item.logout {
-  color: #c1162b;
-  border-top: 1px solid var(--border-light);
+  color: #dc2626;
+  margin-top: 2px;
+  border-top: 1px solid #f0f0f0;
+  border-radius: 0;
+  padding-top: 10px;
 }
 
 .dropdown-item.logout:hover {
-  background: rgba(193, 22, 43, 0.05);
+  background: #fef2f2;
 }
 
 .dropdown-divider {
   height: 1px;
-  background: var(--border-light);
+  background: #f0f0f0;
   margin: 4px 0;
 }
 
-/* Main Content */
-.main-content {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-.content-wrapper {
-  padding: 12px 16px;
-  width: 100%;
-  max-width: 100%;
-}
-
-.site-description-note {
-  margin: 20px 0 2px;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  color: rgba(107, 95, 85, 0.75);
-  text-align: center;
-}
-
-/* Login Modal */
+/* ===== Login / Register Modal ===== */
 .login-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1392,14 +1543,14 @@ body {
 }
 
 .login-modal {
-  background: #fdfbf9;
-  border-radius: 16px;
+  background: #fff;
+  border-radius: 18px;
   width: 90%;
   max-width: 400px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16);
   animation: slideUp 0.3s ease;
   overflow: hidden;
-  border: 1px solid #e0d5ca;
+  border: 1px solid #eceff3;
 }
 
 @keyframes slideUp {
@@ -1417,14 +1568,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e0d5ca;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid #f0f0f0;
   background: #fff;
 }
 
 .login-header h2 {
   font-size: 1.1rem;
-  color: var(--primary-dark);
+  color: var(--anime-text-main);
   margin: 0;
   font-weight: 700;
 }
@@ -1432,7 +1583,7 @@ body {
 .close-btn {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--anime-text-secondary);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 0;
@@ -1442,37 +1593,39 @@ body {
   align-items: center;
   justify-content: center;
   transition: 0.2s;
+  border-radius: 8px;
 }
 
 .close-btn:hover {
-  color: var(--primary-dark);
+  color: var(--anime-accent-red);
+  background: #f6f6f6;
   transform: rotate(90deg);
 }
 
 .login-body {
-  padding: 24px;
+  padding: 22px 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #fdfbf9;
+  background: #fff;
 }
 
 .login-input {
-  padding: 12px 16px;
-  border: 1px solid #e0d5ca;
-  border-radius: 8px;
+  padding: 11px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
   font-size: 0.95rem;
-  color: var(--text-main);
+  color: var(--anime-text-main);
   font-family: inherit;
   transition: 0.2s;
-  background: #faf8f5;
+  background: #f9fafb;
 }
 
 .login-input:focus {
   outline: none;
-  border-color: var(--accent-brown);
+  border-color: var(--anime-accent-red);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(185, 154, 126, 0.08);
+  box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12);
 }
 
 .captcha-row {
@@ -1487,9 +1640,9 @@ body {
 
 .captcha-image {
   width: 110px;
-  height: 40px;
-  border-radius: 8px;
-  border: 1px solid #e0d5ca;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
   cursor: pointer;
   background: #fff;
 }
@@ -1499,24 +1652,9 @@ body {
   white-space: nowrap;
 }
 
-.remember-me {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  margin-top: 4px;
-}
-
-.remember-me input {
-  cursor: pointer;
-  accent-color: var(--accent-brown);
-}
-
 .login-footer {
   padding: 16px 24px;
-  border-top: 1px solid #e0d5ca;
+  border-top: 1px solid #f0f0f0;
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -1524,11 +1662,11 @@ body {
 }
 
 .btn-cancel {
-  padding: 8px 20px;
-  border: 1px solid #e0d5ca;
+  padding: 9px 20px;
+  border: 1px solid #e5e7eb;
   background: #fff;
-  color: var(--text-secondary);
-  border-radius: 8px;
+  color: var(--anime-text-secondary);
+  border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   font-size: 0.9rem;
@@ -1536,28 +1674,28 @@ body {
 }
 
 .btn-cancel:hover {
-  background: #faf8f5;
-  color: var(--primary-dark);
-  border-color: var(--accent-brown);
+  background: #f9fafb;
+  color: var(--anime-text-main);
+  border-color: var(--anime-accent-brown);
 }
 
 .btn-login {
   padding: 10px 24px;
   border: none;
-  background: #d9483f;
+  background: var(--anime-accent-red);
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
   font-size: 0.9rem;
   transition: 0.2s;
-  box-shadow: 0 2px 8px rgba(217, 72, 63, 0.35);
+  box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
 }
 
 .btn-login:hover:not(:disabled) {
-  background: #c23b2e;
+  background: #a65628;
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(217, 72, 63, 0.45);
+  box-shadow: 0 4px 16px rgba(196, 93, 43, 0.4);
 }
 
 .btn-login:disabled {
@@ -1565,262 +1703,76 @@ body {
   cursor: not-allowed;
 }
 
-/* Responsive */
-@media (max-width: 920px) {
-  .nav-header {
-    height: auto;
-    min-height: 70px;
+/* ===== Responsive ===== */
+@media (max-width: 820px) {
+  .app-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    transform: translateX(-100%);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+    border-right: none;
+    z-index: 110;
   }
-
-  .nav-container {
-    padding: 8px 16px;
+  .app-sidebar.open {
+    transform: translateX(0);
+  }
+  .menu-toggle {
+    display: flex;
+  }
+  .app-content {
+    padding: 18px 18px 32px;
+  }
+  .app-topbar {
+    padding: 0 0 16px;
     gap: 12px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
   }
-
-  .nav-logo {
-    order: 1;
-  }
-
-  .nav-right {
-    order: 2;
-    margin-left: auto;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    white-space: nowrap;
-  }
-
-  .nav-menu {
-    order: 3;
-    flex: 0 0 100%;
-    width: 100%;
-    justify-content: flex-start;
-    gap: 10px;
-    overflow-x: auto;
-    white-space: nowrap;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .nav-menu::-webkit-scrollbar {
+  .search-wrap .shortcut {
     display: none;
   }
-
-  .nav-item {
-    padding: 6px 10px;
-    margin: 0;
-  }
-
-  .search-box {
-    width: 180px;
-  }
-
   .message-dropdown {
     width: 340px;
   }
 }
 
-@media (max-width: 768px) {
-  .nav-header {
-    min-height: 60px;
-  }
-
-  .nav-container {
-    padding: 8px 12px;
-    gap: 8px;
-  }
-
-  .nav-right {
-    margin-left: auto;
-    justify-content: flex-end;
+@media (max-width: 600px) {
+  .app-topbar {
     gap: 10px;
   }
-
-  .nav-menu {
-    justify-content: center;
-    gap: 8px;
-  }
-
-  .search-box {
-    width: 140px;
-    font-size: 0.85rem;
-    padding: 6px 10px;
-    order: 1;
-  }
-
-  .search-box input::placeholder {
-    font-size: 0.8rem;
-  }
-
-  .message-wrapper {
-    order: 2;
-  }
-
-  .user-menu-wrapper {
-    order: 3;
-  }
-
-  .content-wrapper {
-    padding: 16px 12px;
-  }
-
-  .message-btn,
-  .user-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 1rem;
-  }
-
-  .message-dropdown {
-    width: 320px;
-    right: -10px;
-  }
-}
-
-@media (max-width: 600px) {
-  .nav-header {
-    min-height: 56px;
-  }
-
-  .nav-container {
-    padding: 8px 10px;
-    gap: 8px;
-  }
-
-  .logo-link {
-    font-size: 1rem;
-    gap: 6px;
-  }
-
-  .logo-link i {
-    font-size: 1.1rem;
-  }
-
-  .site-name {
-    display: inline-block;
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.86rem;
-  }
-
-  .search-box {
-    display: flex;
-    width: 120px;
-    padding: 6px 8px;
-    gap: 4px;
-    order: 1;
-  }
-
-  .search-box i {
-    font-size: 0.85rem;
-  }
-
-  .search-box input {
-    font-size: 0.8rem;
+  .search-wrap {
     min-width: 0;
+    flex: 1 1 auto;
   }
-
-  .search-box input::placeholder {
-    font-size: 0.75rem;
+  .search-wrap input {
+    padding: 10px 14px 10px 40px;
+    font-size: 13px;
   }
-
-  .message-wrapper {
-    order: 2;
-  }
-
-  .user-menu-wrapper {
-    order: 3;
-  }
-
-  .nav-menu {
-    gap: 6px;
-  }
-
-  .nav-item {
-    font-size: 0.85rem;
-    padding: 5px 8px;
-  }
-
-  .nav-right {
-    gap: 8px;
-    margin-left: auto;
-    justify-content: flex-end;
-  }
-
-  .content-wrapper {
-    padding: 12px 10px;
-  }
-
-  .site-description-note {
-    margin-top: 16px;
-    font-size: 0.72rem;
-  }
-
-  .message-btn,
-  .user-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 0.9rem;
-  }
-
   .message-dropdown {
     width: calc(100vw - 20px);
-    max-width: 320px;
+    max-width: 340px;
     right: -10px;
   }
 }
 
-/* 极小屏幕优化 */
 @media (max-width: 480px) {
-  .nav-container {
-    padding: 6px 8px;
-    gap: 6px;
+  .app-content {
+    padding: 12px 12px 24px;
   }
-
-  .site-name {
-    max-width: 100px;
-    font-size: 0.8rem;
+  .app-topbar {
+    padding: 0 0 12px;
   }
-
-  .search-box {
-    width: 100px;
-    padding: 5px 7px;
-    order: 1;
-  }
-
-  .search-box input::placeholder {
-    content: '搜索';
-  }
-
-  .message-wrapper {
-    order: 2;
-  }
-
-  .user-menu-wrapper {
-    order: 3;
-  }
-
-  .nav-right {
-    gap: 6px;
-  }
-
   .message-btn,
-  .user-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 0.85rem;
+  .menu-toggle,
+  .avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 15px;
   }
-
-  .unread-dot {
-    width: 8px;
-    height: 8px;
-  }
-
   .message-dropdown {
     width: calc(100vw - 16px);
+    max-width: 340px;
     right: -8px;
   }
 }

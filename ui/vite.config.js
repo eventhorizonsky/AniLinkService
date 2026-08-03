@@ -8,7 +8,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        // target: 'http://localhost:8081',
+        target: 'http://192.168.123.76:8085',
         changeOrigin: true,
         secure: false
       },

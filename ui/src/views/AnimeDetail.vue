@@ -201,7 +201,7 @@
 
           <div v-else-if="showBangumiBindHint" class="bangumi-bind-hint-card">
             已登录。绑定 Bangumi 账号后，可在这里同步评分和短评。
-            <router-link to="/profile?tab=binding">前往个人中心绑定</router-link>
+            <router-link to="/profile/binding">前往个人中心绑定</router-link>
           </div>
 
           <p class="comments-source-hint">

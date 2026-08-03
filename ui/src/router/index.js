@@ -28,6 +28,11 @@ const routes = [
         component: () => import('../views/Search.vue')
       },
       {
+        path: 'schedule',
+        name: 'Schedule',
+        component: () => import('../views/Schedule.vue')
+      },
+      {
         path: 'anime/:animeId',
         name: 'AnimeDetail',
         component: () => import('../views/AnimeDetail.vue')
@@ -50,15 +55,45 @@ const routes = [
         meta: { requiresAuth: true }
       },
       {
+        path: 'profile/history',
+        name: 'ProfileHistory',
+        component: () => import('../views/profile/History.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'profile/follows',
+        name: 'ProfileFollows',
+        component: () => import('../views/profile/Follows.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'profile/danmaku',
+        name: 'ProfileDanmaku',
+        component: () => import('../views/profile/Danmaku.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'profile/messages',
+        name: 'ProfileMessages',
+        component: () => import('../views/profile/Messages.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'profile/binding',
+        name: 'ProfileBinding',
+        component: () => import('../views/profile/Binding.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'follows',
         name: 'FollowList',
-        redirect: { path: '/profile', query: { tab: 'follows' } },
+        redirect: '/profile/follows',
         meta: { requiresAuth: true }
       },
       {
         path: 'messages',
         name: 'Messages',
-        redirect: { path: '/profile', query: { tab: 'messages' } },
+        redirect: '/profile/messages',
         meta: { requiresAuth: true }
       },
       {

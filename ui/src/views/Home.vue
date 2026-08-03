@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -9,22 +9,11 @@ const API_BASE = '/api'
 const STATUS_LABEL_MAP = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
 const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
 
+const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
+
 // ===================== Follow List =====================
 const followList = ref([])
 const followLoading = ref(false)
-
-// ===================== Schedule =====================
-const bangumiList = ref([])
-const scheduleLoading = ref(false)
-const scheduleError = ref('')
-const activeDay = ref(new Date().getDay())
-
-const weekTabs = [
-  { label: '日', key: 0 }, { label: '一', key: 1 },
-  { label: '二', key: 2 }, { label: '三', key: 3 },
-  { label: '四', key: 4 }, { label: '五', key: 5 },
-  { label: '六', key: 6 }
-]
 
 // ===================== Trending =====================
 const trendingHot = ref([])
@@ -32,24 +21,87 @@ const trendingNewAnime = ref([])
 const trendingLoading = ref(false)
 const trendingError = ref('')
 
-const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+// ===================== User =====================
+const userInfo = ref(null)
+try {
+  const stored = localStorage.getItem('userInfo')
+  if (stored) userInfo.value = JSON.parse(stored)
+} catch (e) { /* ignore */ }
 
-// ===================== Responsive =====================
-const windowWidth = ref(window.innerWidth)
-const onWindowResize = () => { windowWidth.value = window.innerWidth }
-const isMobile = computed(() => windowWidth.value <= 768)
+const isLoggedIn = computed(() => !!localStorage.getItem('token') && !!userInfo.value)
 
-// 首页追番列表：移动端最多6个，PC端全部
-const displayedFollowList = computed(() => {
-  return isMobile.value ? followList.value.slice(0, 6) : followList.value
+// ===================== Hero Carousel =====================
+const heroSlides = computed(() => trendingHot.value.slice(0, 5))
+const heroTags = ['🔥 热播中', '✨ 新作', '🏆 霸权', '🎬 热门', '⭐ 推荐']
+const heroTag = (i) => heroTags[i % heroTags.length]
+const heroBg = (slide) => slide.imageUrl || defaultPoster
+
+const currentSlide = ref(0)
+let autoPlayTimer = null
+
+const goToSlide = (index) => { currentSlide.value = index }
+const selectSlide = (index) => { goToSlide(index); resetAutoPlay() }
+const nextSlide = () => {
+  if (heroSlides.value.length > 0) goToSlide((currentSlide.value + 1) % heroSlides.value.length)
+}
+const resetAutoPlay = () => {
+  if (autoPlayTimer) clearInterval(autoPlayTimer)
+  if (heroSlides.value.length > 1) autoPlayTimer = setInterval(nextSlide, 5500)
+}
+const pauseAutoPlay = () => {
+  if (autoPlayTimer) clearInterval(autoPlayTimer)
+}
+
+// ===================== Navigation =====================
+const goToDetail = (a) => { if (a?.animeId) router.push('/anime/' + a.animeId) }
+const goToSearch = () => router.push('/search')
+const goToFollows = () => router.push('/profile/follows')
+
+// ===================== Follow horizontal scroll =====================
+// Vue 的 @wheel 默认 passive，preventDefault 无效，需手动挂非 passive 监听
+const followScrollRef = ref(null)
+let followWheelHandler = null
+
+const detachFollowWheel = () => {
+  if (followWheelHandler && followScrollRef.value) {
+    followScrollRef.value.removeEventListener('wheel', followWheelHandler)
+    followWheelHandler = null
+  }
+}
+const attachFollowWheel = () => {
+  detachFollowWheel()
+  const el = followScrollRef.value
+  if (!el) return
+  followWheelHandler = (e) => {
+    e.preventDefault()
+    el.scrollLeft += e.deltaY
+  }
+  el.addEventListener('wheel', followWheelHandler, { passive: false })
+}
+
+watch(() => followList.value.length, () => {
+  if (followList.value.length) nextTick(attachFollowWheel)
+  else detachFollowWheel()
 })
 
-// 追番区域横向滚动
-const followGridRef = ref(null)
-const onFollowWheel = (e) => {
-  if (isMobile.value) return
-  e.preventDefault()
-  followGridRef.value.scrollLeft += e.deltaY
+// ===================== Formatting =====================
+const fmtScore = (v) => {
+  if (v == null || v === '') return '-'
+  const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
+}
+const fmtHeat = (v) => {
+  if (v == null || v === '') return ''
+  const n = Number(v)
+  if (Number.isNaN(n)) return String(v)
+  if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + '亿'
+  if (n >= 1e4) return (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万'
+  return String(n)
+}
+const genreLabel = (a, kind) => {
+  if (kind === 'hot') return '本周热播'
+  if (kind === 'new') return '热门新番'
+  if (kind === 'follow') return statusLabel(a.status)
+  return a.type || '动漫'
 }
 
 // ===================== Fetch =====================
@@ -65,26 +117,6 @@ const fetchFollowList = async () => {
   } catch (e) { console.error('Fetch follow list failed:', e) }
   finally { followLoading.value = false }
 }
-
-const fetchSchedule = async () => {
-  scheduleLoading.value = true; scheduleError.value = ''
-  try {
-    const res = await fetch(`${API_BASE}/animes/shin/raw-json`)
-    const result = await res.json()
-    if (result.code !== 200 || !result.data || !Array.isArray(result.data.bangumiList))
-      throw new Error('新番接口返回结构不正确')
-    const nd = (d) => { if (d === 7) return 0; return Number.isInteger(d) ? d : -1 }
-    bangumiList.value = result.data.bangumiList
-      .map(i => ({ ...i, airDay: nd(i.airDay) }))
-      .filter(i => i.airDay >= 0 && i.airDay <= 6)
-  } catch (e) { scheduleError.value = e?.message || '新番数据加载失败'; bangumiList.value = [] }
-  finally { scheduleLoading.value = false }
-}
-
-const filteredBangumi = computed(() =>
-  bangumiList.value.filter(i => i.airDay === activeDay.value).sort((a, b) => (b.rating || 0) - (a.rating || 0))
-)
-const dayCount = (d) => bangumiList.value.filter(i => i.airDay === d).length
 
 const fetchTrending = async () => {
   trendingLoading.value = true; trendingError.value = ''
@@ -112,473 +144,339 @@ const extractList = (data) => {
   return []
 }
 
-const goToFollowList = () => router.push({ path: '/profile', query: { tab: 'follows' } })
-const goToSearch = () => router.push('/search')
+// ===================== Lifecycle =====================
+watch(() => trendingHot.value.length, () => {
+  currentSlide.value = 0
+  resetAutoPlay()
+})
 
-const rankClass = (i) => {
-  if (i === 0) return 'rank-gold'; if (i === 1) return 'rank-silver'; if (i === 2) return 'rank-bronze'
-  return ''
-}
-const fmtScore = (v) => {
-  if (v == null || v === '') return '-'
-  const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
-}
+onMounted(() => {
+  fetchTrending()
+  if (isLoggedIn.value) fetchFollowList()
+})
 
-onMounted(() => { fetchSchedule(); fetchTrending(); if (isLoggedIn.value) fetchFollowList(); window.addEventListener('resize', onWindowResize) })
-onBeforeUnmount(() => { window.removeEventListener('resize', onWindowResize) })
+onBeforeUnmount(() => {
+  detachFollowWheel()
+  if (autoPlayTimer) clearInterval(autoPlayTimer)
+})
 </script>
 
 <template>
   <div class="home-root">
-    <div class="home-main">
-      <!-- ===== Left ===== -->
-      <div class="home-left">
-        <!-- 我的追番 -->
-        <section class="home-section follow-section">
-          <div class="section-header">
-            <div class="section-title">
-              <i class="mdi mdi-bookmark-multiple section-icon" style="color:#e74c3c"></i>
-              <span>我的追番</span>
-            </div>
-            <button v-if="isLoggedIn && followList.length" class="more-btn" @click="goToFollowList">
-              全部 <i class="mdi mdi-chevron-right"></i>
-            </button>
-          </div>
-          <div class="section-body">
-            <div v-if="!isLoggedIn" class="empty">  <i class="mdi mdi-login-variant"></i> <span>登录后查看追番</span> </div>
-            <div v-else-if="followLoading" class="sk-grid"><div v-for="i in 6" :key="i" class="sk-card"></div></div>
-            <div v-else-if="!followList.length" class="empty">
-              <i class="mdi mdi-movie-open-star-outline"></i> <span>还没有追番，去</span>
-              <button class="link" @click="goToSearch">发现番剧</button>
-            </div>
-            <div v-else ref="followGridRef" class="card-grid follow-grid" @wheel="onFollowWheel">
-              <router-link v-for="a in displayedFollowList" :key="a.id" :to="'/anime/' + a.animeId" class="anime-card">
-                <div class="card-poster">
-                  <img :src="a.imageUrl || 'https://assets.anixplayer.net/image/poster/default.jpg'" :alt="a.animeTitle" loading="lazy" />
-                  <div class="poster-gradient"></div>
-                  <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-                </div>
-                <div class="card-info">
-                  <p class="card-title" :title="a.animeTitle">{{ a.animeTitle }}</p>
-                  <span class="card-meta" :class="a.status === 'watching' ? 'meta-active' : 'meta-done'">
-                    {{ statusLabel(a.status) }}
-                  </span>
-                </div>
-              </router-link>
-            </div>
-          </div>
-        </section>
+    <!-- ===== Hero Carousel ===== -->
+    <section
+      v-if="heroSlides.length"
+      class="hero-section"
+      @mouseenter="pauseAutoPlay"
+      @mouseleave="resetAutoPlay"
+    >
+      <div
+        v-for="(slide, i) in heroSlides"
+        :key="slide.animeId || i"
+        class="hero-slide"
+        :class="{ active: currentSlide === i }"
+        @click="goToDetail(slide)"
+      >
+        <!-- 模糊封面作为背景 -->
+        <div class="hero-bg" :style="{ backgroundImage: `url(${heroBg(slide)})` }"></div>
+        <div class="hero-overlay"></div>
 
-        <!-- 新番时间表 -->
-        <section class="home-section schedule-section">
-          <div class="section-header">
-            <div class="section-title">
-              <i class="mdi mdi-calendar-week section-icon" style="color:#4b7bec"></i>
-              <span>新番时间表</span>
-            </div>
+        <!-- 左侧文案 -->
+        <div class="hero-content">
+          <span class="tag">{{ heroTag(i) }}</span>
+          <h2>{{ slide.animeTitle }}</h2>
+          <div class="meta">
+            <span><i class="mdi mdi-star" style="color:#fbbf24;"></i> {{ fmtScore(slide.rating) }}</span>
+            <span v-if="slide.heat" class="meta-heat"><i class="mdi mdi-fire"></i> {{ fmtHeat(slide.heat) }} 热度</span>
+            <span><i class="mdi mdi-play-circle-outline"></i> 立即观看</span>
           </div>
-          <div class="section-body">
-            <div class="day-tabs">
-              <button v-for="t in weekTabs" :key="t.key" class="day-tab"
-                :class="{ active: activeDay === t.key, today: t.key === new Date().getDay() }"
-                @click="activeDay = t.key">
-                <span class="day-label">{{ t.label }}</span>
-                <span class="day-badge">{{ dayCount(t.key) }}</span>
-              </button>
-            </div>
-            <div v-if="scheduleLoading" class="sk-grid"><div v-for="i in 6" :key="i" class="sk-card"></div></div>
-            <div v-else-if="scheduleError" class="empty error"><i class="mdi mdi-alert-circle-outline"></i><span>{{ scheduleError }}</span></div>
-            <div v-else-if="!filteredBangumi.length" class="empty"><i class="mdi mdi-coffee-outline"></i><span>该日暂无新番</span></div>
-            <div v-else class="card-grid">
-              <router-link v-for="a in filteredBangumi" :key="a.animeId" :to="'/anime/' + a.animeId" class="anime-card">
-                <div class="card-poster">
-                  <img :src="a.imageUrl || 'https://assets.anixplayer.net/image/poster/default.jpg'" :alt="a.animeTitle" loading="lazy" />
-                  <div class="poster-gradient"></div>
-                  <span class="poster-score"><i class="mdi mdi-star"></i>{{ Number(a.rating || 0).toFixed(1) }}</span>
-                  <span v-if="a.isOnAir" class="poster-dot" title="连载中"></span>
-                  <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-                </div>
-                <div class="card-info">
-                  <p class="card-title" :title="a.animeTitle">{{ a.animeTitle }}</p>
-                </div>
-              </router-link>
-            </div>
-          </div>
-        </section>
+        </div>
+
+        <!-- 右侧封面卡片（原比例） -->
+        <div class="hero-poster">
+          <img :src="slide.imageUrl || defaultPoster" :alt="slide.animeTitle" loading="lazy" />
+          <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
+        </div>
       </div>
 
-      <!-- ===== Right ===== -->
-      <div class="home-right">
-        <!-- 热门趋势 -->
-        <section class="home-section trending-panel">
-          <div class="section-header">
-            <div class="section-title">
-              <i class="mdi mdi-fire section-icon" style="color:#f97316"></i>
-              <span>热门趋势</span>
-            </div>
-            <span class="badge-pill">周榜</span>
-          </div>
-          <div class="section-body">
-            <div v-if="trendingLoading" class="sk-list"><div v-for="i in 8" :key="i" class="sk-line"></div></div>
-            <div v-else-if="trendingError" class="empty"><i class="mdi mdi-alert-circle-outline"></i><span>{{ trendingError }}</span></div>
-            <div v-else-if="!trendingHot.length" class="empty"><i class="mdi mdi-fire-off"></i><span>暂无数据</span></div>
-            <template v-else>
-              <ul class="trending-list">
-                <li v-for="(a, i) in trendingHot" :key="a.animeId || i" class="t-item">
-                  <router-link :to="'/anime/' + a.animeId" class="t-link">
-                    <span class="t-rank" :class="rankClass(i)">{{ i + 1 }}</span>
-                    <img v-if="a.imageUrl" :src="a.imageUrl" class="t-thumb" loading="lazy" />
-                    <span v-else class="t-thumb-ph"></span>
-                    <span class="t-title" :title="a.animeTitle">{{ a.animeTitle }}</span>
-                    <span class="t-heat" v-if="a.heat">{{ a.heat }}</span>
-                    <span class="t-score"><i class="mdi mdi-star"></i>{{ fmtScore(a.rating) }}</span>
-                  </router-link>
-                </li>
-              </ul>
-            </template>
-          </div>
-        </section>
+      <div class="hero-controls">
+        <button
+          v-for="(slide, i) in heroSlides"
+          :key="'c' + i"
+          :class="{ active: currentSlide === i }"
+          :aria-label="`切换到第 ${i + 1} 张`"
+          @click="selectSlide(i)"
+        ></button>
+      </div>
+    </section>
+    <div v-else-if="trendingLoading" class="hero-section hero-skeleton"></div>
 
-        <!-- 新番热度 -->
-        <section class="home-section trending-panel">
-          <div class="section-header">
-            <div class="section-title">
-              <i class="mdi mdi-rocket-launch section-icon" style="color:#8b5cf6"></i>
-              <span>新番热度</span>
+    <!-- ===== 我的追番 ===== -->
+    <template v-if="isLoggedIn">
+      <div class="br-section-header">
+        <h3><i class="mdi mdi-bookmark-multiple"></i> 我的追番</h3>
+        <span class="br-view-all" @click="goToFollows">查看全部 <i class="mdi mdi-chevron-right"></i></span>
+      </div>
+
+      <div v-if="followLoading" class="br-sk-grid">
+        <div v-for="i in 6" :key="'f' + i" class="br-sk-card"></div>
+      </div>
+      <div v-else-if="!followList.length" class="br-empty">
+        <i class="mdi mdi-movie-open-outline"></i> 还没有追番，去
+        <button class="br-link" @click="goToSearch">发现番剧</button>
+      </div>
+      <div v-else ref="followScrollRef" class="br-follow-scroll">
+        <div
+          v-for="a in followList.slice(0, 10)"
+          :key="a.id"
+          class="br-card br-follow-card"
+          @click="goToDetail(a)"
+        >
+          <div class="br-card-image">
+            <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+            <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
+          </div>
+          <div class="br-card-body">
+            <h4>{{ a.animeTitle }}</h4>
+            <div class="br-card-meta">
+              <span class="genre" :class="a.status === 'watching' ? 'genre-active' : 'genre-done'">
+                {{ genreLabel(a, 'follow') }}
+              </span>
             </div>
-            <span class="badge-pill">本季</span>
           </div>
-          <div class="section-body">
-            <div v-if="trendingLoading" class="sk-list"><div v-for="i in 6" :key="i" class="sk-line"></div></div>
-            <div v-else-if="!trendingNewAnime.length" class="empty"><i class="mdi mdi-rocket-launch-off"></i><span>暂无数据</span></div>
-            <template v-else>
-              <ul class="trending-list">
-                <li v-for="(a, i) in trendingNewAnime" :key="a.animeId || i" class="t-item">
-                  <router-link :to="'/anime/' + a.animeId" class="t-link">
-                      <span class="t-rank" :class="rankClass(i)">{{ i + 1 }}</span>
-                      <img v-if="a.imageUrl" :src="a.imageUrl" class="t-thumb" loading="lazy" />
-                      <span v-else class="t-thumb-ph"></span>
-                      <span class="t-title" :title="a.animeTitle">{{ a.animeTitle }}</span>
-                      <span class="t-score"><i class="mdi mdi-star"></i>{{ fmtScore(a.rating) }}</span>
-                    </router-link>
-                  </li>
-                </ul>
-            </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- ===== 本周热门推荐 ===== -->
+    <div class="br-section-header">
+      <h3><i class="mdi mdi-fire"></i> 本周热门推荐</h3>
+      <span class="br-view-all" @click="goToSearch">查看全部 <i class="mdi mdi-chevron-right"></i></span>
+    </div>
+
+    <div v-if="trendingLoading" class="br-sk-grid">
+      <div v-for="i in 8" :key="'h' + i" class="br-sk-card"></div>
+    </div>
+    <div v-else-if="!trendingHot.length" class="br-empty"><i class="mdi mdi-fire-off"></i> {{ trendingError || '暂无热门数据' }}</div>
+    <div v-else class="br-grid">
+      <div v-for="a in trendingHot.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
+        <div class="br-card-image">
+          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+          <span class="br-badge-new">热播</span>
+          <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
+        </div>
+        <div class="br-card-body">
+          <h4>{{ a.animeTitle }}</h4>
+          <div class="br-card-meta">
+            <span class="genre">{{ genreLabel(a, 'hot') }}</span>
+            <span class="rating"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
           </div>
-        </section>
+        </div>
       </div>
     </div>
+
+    <!-- ===== 热门新番 ===== -->
+    <div class="br-section-header">
+      <h3><i class="mdi mdi-rocket-launch-outline"></i> 热门新番</h3>
+      <span class="br-view-all" @click="goToSearch">查看全部 <i class="mdi mdi-chevron-right"></i></span>
+    </div>
+
+    <div v-if="trendingLoading" class="br-sk-grid">
+      <div v-for="i in 8" :key="'n' + i" class="br-sk-card"></div>
+    </div>
+    <div v-else-if="!trendingNewAnime.length" class="br-empty"><i class="mdi mdi-rocket-launch-outline"></i> 暂无新作数据</div>
+    <div v-else class="br-grid">
+      <div v-for="a in trendingNewAnime.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
+        <div class="br-card-image">
+          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+          <span class="br-badge-new br-badge-new--sparkle">新作</span>
+          <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
+        </div>
+        <div class="br-card-body">
+          <h4>{{ a.animeTitle }}</h4>
+          <div class="br-card-meta">
+            <span class="genre">{{ genreLabel(a, 'new') }}</span>
+            <span class="rating"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <style scoped>
-/* ========================= ROOT ========================= */
 .home-root {
-  display: flex; flex-direction: column;
-  height: calc(100vh - 135px); min-height: 0;
-  animation: home-in .35s ease-out;
-}
-@keyframes home-in { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:translateY(0) } }
+  --accent: #c45d2b;
+  --accent-soft: rgba(196, 93, 43, 0.12);
+  --bg-beige: #f4eee7;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-full: 9999px;
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.06);
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-.home-main {
-  flex: 1; display: grid;
-  grid-template-columns: 1fr 320px; gap: 14px; min-height: 0;
+  animation: home-in 0.35s ease-out;
 }
-.home-left  { display:flex; flex-direction:column; gap:12px; min-height:0; min-width:0; }
-.home-right { display:flex; flex-direction:column; gap:12px; min-height:0; }
+@keyframes home-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ========================= SECTION ========================= */
-.home-section {
-  background: #fdfbf9;
-  border: 1px solid #e7ddd3;
-  border-radius: 14px;
-  display: flex; flex-direction: column;
+/* ===================== Hero ===================== */
+.hero-section {
+  position: relative;
+  width: 100%;
+  height: clamp(260px, 30vh, 360px);
+  margin: 4px 0 8px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  min-width: 0;
-}
-.follow-section   { flex-shrink: 0; }
-.schedule-section { flex: 1; min-height: 0; }
-.schedule-section .section-body { overflow-y: auto; }
-.trending-panel   { flex: 1; min-height: 0; overflow: hidden; }
-.trending-panel .section-body { overflow-y: auto; }
-
-.section-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px;
-  border-bottom: 1px solid #f0e8df;
-  background: linear-gradient(180deg, #fefcfa 0%, #fdfbf9 100%);
-  flex-shrink: 0;
-}
-.section-title { display:flex; align-items:center; gap:7px; font-size:.9rem; font-weight:700; color:#2e241e; }
-.section-icon  { font-size: 1.05rem; }
-
-.badge-pill {
-  font-size: .7rem; color: #9e8c7e; font-weight: 500;
-  background: #f4eee7; padding: 2px 8px; border-radius: 999px;
-}
-.more-btn {
-  display: inline-flex; align-items: center; gap: 2px; border: none;
-  background: transparent; color: #c45d2b; font-size: .76rem; font-weight: 600;
-  cursor: pointer; padding: 3px 8px; border-radius: 6px; transition: all .2s;
-}
-.more-btn:hover { background: rgba(196,93,43,.08); }
-
-.section-body { padding: 10px 14px; }
-
-/* ========================= EMPTY / SKELETON ========================= */
-.empty {
-  display:flex; align-items:center; justify-content:center; gap:6px;
-  padding:22px 14px; color:#9e8c7e; font-size:.83rem;
-}
-.empty i { font-size:1.05rem; opacity:.6; }
-.empty.error { color:#c45d2b; }
-.link { border:none; background:transparent; color:#c45d2b; font-weight:600; cursor:pointer; font-size:inherit; text-decoration:underline; text-underline-offset:2px; }
-
-.sk-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(95px,1fr)); gap:10px; }
-.sk-card { aspect-ratio:3/4; border-radius:10px; background:linear-gradient(135deg,#f0ebe5 25%,#e8e0d8 50%,#f0ebe5 75%); background-size:200% 100%; animation:shim 1.4s ease-in-out infinite; }
-.sk-list { display:flex; flex-direction:column; gap:5px; }
-.sk-line { height:38px; border-radius:8px; background:linear-gradient(135deg,#f0ebe5 25%,#e8e0d8 50%,#f0ebe5 75%); background-size:200% 100%; animation:shim 1.4s ease-in-out infinite; }
-@keyframes shim { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-
-/* ========================= ANIME CARD ========================= */
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
-  gap: 10px;
-}
-
-/* 追番区域：PC端只显示一排 */
-.follow-grid {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 8px;
-  scrollbar-width: none;
-}
-.follow-grid::-webkit-scrollbar { display: none; }
-.follow-grid .anime-card {
-  flex: 0 0 105px;
-}
-
-.anime-card {
-  display: block;
+  background: var(--bg-beige);
+  box-shadow: var(--shadow-md);
   cursor: pointer;
-  background: #fff;
-  border: 1px solid #ece6df;
-  border-radius: 11px;
-  overflow: hidden;
-  transition: transform .22s ease, box-shadow .22s ease;
-  box-shadow: 0 1px 4px rgba(0,0,0,.04);
-  text-decoration: none;
-  color: inherit;
 }
-.anime-card:hover {
-  transform: scale(1.04);
-  box-shadow: 0 8px 24px rgba(0,0,0,.14);
-  z-index: 10;
-  position: relative;
+.hero-skeleton {
+  background: linear-gradient(135deg, var(--bg-beige) 25%, #ede3d8 50%, var(--bg-beige) 75%);
+  background-size: 200% 100%;
+  animation: shim 1.4s ease-in-out infinite;
+}
+@keyframes shim { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+.hero-slide.active { opacity: 1; }
+
+/* 模糊封面作为背景 */
+.hero-bg {
+  position: absolute;
+  inset: -32px;
+  background-size: cover;
+  background-position: center 30%;
+  filter: blur(26px) saturate(1.3) brightness(0.9);
 }
 
-/* poster */
-.card-poster {
-  position: relative;
-  aspect-ratio: 3 / 4;
-  overflow: hidden;
-  background: #e8e0d6;
-}
-.card-poster img {
-  width: 100%; height: 100%;
-  object-fit: cover; object-position: center top;
+/* 左侧加深渐变保证文字可读，右侧保留亮部衬托封面 */
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(18, 12, 8, 0.82) 0%, rgba(18, 12, 8, 0.55) 42%, rgba(18, 12, 8, 0.18) 72%, rgba(18, 12, 8, 0.42) 100%);
 }
 
-/* bottom gradient on poster */
-.poster-gradient {
-  position: absolute; inset: auto 0 0 0; height: 45%;
-  background: linear-gradient(to top, rgba(0,0,0,.45) 0%, transparent 100%);
+.hero-content {
+  position: absolute;
+  left: 48px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  max-width: 52%;
+  color: #fff;
+}
+.hero-content .tag {
+  display: inline-block;
+  background: rgba(196, 93, 43, 0.9);
+  backdrop-filter: blur(4px);
+  padding: 3px 14px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+  color: #fff;
+}
+.hero-content h2 {
+  font-size: clamp(22px, 3vw, 38px);
+  font-weight: 700;
+  line-height: 1.15;
+  margin-bottom: 14px;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.35);
+}
+.hero-content .meta {
+  display: flex;
+  gap: 18px;
+  font-size: 13px;
+  opacity: 0.92;
+}
+.hero-content .meta span { display: flex; align-items: center; gap: 6px; }
+.hero-content .meta i { font-size: 13px; }
+
+/* 右侧封面卡片（原比例 283:400） */
+.hero-poster {
+  position: absolute;
+  right: 56px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 172px;
+  aspect-ratio: 283 / 400;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #e6e0d6;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+.hero-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+.hero-poster:hover .poster-hover { opacity: 1; }
+
+/* hover 播放遮罩 */
+.poster-hover {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
   pointer-events: none;
 }
+.poster-hover i { font-size: 2rem; color: #fff; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); }
 
-/* score badge on poster (schedule only) */
-.poster-score {
-  position: absolute; top: 6px; left: 6px;
-  background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
-  color: #fbbf24; font-size: .66rem; font-weight: 700;
-  padding: 2px 7px; border-radius: 999px;
-  display: inline-flex; align-items: center; gap: 2px;
-}
-.poster-score i { font-size: .55rem; }
-
-/* green dot */
-.poster-dot {
-  position: absolute; top: 6px; right: 6px;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #22c55e; border: 2px solid #fff;
-  box-shadow: 0 0 6px rgba(34,197,94,.5);
-}
-
-/* hover play overlay */
-.poster-hover {
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,.28);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity .2s ease; pointer-events: none;
-}
-.poster-hover i { font-size: 1.8rem; color:#fff; filter:drop-shadow(0 2px 4px rgba(0,0,0,.3)); }
-.anime-card:hover .poster-hover { opacity: 1; }
-
-/* card info area — fixed height, rating always at bottom */
-.card-info {
-  padding: 6px 7px 7px;
-  height: 50px;              /* fixed total height */
+/* 轮播圆点 */
+.hero-controls {
+  position: absolute;
+  bottom: 18px;
+  left: 48px;
+  z-index: 5;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  overflow: hidden;           /* clip stray overflow */
-  max-width: 100%;
+  gap: 8px;
 }
-.card-title {
-  flex: 1;
-  margin: 0; max-width: 100%;
-  font-size: .72rem; font-weight: 600; color: #2e241e;
-  line-height: 1.35;
-  /* line-clamp with hard max-height fallback */
-  display: -webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
-  overflow: hidden; word-break: break-word; overflow-wrap: anywhere;
-  max-height: 2.7em;               /* 2 × 1.35 line-height, clips 3rd line */
-  text-align: center;
+.hero-controls button {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+  transition: var(--transition);
+  padding: 0;
 }
-.card-meta {
-  flex-shrink: 0;
-  font-size: .64rem; font-weight: 600;
-  padding: 1px 7px; border-radius: 999px;
-  margin-top: 3px;
-}
-.card-meta.meta-active { background: rgba(196,93,43,.12); color: #c45d2b; }
-.card-meta.meta-done   { background: rgba(34,197,94,.1);  color: #16a34a; }
+.hero-controls button.active { background: #fff; width: 28px; border-radius: 6px; }
+.hero-controls button:hover { background: rgba(255, 255, 255, 0.75); }
 
-/* ========================= DAY TABS ========================= */
-.day-tabs { display:flex; gap:4px; margin-bottom:10px; flex-shrink:0; }
-.day-tab {
-  display:flex; flex-direction:column; align-items:center; gap:1px; border:none;
-  background:#f4eee7; color:#8b6f5e; padding:4px 0; border-radius:8px;
-  cursor:pointer; transition:all .2s; min-width:40px; flex:1;
-}
-.day-tab:hover { background:#ede3d8; color:#5c4032; }
-.day-tab.active { background:#2e241e; color:#fff; }
-.day-tab.today:not(.active) .day-label { color:#c45d2b; font-weight:700; }
-.day-label { font-size:.7rem; font-weight:600; }
-.day-badge { font-size:.62rem; font-weight:700; opacity:.7; }
-.day-tab.active .day-badge { opacity:1; }
-
-/* ========================= TRENDING LIST ========================= */
-.trending-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px; }
-.t-item {
-  display:flex; align-items:center; padding:0; border-radius:8px;
-  min-width:0;
-}
-.t-link {
-  display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:8px;
-  text-decoration:none; color:inherit; flex:1; min-width:0;
-  transition:background .15s;
-}
-.t-link:hover { background:linear-gradient(90deg,#fef9f4 0%,#fdfbf9 100%); }
-
-
-.t-rank {
-  flex-shrink:0; width:20px; height:20px; border-radius:5px;
-  display:flex; align-items:center; justify-content:center;
-  font-size:.68rem; font-weight:700; background:#f0ebe5; color:#8b6f5e;
-}
-.rank-gold   { background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#fff; box-shadow:0 1px 4px rgba(245,158,11,.3); }
-.rank-silver { background:linear-gradient(135deg,#cbd5e1,#94a3b8); color:#fff; box-shadow:0 1px 4px rgba(148,163,184,.3); }
-.rank-bronze { background:linear-gradient(135deg,#fed7aa,#fb923c); color:#fff; box-shadow:0 1px 4px rgba(251,146,60,.3); }
-
-.t-thumb    { flex-shrink:0; width:28px; height:37px; border-radius:4px; object-fit:cover; object-position:center top; background:#e8e0d6; }
-.t-thumb-ph { flex-shrink:0; width:28px; height:37px; border-radius:4px; background:linear-gradient(135deg,#f0ebe5,#e8e0d8); }
-
-.t-title {
-  flex:1; min-width:0; font-size:.8rem; font-weight:500; color:#2e241e;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-
-.t-heat { flex-shrink:0; font-size:.65rem; color:#9e8c7e; font-weight:500; font-variant-numeric:tabular-nums; }
-.t-score {
-  flex-shrink:0; font-size:.74rem; font-weight:600; color:#c45d2b;
-  display:inline-flex; align-items:center; gap:2px; min-width:34px; justify-content:flex-end;
-}
-.t-score i { font-size:.6rem; }
-
-/* ================================================================ */
-/*                        RESPONSIVE                                 */
-/* ================================================================ */
-@media (max-width: 1280px) {
-  .home-main { grid-template-columns: 1fr 290px; gap: 12px; }
-}
-
-@media (max-width: 1024px) {
-  .home-root { height: auto; flex: 1; }
-  .home-main { grid-template-columns: 1fr; gap: 12px; }
-  .home-right { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .trending-panel { flex: none; max-height: 380px; }
-  .schedule-section { flex: none; max-height: 420px; }
-  .follow-grid { display: grid; flex-wrap: unset; min-width: unset; overflow: unset; }
-  .follow-grid .anime-card { flex: unset; }
-}
-
-@media (max-width: 768px) {
-  .home-right { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .trending-panel { max-height: 340px; }
-  .schedule-section { max-height: 380px; }
-  .card-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
-  .follow-grid { display: grid; flex-wrap: unset; min-width: unset; overflow: unset; }
-  .follow-grid .anime-card { flex: unset; }
-  .card-info { height: 46px; }
-  .card-title { font-size: .68rem; }
-  .section-header { padding: 7px 12px; }
-  .section-body   { padding: 8px 12px; }
-}
-
-@media (max-width: 600px) {
-  .home-right { grid-template-columns: 1fr; gap: 10px; }
-  .trending-panel { max-height: 300px; }
-  .schedule-section { max-height: 360px; }
-  .card-grid { grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 7px; }
-  .card-info { height: 44px; }
-  .card-title { font-size: .65rem; }
-  .day-tab { min-width: 34px; padding: 3px 0; }
-  .day-label { font-size: .65rem; }
-  .day-badge { font-size: .58rem; }
+/* ===================== Responsive ===================== */
+@media (max-width: 820px) {
+  .hero-section { height: 230px; }
+  .hero-poster { width: 120px; right: 24px; }
+  .hero-content { left: 26px; max-width: calc(100% - 190px); }
+  .hero-content h2 { font-size: 20px; }
+  .hero-controls { left: 26px; }
 }
 
 @media (max-width: 480px) {
-  .home-root { height: auto; }
-  .home-main, .home-left, .home-right { gap: 8px; }
-  .card-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .card-info { height: 40px; padding: 4px 5px 5px; }
-  .card-title { font-size: .62rem; }
-  .card-meta { font-size: .58rem; padding: 1px 5px; }
-  .poster-score { font-size: .6rem; padding: 1px 5px; top: 4px; left: 4px; }
-  .section-header { padding: 6px 10px; }
-  .section-body   { padding: 6px 10px; }
-  .day-tabs { gap: 2px; }
-  .day-tab { min-width: 30px; padding: 3px 0; border-radius: 6px; }
-  .day-badge { display: none; }
-  .trending-panel { max-height: 260px; }
-  .schedule-section { max-height: 300px; }
-  .t-link { padding: 4px 6px; gap: 6px; }
-  .t-title { font-size: .74rem; }
-  .t-thumb, .t-thumb-ph { width: 24px; height: 32px; }
-  .t-rank { width: 18px; height: 18px; font-size: .62rem; }
-  .t-score { font-size: .7rem; min-width: 30px; }
-  .t-heat { display: none; }
-}
-
-@media (max-width: 380px) {
-  .card-grid { grid-template-columns: repeat(3, 1fr); gap: 5px; }
-  .card-title { font-size: .6rem; }
-  .card-info { height: 38px; }
+  .hero-section { height: 190px; border-radius: var(--radius-md); }
+  .hero-poster { width: 96px; right: 14px; border-radius: 12px; border-width: 1.5px; }
+  .hero-content { left: 18px; max-width: calc(100% - 128px); }
+  .hero-content .tag { font-size: 10px; padding: 2px 10px; margin-bottom: 8px; }
+  .hero-content h2 { font-size: 16px; margin-bottom: 8px; }
+  .hero-content .meta { gap: 10px; font-size: 11px; }
+  .hero-content .meta .meta-heat { display: none; }
+  .hero-controls { bottom: 12px; left: 18px; }
 }
 </style>
