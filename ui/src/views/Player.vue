@@ -167,6 +167,7 @@ const tmpSubtitleOctopusSubUrl = ref('')
 const selectedSubtitleTrack = ref(null)
 let progressSaveTimer = null
 let subtitleOffsetPersistTimer = null
+let _mobileTapHandler = null
 
 const subtitlesOctopusWorkJsPath = '/js/JavascriptSubtitlesOctopus/subtitles-octopus-worker.js'
 const subtitlesOctopusWorkWasmPath = '/js/JavascriptSubtitlesOctopus/subtitles-octopus-worker.wasm'
@@ -506,8 +507,49 @@ const ddplayLink = computed(() => {
   return `ddplay:${encodeURIComponent(withOptionalFilePath)}`
 })
 
+const syncMobileClass = () => {
+  if (!artRef.value) return
+  const playerEl = artRef.value.querySelector('.art-video-player')
+  if (!playerEl) return
+  if (isMobileViewport()) {
+    playerEl.classList.add('art-mobile')
+  } else {
+    playerEl.classList.remove('art-mobile')
+  }
+}
+
+const installMobileTapHandler = () => {
+  if (_mobileTapHandler) {
+    const video = art.value?.video
+    if (video) video.removeEventListener('click', _mobileTapHandler, true)
+    _mobileTapHandler = null
+  }
+
+  if (!art.value?.video) return
+
+  _mobileTapHandler = (e) => {
+    if (!isMobileViewport() || !art.value) return
+
+    const target = e.target
+    if (target.closest('.art-control, .art-settings, .art-selector, .art-contextmenu, .art-notice, .art-loading, .art-danmaku')) {
+      return
+    }
+
+    e.stopPropagation()
+    if (art.value.playing) {
+      art.value.pause()
+    } else {
+      art.value.play()
+    }
+  }
+
+  art.value.video.addEventListener('click', _mobileTapHandler, true)
+}
+
 const updateViewportState = () => {
   isDesktopViewport.value = !isMobileViewport()
+  syncMobileClass()
+  installMobileTapHandler()
 }
 
 const openWithDdplay = () => {
@@ -1248,9 +1290,14 @@ const toggleFavorite = () => {
 }
 
 const destroyPlayerInstance = () => {
+  if (_mobileTapHandler) {
+    const video = art.value?.video
+    if (video) video.removeEventListener('click', _mobileTapHandler, true)
+    _mobileTapHandler = null
+  }
+
   if (art.value) {
     try {
-      // art.destroy 会触发 plugin destroy，内部会 dispose SubtitlesOctopus
       art.value.destroy(false)
     } catch (error) {
       console.warn('销毁播放器失败:', error)
@@ -1639,6 +1686,8 @@ const createPlayerInstance = async () => {
     art.value.on('ready', async () => {
       console.log('播放器已就绪')
       placeEpisodeControlBeforeScreenshot()
+      syncMobileClass()
+      installMobileTapHandler()
 
       // 优先处理 URL 传入的时间跳转参数
       const t = seekTime.value
@@ -2271,6 +2320,46 @@ onBeforeUnmount(() => {
 
 .resource-cancel-btn:hover {
   background: #f9f4ef;
+}
+
+/* 平板/移动端控件约束：防止控件栏宽度溢出 */
+.artplayer-container :deep(.art-bottom) {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.artplayer-container :deep(.art-controls) {
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+
+.artplayer-container :deep(.art-controls-left),
+.artplayer-container :deep(.art-controls-right) {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* .art-mobile 同步后的非全屏安全区适配 */
+.artplayer-container :deep(.art-video-player.art-mobile:not(.art-fullscreen):not(.art-fullscreen-web):not(:fullscreen):not(:-webkit-full-screen) .art-bottom) {
+  padding-left: max(10px, env(safe-area-inset-left, 0px));
+  padding-right: max(10px, env(safe-area-inset-right, 0px));
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+/* 平板中等尺寸 (769px–1199px)：缩小控件尺寸，防止溢出 */
+@media (min-width: 769px) and (max-width: 1199px) {
+  .artplayer-container :deep(.art-video-player) {
+    --art-control-height: 38px;
+    --art-control-icon-size: 28px;
+    --art-bottom-height: 76px;
+    --art-bottom-offset: 14px;
+    --art-padding: 8px;
+    --art-bottom-gap: 3px;
+    --art-state-size: 60px;
+    --art-settings-icon-size: 20px;
+  }
 }
 
 /* Responsive */

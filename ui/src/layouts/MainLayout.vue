@@ -470,7 +470,7 @@ const handleMessageClick = async (message) => {
 
 // 判断是否是移动端
 const isMobileDevice = () => {
-  return window.innerWidth <= 768
+  return window.innerWidth <= 1280
 }
 
 // 处理消息按钮点击
@@ -1704,7 +1704,7 @@ body {
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 820px) {
+@media (max-width: 1280px) {
   .app-sidebar {
     position: absolute;
     top: 0;
