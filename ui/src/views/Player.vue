@@ -1899,9 +1899,19 @@ onBeforeUnmount(() => {
 </script>
 
 <style>
-/* Player 页禁止外层滚动 */
-.main-content:has(.player-page) {
-  overflow-y: hidden;
+/* Player 页禁止外层滚动：用 flex 让播放器精确撑满剩余高度，避免出现滚动条 */
+.app-content:has(.player-page) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 移动端恢复滚动，内容自然排布 */
+  .app-content:has(.player-page) {
+    display: block;
+    overflow-y: auto;
+  }
 }
 </style>
 
@@ -1919,11 +1929,13 @@ onBeforeUnmount(() => {
   color: #d32f2f;
 }
 
-/* Player page — 固定视口高度，无滚动 */
+/* Player page — 播放器撑满剩余高度，无滚动 */
 .player-page {
+  flex: 1;
+  min-height: 0;
+  height: auto;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 76px);
 }
 
 /* Main Layout */
@@ -2422,6 +2434,7 @@ onBeforeUnmount(() => {
 /* 手机端：右侧选集面板改为 B 站式 TAB 组件，页面可滚动 */
 @media (max-width: 768px) {
   .player-page {
+    flex: none;
     height: auto;
     min-height: calc(100vh - 76px);
   }
