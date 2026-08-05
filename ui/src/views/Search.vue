@@ -24,13 +24,6 @@ const libPageSize = 24
 
 const libHasResult = computed(() => libList.value.length > 0)
 
-const buildMeta = (anime) => {
-  const parts = []
-  if (anime?.type) parts.push(formatAnimeType(anime.type))
-  if (anime?.animeId) parts.push(`ID: ${anime.animeId}`)
-  return parts.length ? parts.join(' | ') : ''
-}
-
 const fetchLibrary = async (append = false) => {
   if (append) libLoadingMore.value = true
   else { libLoading.value = true; libError.value = '' }
@@ -117,6 +110,40 @@ const fetchSeasonAnime = async () => {
 const selectSeason = async (year, month) => { dbYear.value = year; dbMonth.value = month; await fetchSeasonAnime() }
 const toAnime = (id) => { if (id) router.push(`/anime/${id}`) }
 
+// ===================== Database Search (弹弹番剧库) =====================
+const dbKeyword = ref('')
+const dbSearching = ref(false)
+const dbSearchResults = ref([])
+const dbSearched = ref(false)
+
+const dbSearch = async () => {
+  const kw = dbKeyword.value.trim()
+  if (kw.length < 2) {
+    dbSearched.value = true
+    dbSearchResults.value = []
+    return
+  }
+  dbSearching.value = true
+  dbSearched.value = true
+  try {
+    const res = await axios.get(`${API_BASE}/animes/search-dandan`, { params: { keyword: kw } })
+    const raw = res.data?.data
+    const listRaw = raw?.animes || raw?.data?.animes || []
+    dbSearchResults.value = Array.isArray(listRaw) ? listRaw : []
+  } catch (e) {
+    console.error('搜索弹弹番剧失败:', e)
+    dbSearchResults.value = []
+  } finally {
+    dbSearching.value = false
+  }
+}
+
+const dbClearSearch = () => {
+  dbKeyword.value = ''
+  dbSearchResults.value = []
+  dbSearched.value = false
+}
+
 // Season label
 const seasonLabels = { 1:'冬季', 4:'春季', 7:'夏季', 10:'秋季' }
 const seasonLabel = computed(() => {
@@ -192,17 +219,18 @@ onMounted(() => {
           <p class="empty-hint">可搜索动漫标题</p>
         </div>
         <template v-else>
-          <div class="result-grid">
-            <router-link v-for="a in libList" :key="a.id || a.animeId" :to="'/anime/' + a.animeId" class="rc-card">
-              <div class="rc-poster">
+          <div class="br-grid">
+            <router-link v-for="a in libList" :key="a.id || a.animeId" :to="'/anime/' + a.animeId" class="br-card">
+              <div class="br-card-image">
                 <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.title" loading="lazy" />
                 <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
-                <div class="rc-gradient"></div>
                 <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
               </div>
-              <div class="rc-body">
-                <p class="rc-title" :title="a.title">{{ a.title || '未命名动漫' }}</p>
-                <span v-if="buildMeta(a)" class="rc-meta">{{ buildMeta(a) }}</span>
+              <div class="br-card-body">
+                <h4 :title="a.title">{{ a.title || '未命名动漫' }}</h4>
+                <div class="br-card-meta">
+                  <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
+                </div>
               </div>
             </router-link>
           </div>
@@ -219,51 +247,96 @@ onMounted(() => {
           <div class="season-selects">
             <div class="ss-field">
               <label><i class="mdi mdi-calendar"></i></label>
-              <select v-model="dbYear" @change="selectSeason(dbYear, dbMonth)">
+              <select v-model="dbYear" :disabled="!!dbKeyword" @change="selectSeason(dbYear, dbMonth)">
                 <option v-for="y in dbYears" :key="y" :value="y">{{ y }}</option>
               </select>
             </div>
             <span class="ss-sep">年</span>
             <div class="ss-field">
               <label><i class="mdi mdi-calendar-month"></i></label>
-              <select v-model="dbMonth" @change="selectSeason(dbYear, dbMonth)">
+              <select v-model="dbMonth" :disabled="!!dbKeyword" @change="selectSeason(dbYear, dbMonth)">
                 <option v-for="m in dbMonths" :key="m" :value="m">{{ m }}月</option>
               </select>
             </div>
           </div>
-          <div class="toolbar-info" v-if="seasonLabel && !dbLoading">
+          <div class="toolbar-info" v-if="!dbKeyword && seasonLabel && !dbLoading">
             <span class="toolbar-season">{{ seasonLabel }}</span>
             <span class="toolbar-count" v-if="dbList.length">{{ dbList.length }} 部</span>
           </div>
         </div>
+
+        <div class="toolbar-row">
+          <div class="search-box">
+            <i class="mdi mdi-magnify"></i>
+            <input
+              v-model="dbKeyword"
+              type="text"
+              placeholder="搜索弹弹番剧库..."
+              @keyup.enter="dbSearch"
+            />
+            <button v-if="dbKeyword" class="search-clear" @click="dbClearSearch">
+              <i class="mdi mdi-close-circle"></i>
+            </button>
+          </div>
+          <button class="btn-search" :disabled="dbSearching" @click="dbSearch">
+            <i class="mdi mdi-magnify"></i>{{ dbSearching ? '搜索中...' : '搜索' }}
+          </button>
+        </div>
       </div>
 
       <div class="scroll-area">
-        <div v-if="dbLoading" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
-        <div v-else-if="dbError" class="empty-block error"><i class="mdi mdi-alert-circle"></i>{{ dbError }}</div>
-        <div v-else-if="!dbSeasons.length" class="empty-block">
-          <i class="mdi mdi-database-off-outline empty-icon"></i>
-          <p class="empty-title">番剧资料库暂不可用</p>
-          <p class="empty-hint">请检查弹弹 API 配置</p>
-        </div>
-        <div v-else-if="!dbList.length" class="empty-block">
-          <i class="mdi mdi-movie-open-off-outline empty-icon"></i>
-          <p class="empty-title">该季度暂无番剧</p>
-        </div>
-        <div v-else class="result-grid">
-          <router-link v-for="a in dbList" :key="a.animeId" :to="'/anime/' + a.animeId" class="rc-card">
-            <div class="rc-poster">
-              <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle" loading="lazy" decoding="async" />
+        <div v-if="dbSearching" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
+
+        <div v-else-if="dbKeyword && dbSearchResults.length" class="br-grid">
+          <router-link v-for="a in dbSearchResults" :key="a.animeId" :to="'/anime/' + a.animeId" class="br-card">
+            <div class="br-card-image">
+              <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle || a.title" loading="lazy" decoding="async" />
               <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
-              <div class="rc-gradient"></div>
-              <span class="rc-badge" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
+              <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
               <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
             </div>
-            <div class="rc-body">
-              <p class="rc-title" :title="a.animeTitle">{{ a.animeTitle }}</p>
+            <div class="br-card-body">
+              <h4 :title="a.animeTitle || a.title">{{ a.animeTitle || a.title || '未命名番剧' }}</h4>
+              <div class="br-card-meta">
+                <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
+                <span v-else-if="a.year" class="genre">{{ a.year }}</span>
+              </div>
             </div>
           </router-link>
         </div>
+
+        <div v-else-if="dbKeyword" class="empty-block">
+          <i class="mdi mdi-magnify empty-icon"></i>
+          <p class="empty-title">{{ dbSearched ? '没有找到相关番剧' : '输入关键词搜索弹弹番剧库' }}</p>
+          <p class="empty-hint">{{ dbSearched ? '换个关键词再试试' : '按回车或点击搜索' }}</p>
+        </div>
+
+        <template v-else>
+          <div v-if="dbLoading" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
+          <div v-else-if="dbError" class="empty-block error"><i class="mdi mdi-alert-circle"></i>{{ dbError }}</div>
+          <div v-else-if="!dbSeasons.length" class="empty-block">
+            <i class="mdi mdi-database-off-outline empty-icon"></i>
+            <p class="empty-title">番剧资料库暂不可用</p>
+            <p class="empty-hint">请检查弹弹 API 配置</p>
+          </div>
+          <div v-else-if="!dbList.length" class="empty-block">
+            <i class="mdi mdi-movie-open-off-outline empty-icon"></i>
+            <p class="empty-title">该季度暂无番剧</p>
+          </div>
+          <div v-else class="br-grid">
+            <router-link v-for="a in dbList" :key="a.animeId" :to="'/anime/' + a.animeId" class="br-card">
+              <div class="br-card-image">
+                <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle" loading="lazy" decoding="async" />
+                <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
+                <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
+                <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
+              </div>
+              <div class="br-card-body">
+                <h4 :title="a.animeTitle">{{ a.animeTitle }}</h4>
+              </div>
+            </router-link>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -338,6 +411,11 @@ onMounted(() => {
   gap: 10px;
   flex-wrap: wrap;
 }
+.toolbar-row + .toolbar-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #f0f0f0;
+}
 .toolbar-meta {
   margin-top: 8px;
   padding-top: 8px;
@@ -365,7 +443,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 10px;
   padding-bottom: 2px;
-  max-height: calc(100vh - 300px);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -445,93 +522,40 @@ onMounted(() => {
   transition: border-color 0.2s;
 }
 .ss-field select:focus { border-color: var(--anime-accent-red); }
+.ss-field select:disabled { opacity: 0.55; cursor: not-allowed; }
 .ss-sep { font-size: 0.85rem; color: var(--anime-text-secondary); font-weight: 500; }
 
-/* ========================= RESULT GRID ========================= */
-.result-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px;
-}
-
 /* ========================= RESULT CARD ========================= */
-.rc-card {
-  display: block;
-  text-decoration: none;
-  color: inherit;
-  background: #fff;
-  border: 1px solid #eceff3;
-  border-radius: 14px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-.rc-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
-  border-color: rgba(196, 93, 43, 0.2);
-  z-index: 5;
-  position: relative;
-}
+/* 复用 browse.css 的 .br-card 卡片样式，这里仅保留缺失图占位与播放遮罩 */
 
-.rc-poster {
-  position: relative;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  background: var(--anime-bg-beige);
-}
-.rc-poster img { width: 100%; height: 100%; object-fit: cover; object-position: center top; transition: transform 0.5s ease; }
-.rc-card:hover .rc-poster img { transform: scale(1.04); }
 .rc-no-img {
-  width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
-  color: #c3b7ab; font-size: 2rem;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c3b7ab;
+  font-size: 2rem;
   background: linear-gradient(135deg, #f4eee7, #e8e0d6);
 }
-.rc-gradient {
-  position: absolute; inset: auto 0 0 0; height: 40%;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.4), transparent);
-  pointer-events: none;
-}
-.rc-badge {
-  position: absolute; top: 8px; left: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  color: #fbbf24; font-size: 0.7rem; font-weight: 700;
-  padding: 2px 9px; border-radius: 999px;
-  display: inline-flex; align-items: center; gap: 3px;
-}
-.rc-badge i { font-size: 0.6rem; }
 
 .rc-hover {
-  position: absolute; inset: 0;
+  position: absolute;
+  inset: 0;
   background: rgba(0, 0, 0, 0.25);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity 0.2s; pointer-events: none;
-}
-.rc-hover i { font-size: 2rem; color: #fff; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); }
-.rc-card:hover .rc-hover { opacity: 1; }
-
-.rc-body {
-  padding: 10px 12px 12px;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
 }
-.rc-title {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--anime-text-main);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 2.3em;
+.rc-hover i {
+  font-size: 2rem;
+  color: #fff;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
-.rc-meta { font-size: 0.68rem; color: var(--anime-text-secondary); font-weight: 500; }
+.br-card:hover .rc-hover { opacity: 1; }
 
 /* ========================= EMPTY BLOCK ========================= */
 .empty-block {
@@ -590,41 +614,28 @@ onMounted(() => {
 /* ========================= RESPONSIVE ========================= */
 @media (max-width: 768px) {
   .discover-root { min-height: 0; }
-  .scroll-area { max-height: calc(100vh - 260px); }
   .discover-tab { padding: 9px 16px; font-size: 0.82rem; gap: 5px; }
   .toolbar-row { flex-direction: column; align-items: stretch; }
   .search-box { width: 100%; }
   .btn-search { width: 100%; justify-content: center; }
   .season-selects { flex: 1; }
   .toolbar-info { margin-left: 0; }
-  .result-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
 }
 
 @media (max-width: 480px) {
   .discover-tabs { width: 100%; }
   .discover-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 0.76rem; gap: 3px; }
-  .scroll-area { max-height: calc(100vh - 250px); }
-  .result-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .rc-title { font-size: 0.74rem; }
-  .rc-body { padding: 8px 8px 9px; }
   .toolbar { padding: 10px 12px; }
 }
 </style>
 
 <style>
-/* 发现页：禁止外层滚动，用 flex 精确撑满剩余高度，避免出现滚动条 */
+/* 发现页：禁止外层滚动（含移动端），用 flex 精确撑满剩余高度；
+   内部仅 .scroll-area 滚动，避免出现两层滚动条 */
 .app-content:has(.discover-root) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-@media (max-width: 768px) {
-  /* 移动端恢复滚动，内容自然排布 */
-  .app-content:has(.discover-root) {
-    display: block;
-    overflow-y: auto;
-  }
 }
 </style>
 
