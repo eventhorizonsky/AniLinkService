@@ -8,14 +8,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import xyz.ezsky.anilink.model.dto.PlayHistoryDTO;
+import xyz.ezsky.anilink.model.entity.Anime;
 import xyz.ezsky.anilink.model.entity.PlayHistory;
 import xyz.ezsky.anilink.model.vo.PageVO;
 import xyz.ezsky.anilink.model.vo.PlayHistoryVO;
+import xyz.ezsky.anilink.repository.AnimeRepository;
 import xyz.ezsky.anilink.repository.PlayHistoryRepository;
 import lombok.extern.log4j.Log4j2;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -27,6 +32,9 @@ public class PlayHistoryService {
     
     @Autowired
     private PlayHistoryRepository playHistoryRepository;
+
+    @Autowired
+    private AnimeRepository animeRepository;
     
     /**
      * 更新播放进度
@@ -68,7 +76,9 @@ public class PlayHistoryService {
         
         PlayHistory saved = playHistoryRepository.save(history);
         log.info("User {} updated play progress for anime {}", userId, dto.getAnimeId());
-        return convertToVO(saved);
+        PlayHistoryVO result = convertToVO(saved);
+        fillImageUrl(result);
+        return result;
     }
     
     /**
@@ -81,6 +91,8 @@ public class PlayHistoryService {
         List<PlayHistoryVO> data = historyPage.getContent().stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
+
+        fillImageUrls(data);
         
         return PageVO.<PlayHistoryVO>builder()
                 .content(data)
@@ -96,7 +108,12 @@ public class PlayHistoryService {
      */
     public PlayHistoryVO getAnimePlayProgress(Long userId, Long animeId) {
         Optional<PlayHistory> history = playHistoryRepository.findByUserIdAndAnimeId(userId, animeId);
-        return history.map(this::convertToVO).orElse(null);
+        if (history.isPresent()) {
+            PlayHistoryVO vo = convertToVO(history.get());
+            fillImageUrl(vo);
+            return vo;
+        }
+        return null;
     }
     
     /**
@@ -139,5 +156,35 @@ public class PlayHistoryService {
         PlayHistoryVO vo = new PlayHistoryVO();
         BeanUtils.copyProperties(history, vo);
         return vo;
+    }
+
+    /**
+     * 填充单条记录的封面图（关联 anime 表）
+     */
+    private void fillImageUrl(PlayHistoryVO vo) {
+        if (vo == null || vo.getAnimeId() == null) {
+            return;
+        }
+        animeRepository.findByAnimeId(vo.getAnimeId())
+                .ifPresent(anime -> vo.setImageUrl(anime.getImageUrl()));
+    }
+
+    /**
+     * 批量填充封面图，避免逐条查询（N+1）
+     */
+    private void fillImageUrls(List<PlayHistoryVO> vos) {
+        if (vos == null || vos.isEmpty()) {
+            return;
+        }
+        Set<Long> animeIds = vos.stream()
+                .map(PlayHistoryVO::getAnimeId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (animeIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> imageMap = animeRepository.findByAnimeIdIn(animeIds).stream()
+                .collect(Collectors.toMap(Anime::getAnimeId, Anime::getImageUrl, (a, b) -> a));
+        vos.forEach(vo -> vo.setImageUrl(imageMap.getOrDefault(vo.getAnimeId(), null)));
     }
 }

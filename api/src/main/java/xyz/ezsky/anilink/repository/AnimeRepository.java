@@ -7,11 +7,13 @@ import org.springframework.stereotype.Repository;
 import xyz.ezsky.anilink.model.entity.Anime;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface AnimeRepository extends JpaRepository<Anime, Long> {
     Optional<Anime> findByAnimeId(Long animeId);
+    List<Anime> findByAnimeIdIn(Collection<Long> animeIds);
     void deleteByAnimeIdIn(Collection<Long> animeIds);
     
     /**

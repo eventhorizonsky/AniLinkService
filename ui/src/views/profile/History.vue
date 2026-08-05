@@ -12,6 +12,10 @@ const page = ref(1)
 const pageSize = ref(12)
 const total = ref(0)
 
+const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
+
+const progressPercent = (item) => Math.min(100, Math.max(0, Number(item?.progressPercentage || 0)))
+
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pages = computed(() => {
   const t = totalPages.value
@@ -126,25 +130,30 @@ onMounted(fetchData)
 
     <div v-else class="history-list">
       <div v-for="item in list" :key="item.id" class="history-card">
-        <div class="history-info">
-          <div class="history-title-row">
-            <h3 @click="goToAnime(item)">{{ item.animeTitle || `番剧 #${item.animeId}` }}</h3>
-            <span class="history-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(item.lastPlayTime) }}</span>
-          </div>
-          <p class="history-sub">{{ item.videoName || `视频 #${item.videoId || '-'}` }}</p>
-          <div class="progress-row">
-            <div class="progress-track">
-              <div
-                class="progress-fill"
-                :style="{ width: Math.min(100, Math.max(0, Number(item.progressPercentage || 0))) + '%' }"
-              ></div>
-            </div>
-            <span class="progress-text">{{ progressText(item) }}</span>
+        <div class="hc-poster" @click="goToAnime(item)">
+          <img :src="item.imageUrl || defaultPoster" :alt="item.animeTitle" loading="lazy" />
+          <div class="hc-poster-shade"></div>
+          <div class="hc-poster-play"><i class="mdi mdi-play"></i></div>
+          <div class="hc-poster-progress">
+            <div class="hc-poster-progress-fill" :style="{ width: progressPercent(item) + '%' }"></div>
           </div>
         </div>
-        <div class="history-actions">
-          <button class="btn btn-primary" @click="goToPlayer(item)"><i class="mdi mdi-play"></i> 继续播放</button>
-          <button class="btn btn-ghost" @click="deleteItem(item.id)"><i class="mdi mdi-delete-outline"></i></button>
+
+        <div class="hc-body">
+          <h3 class="hc-title" @click="goToAnime(item)">{{ item.animeTitle || `番剧 #${item.animeId}` }}</h3>
+          <p class="hc-episode">{{ item.videoName || `视频 #${item.videoId || '-'}` }}</p>
+
+          <div class="hc-meta">
+            <span class="hc-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(item.lastPlayTime) }}</span>
+            <span class="hc-progress-text">{{ progressText(item) }}</span>
+          </div>
+
+          <div class="hc-actions">
+            <button class="btn btn-primary btn-sm" @click="goToPlayer(item)"><i class="mdi mdi-play"></i> 继续播放</button>
+            <button class="btn btn-ghost btn-sm btn-sm--icon" title="删除记录" @click="deleteItem(item.id)">
+              <i class="mdi mdi-delete-outline"></i>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -181,47 +190,158 @@ onMounted(fetchData)
 .empty-state i { font-size: 3rem; opacity: 0.35; color: var(--anime-accent-red); }
 .empty-state p { margin: 0; font-size: 14px; }
 
-.history-list { display: flex; flex-direction: column; gap: 12px; }
+.history-list { display: flex; flex-direction: column; gap: 14px; }
 
 .history-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 16px;
   background: #fff;
   border: 1px solid #eceff3;
-  border-radius: 14px;
-  padding: 16px 18px;
+  border-radius: 16px;
+  padding: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s;
 }
 .history-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
-  border-color: rgba(196, 93, 43, 0.18);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+  border-color: rgba(196, 93, 43, 0.2);
+  transform: translateY(-2px);
 }
 
-.history-info { flex: 1; min-width: 0; }
-.history-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.history-title-row h3 {
-  margin: 0 0 4px;
-  font-size: 1.02rem;
+/* 封面 */
+.hc-poster {
+  position: relative;
+  flex-shrink: 0;
+  width: 108px;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--anime-bg-beige);
+}
+.hc-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  transition: transform 0.4s ease;
+}
+.history-card:hover .hc-poster img { transform: scale(1.05); }
+
+.hc-poster-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.42) 0%, transparent 45%);
+  pointer-events: none;
+}
+
+.hc-poster-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.history-card:hover .hc-poster-play { opacity: 1; }
+
+/* 封面上进度条 */
+.hc-poster-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+}
+.hc-poster-progress-fill {
+  height: 100%;
+  background: var(--anime-accent-red);
+  border-radius: 0 999px 999px 0;
+  transition: width 0.4s ease;
+}
+
+/* 信息区 */
+.hc-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hc-title {
+  margin: 0 0 6px;
+  font-size: 1.04rem;
+  line-height: 1.35;
   color: var(--anime-text-main);
   cursor: pointer;
   transition: color 0.2s;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.history-title-row h3:hover { color: var(--anime-accent-red); }
-.history-time { font-size: 12px; color: var(--anime-text-secondary); display: inline-flex; align-items: center; gap: 4px; }
-.history-sub { margin: 0 0 10px; color: var(--anime-text-secondary); font-size: 0.88rem; }
+.hc-title:hover { color: var(--anime-accent-red); }
 
-.progress-row { display: flex; align-items: center; gap: 12px; }
-.progress-track { flex: 1; height: 6px; border-radius: 999px; background: #f0f0f0; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--anime-accent-red), #e08a4e); transition: width 0.4s ease; }
-.progress-text { font-size: 12px; color: var(--anime-text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hc-episode {
+  margin: 0 0 10px;
+  color: var(--anime-text-secondary);
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.history-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.hc-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.hc-time {
+  font-size: 12px;
+  color: var(--anime-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hc-progress-text {
+  font-size: 12px;
+  color: var(--anime-accent-red);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hc-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* 小号按钮 */
+.btn-sm {
+  padding: 7px 13px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+.btn-sm--icon { padding: 7px 10px; }
 
 @media (max-width: 600px) {
-  .history-card { flex-direction: column; align-items: stretch; }
-  .history-actions { justify-content: flex-end; }
+  .hc-poster { width: 92px; }
+  .history-card { gap: 12px; padding: 12px; }
+  .hc-actions { flex-wrap: wrap; }
 }
 </style>

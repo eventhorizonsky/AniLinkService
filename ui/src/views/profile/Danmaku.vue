@@ -11,6 +11,14 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
+const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
+
+const danmakuHex = (record) => {
+  const c = Number(record?.color)
+  if (!Number.isFinite(c) || c <= 0) return ''
+  return '#' + c.toString(16).padStart(6, '0')
+}
+
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const pages = computed(() => {
   const t = totalPages.value
@@ -103,20 +111,30 @@ onMounted(fetchData)
     </div>
     <div v-else class="danmaku-list">
       <div v-for="record in list" :key="record.id" class="danmaku-card">
+        <div class="dm-poster" @click="goToAnime(record)">
+          <img :src="record.imageUrl || defaultPoster" :alt="record.animeTitle" loading="lazy" />
+          <div class="dm-poster-shade"></div>
+          <div class="dm-poster-play"><i class="mdi mdi-play"></i></div>
+        </div>
+
         <div class="dm-content">
-          <p class="dm-text" :style="record.color ? { color: '#' + Number(record.color).toString(16).padStart(6, '0') } : {}">
-            {{ record.comment }}
-          </p>
+          <div class="dm-text-row">
+            <span class="dm-color" :style="{ background: danmakuHex(record) || '#d1d5db' }" title="弹幕颜色"></span>
+            <p class="dm-text">
+              {{ record.comment }}
+            </p>
+          </div>
           <div class="dm-meta">
             <span class="dm-anime" @click="goToAnime(record)">{{ record.animeTitle || `番剧 #${record.animeId}` }}</span>
             <span class="dm-ep">{{ record.episodeTitle || `#${record.episodeId}` }}</span>
             <span class="dm-mode">{{ modeLabel(record.mode) }}</span>
-            <span class="dm-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(record.createdAt) }}</span>
           </div>
+          <div class="dm-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(record.createdAt) }}</div>
         </div>
-        <div class="dm-actions">
+
+        <div class="dm-side">
           <span class="dm-pos"><i class="mdi mdi-timer-outline"></i> {{ formatPos(record.time) }}</span>
-          <button class="btn btn-ghost" @click="goToPlayer(record)"><i class="mdi mdi-play"></i> 定位</button>
+          <button class="btn btn-ghost btn-sm" @click="goToPlayer(record)"><i class="mdi mdi-play"></i> 定位</button>
         </div>
       </div>
     </div>
@@ -147,32 +165,138 @@ onMounted(fetchData)
 .empty-state i { font-size: 3rem; opacity: 0.35; color: var(--anime-accent-red); }
 .empty-state p { margin: 0; font-size: 14px; }
 
-.danmaku-list { display: flex; flex-direction: column; gap: 10px; }
-.danmaku-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
-  padding: 14px 18px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: box-shadow 0.25s, border-color 0.25s;
-}
-.danmaku-card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07); border-color: rgba(196, 93, 43, 0.18); }
+.danmaku-list { display: flex; flex-direction: column; gap: 12px; }
 
-.dm-content { flex: 1; min-width: 0; }
+.danmaku-card {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  background: #fff;
+  border: 1px solid #eceff3;
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s;
+}
+.danmaku-card:hover {
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+  border-color: rgba(196, 93, 43, 0.2);
+  transform: translateY(-2px);
+}
+
+/* 封面缩略图 */
+.dm-poster {
+  position: relative;
+  flex-shrink: 0;
+  width: 86px;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--anime-bg-beige);
+}
+.dm-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  transition: transform 0.4s ease;
+}
+.danmaku-card:hover .dm-poster img { transform: scale(1.05); }
+
+.dm-poster-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.4) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.dm-poster-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.danmaku-card:hover .dm-poster-play { opacity: 1; }
+
+.dm-content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* 弹幕文本行：颜色标签紧贴文本 */
+.dm-text-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* 弹幕颜色小标签 */
+.dm-color {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
 .dm-text {
-  margin: 0 0 6px; font-size: 0.98rem; font-weight: 500;
-  color: var(--anime-text-main); word-break: break-word;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--anime-text-main);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .dm-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--anime-text-secondary); }
 .dm-anime { font-weight: 600; color: var(--anime-text-main); cursor: pointer; transition: color 0.2s; }
 .dm-anime:hover { color: var(--anime-accent-red); }
 .dm-ep { opacity: 0.85; }
 .dm-mode { background: #f0f0f0; color: var(--anime-text-secondary); padding: 1px 8px; border-radius: 999px; font-size: 11px; }
-.dm-time { display: inline-flex; align-items: center; gap: 4px; opacity: 0.75; }
+.dm-time {
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--anime-text-secondary);
+  opacity: 0.8;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
-.dm-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.dm-pos { font-size: 12px; color: var(--anime-accent-red); font-weight: 600; font-variant-numeric: tabular-nums; }
+.dm-side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dm-pos { font-size: 12px; color: var(--anime-accent-red); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.btn-sm { padding: 7px 13px; font-size: 12px; border-radius: 9px; }
 
 @media (max-width: 600px) {
-  .danmaku-card { flex-direction: column; align-items: stretch; }
-  .dm-actions { justify-content: flex-end; }
+  .dm-poster { width: 76px; }
+  .danmaku-card { gap: 12px; padding: 12px; }
+  .dm-side { justify-content: flex-end; }
 }
 </style>

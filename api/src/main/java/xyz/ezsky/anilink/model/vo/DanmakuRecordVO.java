@@ -22,6 +22,12 @@ public class DanmakuRecordVO {
     private Long episodeId;
     private Long animeId;
     private String animeTitle;
+
+    /**
+     * 封面图（关联 anime 表）
+     */
+    private String imageUrl;
+
     private Long videoId;
     private String episodeTitle;
     private Double time;

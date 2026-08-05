@@ -24,6 +24,11 @@ public class PlayHistoryVO {
     
     private String animeTitle;
     
+    /**
+     * 封面图（关联 anime 表）
+     */
+    private String imageUrl;
+    
     private Long videoId;
     
     private String videoName;

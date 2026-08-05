@@ -6,11 +6,17 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import xyz.ezsky.anilink.model.entity.Anime;
 import xyz.ezsky.anilink.model.entity.DanmakuRecord;
 import xyz.ezsky.anilink.model.vo.DanmakuRecordVO;
 import xyz.ezsky.anilink.model.vo.PageVO;
+import xyz.ezsky.anilink.repository.AnimeRepository;
 import xyz.ezsky.anilink.repository.DanmakuRecordRepository;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -23,6 +29,9 @@ public class DanmakuRecordService {
     @Autowired
     private DanmakuRecordRepository danmakuRecordRepository;
 
+    @Autowired
+    private AnimeRepository animeRepository;
+
     /**
      * 获取用户的弹幕记录（分页）
      */
@@ -30,8 +39,11 @@ public class DanmakuRecordService {
         Pageable pageable = PageRequest.of(page - 1, pageSize);
         Page<DanmakuRecord> pageResult = danmakuRecordRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
 
+        List<DanmakuRecordVO> data = pageResult.getContent().stream().map(this::convertToVO).collect(Collectors.toList());
+        fillImageUrls(data);
+
         return PageVO.<DanmakuRecordVO>builder()
-                .content(pageResult.getContent().stream().map(this::convertToVO).collect(Collectors.toList()))
+                .content(data)
                 .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
                 .currentPage(page)
@@ -52,8 +64,11 @@ public class DanmakuRecordService {
                 (keyword != null && !keyword.isBlank()) ? keyword.trim() : null,
                 pageable);
 
+        List<DanmakuRecordVO> data = pageResult.getContent().stream().map(this::convertToVO).collect(Collectors.toList());
+        fillImageUrls(data);
+
         return PageVO.<DanmakuRecordVO>builder()
-                .content(pageResult.getContent().stream().map(this::convertToVO).collect(Collectors.toList()))
+                .content(data)
                 .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
                 .currentPage(page)
@@ -80,5 +95,24 @@ public class DanmakuRecordService {
                 .cid(record.getCid())
                 .createdAt(record.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * 批量填充封面图（关联 anime 表），避免逐条查询（N+1）
+     */
+    private void fillImageUrls(List<DanmakuRecordVO> vos) {
+        if (vos == null || vos.isEmpty()) {
+            return;
+        }
+        Set<Long> animeIds = vos.stream()
+                .map(DanmakuRecordVO::getAnimeId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (animeIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> imageMap = animeRepository.findByAnimeIdIn(animeIds).stream()
+                .collect(Collectors.toMap(Anime::getAnimeId, Anime::getImageUrl, (a, b) -> a));
+        vos.forEach(vo -> vo.setImageUrl(imageMap.getOrDefault(vo.getAnimeId(), null)));
     }
 }
