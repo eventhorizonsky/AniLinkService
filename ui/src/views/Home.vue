@@ -44,6 +44,9 @@ const selectSlide = (index) => { goToSlide(index); resetAutoPlay() }
 const nextSlide = () => {
   if (heroSlides.value.length > 0) goToSlide((currentSlide.value + 1) % heroSlides.value.length)
 }
+const prevSlide = () => {
+  if (heroSlides.value.length > 0) goToSlide((currentSlide.value - 1 + heroSlides.value.length) % heroSlides.value.length)
+}
 const resetAutoPlay = () => {
   if (autoPlayTimer) clearInterval(autoPlayTimer)
   if (heroSlides.value.length > 1) autoPlayTimer = setInterval(nextSlide, 5500)
@@ -52,8 +55,27 @@ const pauseAutoPlay = () => {
   if (autoPlayTimer) clearInterval(autoPlayTimer)
 }
 
+// ===================== Hero touch swipe =====================
+// 移动端横向滑动切换，滑动后抑制随后的 click 避免误跳转
+let touchStartX = null
+let suppressClick = false
+const onTouchStart = (e) => { touchStartX = e.touches[0].clientX }
+const onTouchEnd = (e) => {
+  if (touchStartX === null) return
+  const dx = e.changedTouches[0].clientX - touchStartX
+  touchStartX = null
+  if (Math.abs(dx) < 50) return
+  if (dx < 0) nextSlide(); else prevSlide()
+  resetAutoPlay()
+  suppressClick = true
+  setTimeout(() => { suppressClick = false }, 400)
+}
+
 // ===================== Navigation =====================
-const goToDetail = (a) => { if (a?.animeId) router.push('/anime/' + a.animeId) }
+const goToDetail = (a) => {
+  if (suppressClick) { suppressClick = false; return }
+  if (a?.animeId) router.push('/anime/' + a.animeId)
+}
 const goToSearch = () => router.push('/search')
 const goToFollows = () => router.push('/profile/follows')
 
@@ -169,6 +191,8 @@ onBeforeUnmount(() => {
       class="hero-section"
       @mouseenter="pauseAutoPlay"
       @mouseleave="resetAutoPlay"
+      @touchstart.passive="onTouchStart"
+      @touchend.passive="onTouchEnd"
     >
       <div
         v-for="(slide, i) in heroSlides"
@@ -208,6 +232,13 @@ onBeforeUnmount(() => {
           @click="selectSlide(i)"
         ></button>
       </div>
+
+      <button class="hero-arrow hero-arrow--prev" aria-label="上一张" @click="prevSlide(); resetAutoPlay()">
+        <i class="mdi mdi-chevron-left"></i>
+      </button>
+      <button class="hero-arrow hero-arrow--next" aria-label="下一张" @click="nextSlide(); resetAutoPlay()">
+        <i class="mdi mdi-chevron-right"></i>
+      </button>
     </section>
     <div v-else-if="trendingLoading" class="hero-section hero-skeleton"></div>
 
@@ -331,6 +362,7 @@ onBeforeUnmount(() => {
   background: var(--bg-beige);
   box-shadow: var(--shadow-md);
   cursor: pointer;
+  touch-action: pan-y;
 }
 .hero-skeleton {
   background: linear-gradient(135deg, var(--bg-beige) 25%, #ede3d8 50%, var(--bg-beige) 75%);
@@ -344,8 +376,10 @@ onBeforeUnmount(() => {
   inset: 0;
   opacity: 0;
   transition: opacity 0.9s ease;
+  /* 非激活的透明 slide 仍在 DOM 中叠在上层，会拦截点击（例如 B 显示时点到 C），需禁用指针事件 */
+  pointer-events: none;
 }
-.hero-slide.active { opacity: 1; }
+.hero-slide.active { opacity: 1; pointer-events: auto; }
 
 /* 模糊封面作为背景 */
 .hero-bg {
@@ -403,7 +437,7 @@ onBeforeUnmount(() => {
 /* 右侧封面卡片（原比例 283:400） */
 .hero-poster {
   position: absolute;
-  right: 56px;
+  right: 88px;
   top: 50%;
   transform: translateY(-50%);
   width: 172px;
@@ -460,23 +494,57 @@ onBeforeUnmount(() => {
 .hero-controls button.active { background: #fff; width: 28px; border-radius: 6px; }
 .hero-controls button:hover { background: rgba(255, 255, 255, 0.75); }
 
+/* 上一张 / 下一张 箭头 */
+.hero-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+  padding: 0;
+}
+.hero-section:hover .hero-arrow { opacity: 1; }
+.hero-arrow:hover { background: rgba(196, 93, 43, 0.9); }
+.hero-arrow:active { transform: translateY(-50%) scale(0.92); }
+.hero-arrow--prev { right: calc(88px + 172px + 14px); }
+.hero-arrow--next { right: 22px; }
+
 /* ===================== Responsive ===================== */
 @media (max-width: 820px) {
   .hero-section { height: 230px; }
-  .hero-poster { width: 120px; right: 24px; }
-  .hero-content { left: 26px; max-width: calc(100% - 190px); }
+  .hero-poster { width: 120px; right: 64px; }
+  .hero-content { left: 26px; max-width: calc(100% - 230px); }
   .hero-content h2 { font-size: 20px; }
   .hero-controls { left: 26px; }
+  .hero-arrow { width: 38px; height: 38px; font-size: 20px; opacity: 1; }
+  .hero-arrow--prev { right: calc(64px + 120px + 12px); }
+  .hero-arrow--next { right: 13px; }
 }
 
 @media (max-width: 480px) {
   .hero-section { height: 190px; border-radius: var(--radius-md); }
-  .hero-poster { width: 96px; right: 14px; border-radius: 12px; border-width: 1.5px; }
-  .hero-content { left: 18px; max-width: calc(100% - 128px); }
+  .hero-poster { width: 96px; right: 52px; border-radius: 12px; border-width: 1.5px; }
+  .hero-content { left: 18px; max-width: calc(100% - 178px); }
   .hero-content .tag { font-size: 10px; padding: 2px 10px; margin-bottom: 8px; }
   .hero-content h2 { font-size: 16px; margin-bottom: 8px; }
   .hero-content .meta { gap: 10px; font-size: 11px; }
   .hero-content .meta .meta-heat { display: none; }
   .hero-controls { bottom: 12px; left: 18px; }
+  .hero-arrow { width: 32px; height: 32px; font-size: 18px; }
+  .hero-arrow--prev { right: calc(52px + 96px + 10px); }
+  .hero-arrow--next { right: 10px; }
 }
 </style>
