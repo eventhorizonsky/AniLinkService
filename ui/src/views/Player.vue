@@ -27,8 +27,8 @@
           </div>
         </div>
 
-        <!-- 选集卡片 -->
-        <div v-if="animeData" class="player-episode-panel">
+        <!-- 选集卡片（桌面端，移动端改用下方 B 站式 TAB 组件） -->
+        <div v-if="animeData && isDesktopViewport" class="player-episode-panel">
           <!-- 顶部番剧信息 -->
           <div class="episode-panel-header">
             <img
@@ -89,6 +89,29 @@
             />
           </div>
         </div>
+
+        <!-- 移动端 B 站式 TAB 布局：简介 / 选集 / 吐槽 -->
+        <MobilePlayerTabs
+          v-if="animeData && !isDesktopViewport"
+          :anime="animeData"
+          :anime-id="animeId"
+          :title-info="titleInfo"
+          :rating-main="ratingMain"
+          :total-episodes="totalEpisodes"
+          :is-on-air="animeData.isOnAir"
+          :air-day-text="airDayText"
+          :summary="formattedSummary"
+          :staff-list="staffList"
+          :copyright-text="copyrightText"
+          :current-episode-id="episodeId"
+          :current-episode-number="currentEpisodeNumber"
+          :main-episodes="mainEpisodes"
+          :special-episodes="specialEpisodes"
+          :play-episode="playEpisode"
+          :can-play-episode="canPlayEpisode"
+          :episode-number-display="episodeNumberDisplay"
+          :format-episode-date="formatEpisodeDate"
+        />
       </div>
 
     </div>
@@ -126,6 +149,7 @@ import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
 import EpisodeComments from '../components/anime/EpisodeComments.vue'
+import MobilePlayerTabs from '../components/anime/MobilePlayerTabs.vue'
 
 
 const route = useRoute()
@@ -2392,6 +2416,36 @@ onBeforeUnmount(() => {
     padding: 12px;
     gap: 10px;
     border-radius: 20px;
+  }
+}
+
+/* 手机端：右侧选集面板改为 B 站式 TAB 组件，页面可滚动 */
+@media (max-width: 768px) {
+  .player-page {
+    height: auto;
+    min-height: calc(100vh - 76px);
+  }
+
+  .player-top-row {
+    gap: 12px;
+  }
+
+  .player-main {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .player-card {
+    flex: 0 0 auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .artplayer-container {
+    min-height: 0;
+  }
+
+  .player-episode-panel {
+    display: none;
   }
 }
 
