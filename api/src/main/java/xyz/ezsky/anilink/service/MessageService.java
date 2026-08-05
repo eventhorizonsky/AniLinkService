@@ -109,6 +109,35 @@ public class MessageService {
     }
     
     /**
+     * 获取用户指定剧集的未读消息数
+     */
+    public long getUnreadCountByEpisodeId(Long userId, String episodeId) {
+        if (episodeId == null || episodeId.isBlank()) {
+            return 0;
+        }
+        return messageRepository.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(userId).stream()
+                .filter(m -> episodeId.equals(m.getEpisodeId()))
+                .count();
+    }
+
+    /**
+     * 将用户指定剧集的全部未读消息标记为已读
+     *
+     * @return 已读数量
+     */
+    @Transactional
+    public int markMessagesReadByEpisodeId(Long userId, String episodeId) {
+        if (episodeId == null || episodeId.isBlank()) {
+            return 0;
+        }
+        int count = messageRepository.markReadByEpisodeId(userId, episodeId, LocalDateTime.now());
+        if (count > 0) {
+            log.info("Marked {} messages as read for user {} episode {}", count, userId, episodeId);
+        }
+        return count;
+    }
+
+    /**
      * 标记消息为已读
      */
     @Transactional

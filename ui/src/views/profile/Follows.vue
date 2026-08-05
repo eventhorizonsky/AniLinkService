@@ -85,7 +85,10 @@ const fetchData = async () => {
       items = [...(res.data.data?.content || [])]
       total.value = Number(res.data.data?.totalElements || 0)
     }
-    items.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99))
+    // 活跃视图保持接口的更新时间倒序（新更新的在前），不按状态重排
+    if (statusFilter.value !== 'active') {
+      items.sort((a, b) => (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99))
+    }
     list.value = items
   } catch (e) {
     error.value = e?.response?.data?.msg || e?.message || '加载追番失败'
@@ -274,6 +277,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
           <img v-if="follow.imageUrl" :src="follow.imageUrl" :alt="follow.animeTitle" loading="lazy" />
           <div v-else class="poster-ph"><i class="mdi mdi-image-off-outline"></i></div>
           <div class="poster-hover"><i class="mdi" :class="follow.animeId ? 'mdi-play-circle-outline' : 'mdi-link-variant'"></i></div>
+          <span v-if="follow.unreadEpisodeCount > 0" class="follow-unread" title="未读新剧集">{{ follow.unreadEpisodeCount }}</span>
           <span v-if="!follow.animeId" class="unbound-tag">未绑定</span>
         </div>
         <div class="br-card-body">
@@ -450,6 +454,25 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   background: rgba(107, 114, 128, 0.85);
   color: #fff; font-size: 10px; font-weight: 600;
   padding: 2px 10px; border-radius: 999px;
+}
+
+/* 未读新剧集角标 */
+.follow-unread {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e53935;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(229, 57, 53, 0.45);
 }
 
 .follow-menu-wrap { position: relative; display: flex; }

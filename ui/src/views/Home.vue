@@ -266,6 +266,7 @@ onBeforeUnmount(() => {
           <div class="br-card-image">
             <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
             <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
+            <span v-if="a.unreadEpisodeCount > 0" class="br-follow-unread" title="未读新剧集">{{ a.unreadEpisodeCount }}</span>
           </div>
           <div class="br-card-body">
             <h4>{{ a.animeTitle }}</h4>
@@ -470,6 +471,25 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .poster-hover i { font-size: 2rem; color: #fff; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)); }
+
+/* 追番卡片未读新剧集角标 */
+.br-follow-unread {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e53935;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(229, 57, 53, 0.45);
+}
 
 /* 轮播圆点 */
 .hero-controls {

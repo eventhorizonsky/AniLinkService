@@ -103,6 +103,19 @@ public class MessageController {
         messageService.markAllMessagesAsRead(userId);
         return ApiResponseVO.success(null);
     }
+
+    /**
+     * 标记指定剧集的未读消息为已读（进入播放页时调用，消除该集未读角标）
+     */
+    @Operation(summary = "按剧集标记已读", description = "将用户某部剧集的全部未读消息标记为已读")
+    @PutMapping("/read-by-episode/{episodeId}")
+    public ApiResponseVO<Integer> markReadByEpisode(
+            @Parameter(description = "剧集ID（DanDan episodeId）", required = true)
+            @PathVariable String episodeId) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        int count = messageService.markMessagesReadByEpisodeId(userId, episodeId);
+        return ApiResponseVO.success(count);
+    }
     
     /**
      * 删除消息

@@ -12,16 +12,21 @@ import org.springframework.util.StringUtils;
 import xyz.ezsky.anilink.model.dto.AnimeFollowDTO;
 import xyz.ezsky.anilink.model.entity.Anime;
 import xyz.ezsky.anilink.model.entity.AnimeFollow;
+import xyz.ezsky.anilink.model.entity.Message;
 import xyz.ezsky.anilink.model.vo.AnimeFollowVO;
 import xyz.ezsky.anilink.model.vo.PageVO;
 import xyz.ezsky.anilink.repository.AnimeFollowRepository;
+import xyz.ezsky.anilink.repository.MessageRepository;
 import lombok.extern.log4j.Log4j2;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -33,6 +38,9 @@ public class AnimeFollowService {
     
     @Autowired
     private AnimeFollowRepository animeFollowRepository;
+
+    @Autowired
+    private MessageRepository messageRepository;
 
     @Autowired
     private BangumiSyncService bangumiSyncService;
@@ -106,6 +114,7 @@ public class AnimeFollowService {
         List<AnimeFollowVO> data = followPage.getContent().stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
+        fillUnreadCounts(data, userId);
         
         return PageVO.<AnimeFollowVO>builder()
                 .content(data)
@@ -125,9 +134,11 @@ public class AnimeFollowService {
                 ? animeFollowRepository.findByUserIdAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
                         userId, keyword.trim())
                 : animeFollowRepository.findByUserIdOrderByUpdatedAtDesc(userId);
-        return follows.stream()
+        List<AnimeFollowVO> vos = follows.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
+        fillUnreadCounts(vos, userId);
+        return vos;
     }
     
     /**
@@ -139,9 +150,11 @@ public class AnimeFollowService {
                 ? animeFollowRepository.findByUserIdAndStatusAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
                         userId, status, keyword.trim())
                 : animeFollowRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status);
-        return follows.stream()
+        List<AnimeFollowVO> vos = follows.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
+        fillUnreadCounts(vos, userId);
+        return vos;
     }
     
     /**
@@ -211,9 +224,11 @@ public class AnimeFollowService {
                 ? animeFollowRepository.findByUserIdAndStatusInAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
                         userId, activeStatuses, keyword.trim())
                 : animeFollowRepository.findByUserIdAndStatusInOrderByUpdatedAtDesc(userId, activeStatuses);
-        return follows.stream()
+        List<AnimeFollowVO> vos = follows.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
+        fillUnreadCounts(vos, userId);
+        return vos;
     }
 
     /**
@@ -299,6 +314,33 @@ public class AnimeFollowService {
         result.put("animeTitle", anime.getTitle());
         result.put("follow", convertToVO(saved));
         return result;
+    }
+
+    /**
+     * 填充未读剧集数：联查 messages 表（episode_update 未读消息），按 episodeId 去重统计每部番剧的未读集数。
+     * 排序由查询端保证（getActiveFollows 按 updatedAt 倒序，新更新的在前），此处不改变 VO 顺序。
+     */
+    private void fillUnreadCounts(List<AnimeFollowVO> vos, Long userId) {
+        if (vos == null || vos.isEmpty()) {
+            return;
+        }
+        List<Message> unread = messageRepository.findByUserIdAndIsReadFalseAndTypeOrderByCreatedAtDesc(
+                userId, "episode_update");
+        if (unread.isEmpty()) {
+            vos.forEach(vo -> vo.setUnreadEpisodeCount(0));
+            return;
+        }
+        Map<Long, Set<String>> animeEpisodes = new HashMap<>();
+        for (Message m : unread) {
+            if (m.getAnimeId() == null || m.getEpisodeId() == null || m.getEpisodeId().isBlank()) {
+                continue;
+            }
+            animeEpisodes.computeIfAbsent(m.getAnimeId(), k -> new HashSet<>()).add(m.getEpisodeId());
+        }
+        for (AnimeFollowVO vo : vos) {
+            Set<String> eps = vo.getAnimeId() == null ? null : animeEpisodes.get(vo.getAnimeId());
+            vo.setUnreadEpisodeCount(eps == null ? 0 : eps.size());
+        }
     }
 
     /**

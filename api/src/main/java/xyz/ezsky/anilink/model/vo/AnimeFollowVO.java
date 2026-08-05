@@ -35,7 +35,12 @@ public class AnimeFollowVO {
      * 用户的标签，用于分类管理
      */
     private String tags;
-    
+
+    /**
+     * 未读剧集数（关联 messages 表 episode_update 未读消息，按 episodeId 去重统计）
+     */
+    private Integer unreadEpisodeCount;
+
     private LocalDateTime followAt;
     
     private LocalDateTime updatedAt;

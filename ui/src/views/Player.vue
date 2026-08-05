@@ -1854,10 +1854,26 @@ onMounted(async () => {
   updateViewportState()
   window.addEventListener('resize', updateViewportState)
   document.addEventListener('keydown', handleSubtitleDelayKey)
+  // 进入播放页即消除当前剧集的未读消息
+  markEpisodeMessagesRead()
   // 获取番剧数据
   await fetchAnimeData()
   await createPlayerInstance()
 })
+
+/**
+ * 消除当前剧集的未读消息（进入播放页 / 切换分集时调用）。
+ * 失败静默，不影响观看。
+ */
+const markEpisodeMessagesRead = async () => {
+  const token = localStorage.getItem('token')
+  if (!token || !episodeId.value) return
+  try {
+    await axios.put(`/api/messages/read-by-episode/${encodeURIComponent(episodeId.value)}`)
+  } catch (e) {
+    console.debug('标记剧集消息已读失败:', e)
+  }
+}
 
 /**
  * 监听路由变化：videoId 或 episodeId 任一变化都刷新播放态。
@@ -1873,6 +1889,9 @@ watch(
     if (newVideoId === oldVideoId && newEpisodeId === oldEpisodeId && newSubtitleId === oldSubtitleId) {
       return
     }
+
+    // 切换分集后消除该集的未读消息
+    markEpisodeMessagesRead()
 
     try {
       await createPlayerInstance()
