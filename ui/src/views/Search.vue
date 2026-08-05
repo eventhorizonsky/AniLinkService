@@ -275,7 +275,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: calc(100vh - 140px);
+  flex: 1;
+  min-height: 0;
   animation: discover-in 0.35s ease-out;
 }
 @keyframes discover-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -607,6 +608,23 @@ onMounted(() => {
   .rc-title { font-size: 0.74rem; }
   .rc-body { padding: 8px 8px 9px; }
   .toolbar { padding: 10px 12px; }
+}
+</style>
+
+<style>
+/* 发现页：禁止外层滚动，用 flex 精确撑满剩余高度，避免出现滚动条 */
+.app-content:has(.discover-root) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 移动端恢复滚动，内容自然排布 */
+  .app-content:has(.discover-root) {
+    display: block;
+    overflow-y: auto;
+  }
 }
 </style>
 
