@@ -21,6 +21,9 @@ ENV LC_ALL=C.UTF-8
 
 ADD api/target/ani-link-service.jar /app.jar
 
+# 发布说明（release-please 生成的 changelog；dev 构建为占位内容）
+COPY CHANGELOG.md /CHANGELOG.md
+
 EXPOSE 8081
 
 # 推荐挂载点；未 -v 时由引擎创建匿名卷，避免写满容器可写层
