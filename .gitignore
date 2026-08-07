@@ -35,3 +35,4 @@ data/**
 api/data/**
 media/**
 log
+swagger.json

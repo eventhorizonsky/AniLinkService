@@ -211,6 +211,17 @@ docker run -d \
 docker build -t anilink-service .
 ```
 
+## 版本发布
+
+项目使用 GitHub Actions + [release-please](https://github.com/googleapis/release-please) 自动化版本发布，commit 需遵循 [Conventional Commits](https://www.conventionalcommits.org/)（如 `feat:`、`fix:`、`feat!:`）。
+
+- **`dev` 分支**为开发分支，每次 push 自动构建 `ghcr.io/<owner>/anilinkserver:dev-latest` 与 sha 标签镜像；
+- **`master` 分支**通过 `dev -> master` PR 合入；release-please 会基于 PR 中合并的 Conventional Commits 自动分析，并打开「版本发布 PR」（同时更新 `pom.xml` 版本与 `CHANGELOG.md`）；
+- 合并该「版本发布 PR」后，release-please 自动创建 Git tag（`vX.Y.Z`）与 GitHub Release（body 为 commit 分析生成的 changelog），随后 CI 构建 `latest` 与版本号镜像；
+- 镜像的 OCI label `org.opencontainers.image.description` 会带上对应版本的发布说明。
+
+当前基线版本为 `1.0.0`，`pom.xml` 中版本号由 release-please 自动维护，请勿手动修改。
+
 ## 本地开发
 
 ### 环境要求
