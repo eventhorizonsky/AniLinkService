@@ -7,8 +7,10 @@ import cn.dev33.satoken.annotation.SaCheckRole;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import xyz.ezsky.anilink.model.vo.SystemInfoVO;
+import xyz.ezsky.anilink.model.vo.VersionInfoVO;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.service.SystemInfoService;
+import xyz.ezsky.anilink.service.VersionService;
 
 /**
  * 系统信息控制器
@@ -20,6 +22,9 @@ public class SystemInfoController {
     
     @Autowired
     private SystemInfoService systemInfoService;
+
+    @Autowired
+    private VersionService versionService;
     
     /**
      * 获取系统信息
@@ -30,5 +35,15 @@ public class SystemInfoController {
     public ApiResponseVO<SystemInfoVO> getSystemInfo() {
         SystemInfoVO systemInfo = systemInfoService.getSystemInfo();
         return ApiResponseVO.success(systemInfo, "获取系统信息成功");
+    }
+
+    /**
+     * 获取版本信息
+     */
+    @GetMapping("version")
+    @SaCheckRole("super-admin")
+    @Operation(summary = "获取版本信息", description = "获取当前运行版本及 GitHub Release 列表")
+    public ApiResponseVO<VersionInfoVO> getVersionInfo() {
+        return ApiResponseVO.success(versionService.getVersionInfo(), "获取版本信息成功");
     }
 }

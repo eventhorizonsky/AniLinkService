@@ -1,15 +1,12 @@
-name: Run Backend Unit Tests
+name: test-backend
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - master
   pull_request:
     branches:
       - master
+
 jobs:
-  test:
+  test-backend:
     runs-on: ubuntu-latest
     defaults:
       run:
