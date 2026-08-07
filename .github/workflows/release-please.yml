@@ -15,7 +15,6 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       version: ${{ steps.release.outputs.version }}
-      body: ${{ steps.release.outputs.body }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -65,6 +64,12 @@ jobs:
       - name: Build backend with Maven
         run: mvn -f api/pom.xml clean package
 
+      - name: Prepare CHANGELOG for image
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            printf '# Changelog\n\nThis build does not include a changelog.\n' > CHANGELOG.md
+          fi
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -76,14 +81,6 @@ jobs:
         id: image
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/anilinkserver" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare image description from release notes
-        id: desc
-        env:
-          RELEASE_BODY: ${{ needs.release-please.outputs.body }}
-        run: |
-          description="$(printf '%s' "$RELEASE_BODY" | tr '\r\n' '  ' | tr -s ' ' | sed 's/[#`]//g' | cut -c 1-500)"
-          echo "description=${description}" >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
         id: meta
@@ -100,7 +97,7 @@ jobs:
             org.opencontainers.image.version=${{ needs.release-please.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=${{ steps.desc.outputs.description }}
+            org.opencontainers.image.description=AniLinkService v${{ needs.release-please.outputs.version }}：本地追番、弹幕播放与 RSS 自动下载服务
 
       - name: Build and push
         uses: docker/build-push-action@v6

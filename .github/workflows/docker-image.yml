@@ -43,6 +43,12 @@ jobs:
       - name: Build backend with Maven
         run: mvn -f api/pom.xml clean package
 
+      - name: Prepare CHANGELOG for image
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            printf '# Changelog\n\nThis build does not include a changelog.\n' > CHANGELOG.md
+          fi
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:

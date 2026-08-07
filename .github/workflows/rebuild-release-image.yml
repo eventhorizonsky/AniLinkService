@@ -40,18 +40,6 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve release notes for description
-        id: desc
-        run: |
-          description=""
-          if [ -f CHANGELOG.md ]; then
-            description="$(awk 'BEGIN{s=0} /^## /{if(s){exit} s=1} s{print}' CHANGELOG.md | tr '\r\n' '  ' | tr -s ' ' | sed 's/[#`]//g' | cut -c 1-500)"
-          fi
-          if [ -z "$description" ]; then
-            description="AniLinkService v${{ steps.version.outputs.version }}"
-          fi
-          echo "description=$description" >> "$GITHUB_OUTPUT"
-
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -81,6 +69,12 @@ jobs:
       - name: Build backend with Maven
         run: mvn -f api/pom.xml clean package
 
+      - name: Prepare CHANGELOG for image
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            printf '# Changelog\n\nThis build does not include a changelog.\n' > CHANGELOG.md
+          fi
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -108,7 +102,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=${{ steps.desc.outputs.description }}
+            org.opencontainers.image.description=AniLinkService v${{ steps.version.outputs.version }}：本地追番、弹幕播放与 RSS 自动下载服务
 
       - name: Build and push
         uses: docker/build-push-action@v6
