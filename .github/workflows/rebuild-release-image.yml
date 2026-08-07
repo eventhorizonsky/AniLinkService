@@ -1,4 +1,4 @@
-name: rebuild release docker image (manual)
+name: rebuild-release-image
 
 on:
   workflow_dispatch:

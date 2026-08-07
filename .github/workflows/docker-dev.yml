@@ -1,11 +1,11 @@
-name: package and push docker (dev)
+name: docker-dev
 
 on:
   push:
     branches: [dev]
 
 jobs:
-  build:
+  docker-dev:
     runs-on: ubuntu-latest
     permissions:
       contents: read
