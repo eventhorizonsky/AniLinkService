@@ -1,0 +1,76 @@
+name: package and push docker (release)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: Build frontend
+        run: |
+          cd ui
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Copy frontend build to backend static resources
+        run: |
+          mkdir -p api/src/main/resources/static
+          cp -r ui/dist/* api/src/main/resources/static/
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build backend with Maven
+        run: mvn -f api/pom.xml clean package
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set image name
+        id: image
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/anilinkserver" >> "$GITHUB_OUTPUT"
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}

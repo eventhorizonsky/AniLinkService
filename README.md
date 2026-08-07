@@ -251,6 +251,46 @@ ui/    Vue 3 + Vite 前端
 data/  默认数据目录
 ```
 
+## 开发与发布流程
+
+### 分支模型
+
+- `master`：发布分支。禁止直接 push，只能通过 PR 合并（`dev → master`）。
+- `dev`：开发集成分支。日常功能由 `feature/*` 分支通过 PR 合并进来。
+- `feature/*`：日常开发分支，从 `dev` 拉取，命名如 `feature/xxx`、`fix/xxx`。
+
+### 镜像 Tag
+
+| 来源 | 镜像 Tag |
+| --- | --- |
+| `dev` push | `dev-latest`、`dev-<commit-sha>` |
+| 版本 Tag（release） | `latest`、`vX.Y.Z`、`X.Y`、`X` |
+
+- `latest` 始终指向最近一次正式发布版本。
+- `dev-latest` 指向 dev 分支最新构建，用于测试环境验证。
+
+### 发布流程（release-please）
+
+`dev → master` 的 PR 合并后，[release-please](https://github.com/googleapis/release-please) 会根据 Conventional Commits 自动：
+
+1. 生成新版本号并更新 `api/pom.xml` 与 `ui/package.json`；
+2. 更新根目录 `CHANGELOG.md`；
+3. 创建一个 `release-please--branches--master` Release PR；
+4. 人工审查并合并该 PR 后，自动打版本 Tag（`vX.Y.Z`）并创建 GitHub Release；
+5. Tag push 触发发布镜像构建，推送 `latest` 及版本 Tag。
+
+### 提交规范
+
+请使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/) 格式，release-please 据此决定版本号递增：
+
+```text
+feat: 新增某功能           # 递增 minor（0.x 阶段）
+fix: 修复某个问题           # 递增 patch
+perf: 性能优化
+docs: 文档更新             # 不产生版本号变化
+refactor: 重构             # 不产生版本号变化
+```
+
 ## 文档
 
 - 完整文档站点：https://eventhorizonsky.github.io/ani-link-doc/

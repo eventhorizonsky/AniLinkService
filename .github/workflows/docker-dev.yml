@@ -1,8 +1,9 @@
-name: package and push docker
+name: package and push docker (dev)
 
 on:
   push:
-    branches: [master]
+    branches:
+      - dev
 
 jobs:
   build:
@@ -61,9 +62,8 @@ jobs:
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
-            type=raw,value=latest
-            type=sha,format=short
-            type=raw,value={{date 'YYYYMMDD-HHmmss'}}-{{sha}}
+            type=raw,value=dev-latest
+            type=sha,format=short,prefix=dev-
 
       - name: Build and push
         uses: docker/build-push-action@v6
