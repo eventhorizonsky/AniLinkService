@@ -17,5 +17,5 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           default-branch: master
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          config-file: .github/release-please/config.json
+          manifest-file: .github/release-please/manifest.json
