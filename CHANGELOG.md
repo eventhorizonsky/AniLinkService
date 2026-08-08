@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.0.0...v1.1.0) (2026-08-08)
+
+
+### Features
+
+* 新增定时任务管理后台及番剧信息补全同步任务 ([05f7df9](https://github.com/eventhorizonsky/AniLinkService/commit/05f7df97adaf276bb83264196bc62e9ec19c8522))
+* 添加 DOMPurify 和 marked 库以支持 Markdown 渲染和安全处理 ([c834cdb](https://github.com/eventhorizonsky/AniLinkService/commit/c834cdb161e907b02d6f37f9e2fd52f21ff8a613))
+* 重构菜单项，将系统设置相关项移至单独的菜单组 ([4e00f34](https://github.com/eventhorizonsky/AniLinkService/commit/4e00f34584e01f123aae45d828e2942ce05b82f0))
+
+
+### Bug Fixes
+
+* 为 MCP 列表类工具增加 limit 参数并截断返回，防止 LLM 上下文过长 ([5f637ad](https://github.com/eventhorizonsky/AniLinkService/commit/5f637ad5c796c1e05d011305cacac14909318b51))
+* 优化平板/移动端控件约束，修复播放页控件hover失效的问题 ([1fc06a7](https://github.com/eventhorizonsky/AniLinkService/commit/1fc06a7fb497afd704698bc77045378b9057c800))
+* 修复追番页面，当需要手动匹配时，搜索结果未展示animeTitle的问题 ([9904228](https://github.com/eventhorizonsky/AniLinkService/commit/9904228b3b19cfc0c9d5fe4ccbc20f44b0e9fbc0))
+
 ## 1.0.0 (2026-08-07)
 
 
