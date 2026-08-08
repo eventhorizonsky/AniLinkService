@@ -18,7 +18,7 @@
 	<properties>
 		<java.version>17</java.version>
 		<mcp.sdk.version>1.1.0</mcp.sdk.version>
-		<jlibtorrent.version>2.0.12.7</jlibtorrent.version>
+		<jlibtorrent.version>2.0.12.9</jlibtorrent.version>
 		<!-- 编码 -->
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -139,6 +139,11 @@
 		<dependency>
 			<groupId>com.frostwire</groupId>
 			<artifactId>jlibtorrent-linux-x86_64</artifactId>
+			<version>${jlibtorrent.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.frostwire</groupId>
+			<artifactId>jlibtorrent-linux-arm64</artifactId>
 			<version>${jlibtorrent.version}</version>
 		</dependency>
 		<dependency>
