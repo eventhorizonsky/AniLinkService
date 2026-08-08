@@ -428,6 +428,13 @@ onMounted(() => {
   overflow-x: hidden;
   overflow-y: auto;
   padding-right: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.dashboard-root::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .floating-refresh {
