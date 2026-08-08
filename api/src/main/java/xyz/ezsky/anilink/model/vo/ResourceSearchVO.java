@@ -83,6 +83,30 @@ public final class ResourceSearchVO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class DownloadTaskSummary {
+        private Long id;
+        private String title;
+        private String status;
+        private Integer progressPercent;
+        private Long downloadedBytes;
+        private Long totalBytes;
+        private String downloadSpeedText;
+        private String uploadSpeedText;
+        private String fileSize;
+        private String publishDate;
+        private String subgroupName;
+        private String typeName;
+        private Long libraryId;
+        private String libraryName;
+        private Timestamp startedAt;
+        private Timestamp finishedAt;
+        private Timestamp createdAt;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class BindingStatus {
         private Long taskId;
         private String taskStatus;

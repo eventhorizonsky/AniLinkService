@@ -1,9 +1,9 @@
 package xyz.ezsky.anilink.service;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import xyz.ezsky.anilink.model.dto.MediaLibraryDTO;
@@ -13,6 +13,8 @@ import xyz.ezsky.anilink.model.vo.MediaLibraryVO;
 import xyz.ezsky.anilink.repository.AnimeRepository;
 import xyz.ezsky.anilink.repository.MediaFileRepository;
 import xyz.ezsky.anilink.repository.MediaLibraryRepository;
+import xyz.ezsky.anilink.schedule.ScheduledTaskDefinition;
+import xyz.ezsky.anilink.schedule.ScheduledTaskRegistry;
 
 import java.util.HashSet;
 import java.util.List;
@@ -47,6 +49,22 @@ public class MediaLibraryService {
 
     @Autowired
     private MediaMatchQueueManager mediaMatchQueueManager;
+
+    @Autowired
+    private ScheduledTaskRegistry scheduledTaskRegistry;
+
+    @PostConstruct
+    public void registerScheduledTask() {
+        scheduledTaskRegistry.register(new ScheduledTaskDefinition(
+                "library-rematch",
+                "视频重新识别",
+                "定期重新识别媒体库中未能匹配的剧集文件，尝试自动匹配到对应番剧。",
+                ScheduledTaskDefinition.TYPE_CRON,
+                "0 3 */4 * * *",
+                null,
+                this::rematchAllLibraries
+        ));
+    }
 
     /**
      * 添加一个新的媒体库并在后台触发一次扫描以索引该库中的媒体文件。
@@ -204,11 +222,10 @@ public class MediaLibraryService {
     // ==================== 定时重新匹配 ====================
 
     /**
-     * 每4小时自动触发所有媒体库的重新匹配，将可匹配文件加入弹弹匹配队列。
+     * 自动触发所有媒体库的重新匹配，将可匹配文件加入弹弹匹配队列。
      * 在整点过 3 分触发，避免与其他整点任务碰撞。
      */
-    @Scheduled(cron = "0 3 */4 * * *")
-    public void scheduledRematchAllLibraries() {
+    public void rematchAllLibraries() {
         try {
             List<MediaLibrary> libraries = mediaLibraryRepository.findAll();
             log.info("定时重新匹配任务开始，共 {} 个媒体库", libraries.size());

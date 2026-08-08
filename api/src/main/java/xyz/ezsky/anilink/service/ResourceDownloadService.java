@@ -195,6 +195,14 @@ public class ResourceDownloadService {
                 .collect(Collectors.toList());
     }
 
+    public List<ResourceSearchVO.DownloadTaskSummary> listRecentTasksSummary(int limit) {
+        int n = Math.max(1, Math.min(limit, 20));
+        return taskRepository.findTop100ByOrderByCreatedAtDesc().stream()
+                .limit(n)
+                .map(this::toTaskSummaryVO)
+                .collect(Collectors.toList());
+    }
+
     public SseEmitter subscribeTaskProgress() {
         SseEmitter emitter = new SseEmitter(0L);
         emitters.add(emitter);
@@ -984,6 +992,45 @@ public class ResourceDownloadService {
                 .finishedAt(task.getFinishedAt())
                 .createdAt(task.getCreatedAt())
                 .updatedAt(task.getUpdatedAt())
+                .build();
+    }
+
+    private ResourceSearchVO.DownloadTaskSummary toTaskSummaryVO(ResourceDownloadTask task) {
+        String downloadSpeedText = null;
+        String uploadSpeedText = null;
+        String mergedSpeed = task.getSpeedText();
+        if (mergedSpeed != null && mergedSpeed.contains("/")) {
+            String[] parts = mergedSpeed.split("/");
+            if (parts.length >= 2) {
+                downloadSpeedText = parts[0].replace("↓", "").trim();
+                uploadSpeedText = parts[1].replace("↑", "").trim();
+            }
+        }
+        if (downloadSpeedText == null || downloadSpeedText.isBlank()) {
+            downloadSpeedText = mergedSpeed;
+        }
+        if (uploadSpeedText == null || uploadSpeedText.isBlank()) {
+            uploadSpeedText = "0 B/s";
+        }
+
+        return ResourceSearchVO.DownloadTaskSummary.builder()
+                .id(task.getId())
+                .title(task.getTitle())
+                .status(task.getStatus() != null ? task.getStatus().name() : null)
+                .progressPercent(task.getProgressPercent())
+                .downloadedBytes(task.getDownloadedBytes())
+                .totalBytes(task.getTotalBytes())
+                .downloadSpeedText(downloadSpeedText)
+                .uploadSpeedText(uploadSpeedText)
+                .fileSize(task.getFileSize())
+                .publishDate(task.getPublishDate())
+                .subgroupName(task.getSubgroupName())
+                .typeName(task.getTypeName())
+                .libraryId(task.getLibrary() != null ? task.getLibrary().getId() : null)
+                .libraryName(task.getLibrary() != null ? task.getLibrary().getName() : null)
+                .startedAt(task.getStartedAt())
+                .finishedAt(task.getFinishedAt())
+                .createdAt(task.getCreatedAt())
                 .build();
     }
 }

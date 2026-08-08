@@ -165,8 +165,9 @@ const searchBindAnime = async () => {
 
 const bindAnime = async (follow, anime) => {
   try {
-    await axios.put(`/api/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: anime.title, imageUrl: anime.imageUrl })
-    showAppMessage(`已绑定「${anime.title}」`, 'success')
+    const title = anime.animeTitle || anime.title
+    await axios.put(`/api/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
+    showAppMessage(`已绑定「${title}」`, 'success')
     bindDialog.value.show = false
     await fetchData()
   } catch (e) { showAppMessage('绑定失败', 'error') }
@@ -348,7 +349,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
             >
               <img v-if="anime.imageUrl" :src="anime.imageUrl" alt="" loading="lazy" />
               <div>
-                <div class="bind-result-title">{{ anime.title }}</div>
+                <div class="bind-result-title">{{ anime.animeTitle || anime.title }}</div>
                 <div class="bind-result-meta">ID: {{ anime.animeId }}</div>
               </div>
             </button>

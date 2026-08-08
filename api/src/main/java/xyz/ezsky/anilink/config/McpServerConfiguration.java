@@ -80,6 +80,8 @@ public class McpServerConfiguration {
 
                         【RSS 自动收种】管理订阅 anilink_rss_list/create/delete；手动拉取 anilink_rss_trigger；排查抓取 anilink_rss_last_content。
 
+                        【上下文长度】列表类工具默认返回有限条数（见各工具 limit 参数）。需要更多结果时请显式传入 limit；拉取大列表（下载任务、弹幕、RSS 内容）时默认即可满足状态查看，勿为展示目的调大 limit。
+
                         【媒体库运维】扫盘 anilink_media_scan / scan_all；整库重匹 anilink_media_rematch_library；查文件 anilink_media_files；单文件重匹 anilink_media_file_rematch；队列与进度 anilink_queue_metadata_status、anilink_match_progress、anilink_metadata_progress。
                         """.stripIndent())
                 .jsonMapper(mcpJsonMapper)

@@ -1,11 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 
 const API_BASE = '/api'
 
 const loading = ref(false)
 const versionInfo = ref(null)
+const expanded = ref([])
 
 const fetchVersionInfo = async () => {
   loading.value = true
@@ -21,27 +24,17 @@ const fetchVersionInfo = async () => {
   }
 }
 
+const renderMarkdown = (body) => {
+  if (!body) return ''
+  const raw = marked.parse(body, { gfm: true, breaks: true })
+  return DOMPurify.sanitize(raw)
+}
+
 const formatDate = (iso) => {
   if (!iso) return '-'
   const date = new Date(iso)
   if (isNaN(date.getTime())) return iso
   return date.toLocaleString('zh-CN', { hour12: false })
-}
-
-const plainText = (body) => {
-  if (!body) return ''
-  return body
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[#*>`_~]/g, ' ')
-    .replace(/^\s*[-+]\s+/gm, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-const previewText = (body) => {
-  const text = plainText(body)
-  return text.length > 260 ? text.slice(0, 260) + '...' : text
 }
 
 const releasesUrl = () => {
@@ -96,46 +89,51 @@ onMounted(() => {
           版本历史
         </v-card-title>
         <v-card-text>
-          <v-list v-if="versionInfo.releases && versionInfo.releases.length > 0" lines="three">
-            <v-list-item
-              v-for="release in versionInfo.releases"
+          <v-expansion-panels
+            v-if="versionInfo.releases && versionInfo.releases.length > 0"
+            v-model="expanded"
+            accordion
+            flat
+          >
+            <v-expansion-panel
+              v-for="(release, index) in versionInfo.releases"
               :key="release.tagName"
+              :value="index"
               :class="{ 'version-current': release.current }"
             >
-              <template v-slot:prepend>
-                <v-icon :color="release.current ? 'primary' : ''">
-                  {{ release.current ? 'mdi-check-decagram' : 'mdi-tag-outline' }}
-                </v-icon>
-              </template>
-              <v-list-item-title>
-                <span class="font-weight-medium">{{ release.tagName }}</span>
-                <v-chip
-                  v-if="release.current"
-                  color="primary"
-                  size="x-small"
-                  class="ml-2"
-                >
-                  当前版本
-                </v-chip>
-              </v-list-item-title>
-              <v-list-item-subtitle>
-                <span class="text-body-2">{{ formatDate(release.publishedAt) }}</span>
-                <span class="mx-1">·</span>
-                <a
-                  v-if="release.htmlUrl"
-                  :href="release.htmlUrl"
-                  target="_blank"
-                  rel="noopener"
-                  class="text-primary text-decoration-none text-body-2"
-                >
-                  发布说明
-                </a>
-              </v-list-item-subtitle>
-              <v-list-item-subtitle class="version-body mt-1">
-                {{ previewText(release.body) }}
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
+              <v-expansion-panel-title>
+                <div class="d-flex flex-column w-100 py-1">
+                  <div class="d-flex align-center flex-wrap ga-2">
+                    <v-icon size="20" :color="release.current ? 'primary' : ''">
+                      {{ release.current ? 'mdi-check-decagram' : 'mdi-tag-outline' }}
+                    </v-icon>
+                    <span class="font-weight-medium">{{ release.tagName }}</span>
+                    <v-chip v-if="release.current" color="primary" size="x-small">
+                      当前版本
+                    </v-chip>
+                    <span class="text-body-2 text-medium-emphasis">{{ formatDate(release.publishedAt) }}</span>
+                    <a
+                      v-if="release.htmlUrl"
+                      :href="release.htmlUrl"
+                      target="_blank"
+                      rel="noopener"
+                      class="text-primary text-decoration-none text-body-2"
+                    >
+                      发布说明
+                    </a>
+                  </div>
+                  <div
+                    v-show="expanded !== index"
+                    class="release-preview text-body-2 mt-2"
+                    v-html="renderMarkdown(release.body)"
+                  ></div>
+                </div>
+              </v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <div class="markdown-body text-body-2" v-html="renderMarkdown(release.body)"></div>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
           <v-alert
             v-else
             type="info"
@@ -157,8 +155,70 @@ onMounted(() => {
   background-color: rgba(var(--v-theme-primary), 0.06);
   border-left: 3px solid rgb(var(--v-theme-primary));
 }
-.version-body {
-  white-space: normal;
+
+.release-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   color: rgba(0, 0, 0, 0.7);
+}
+
+.markdown-body,
+.release-preview {
+  word-break: break-word;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 0.75em 0 0.5em;
+  line-height: 1.4;
+}
+.markdown-body :deep(h1:first-child),
+.markdown-body :deep(h2:first-child),
+.markdown-body :deep(h3:first-child),
+.markdown-body :deep(h4:first-child) {
+  margin-top: 0;
+}
+.markdown-body :deep(p),
+.release-preview :deep(p) {
+  margin: 0.35em 0;
+}
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0.35em 0;
+  padding-left: 1.4em;
+}
+.markdown-body :deep(li) {
+  margin: 0.2em 0;
+}
+.markdown-body :deep(code) {
+  background-color: rgba(127, 127, 127, 0.12);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 0.9em;
+}
+.markdown-body :deep(pre) {
+  background-color: rgba(127, 127, 127, 0.1);
+  border-radius: 6px;
+  padding: 0.75em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.markdown-body :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.markdown-body :deep(blockquote) {
+  border-left: 3px solid rgba(127, 127, 127, 0.4);
+  margin: 0.5em 0;
+  padding: 0.1em 0.75em;
+  color: rgba(0, 0, 0, 0.6);
+}
+.markdown-body :deep(a) {
+  color: rgb(var(--v-theme-primary));
 }
 </style>

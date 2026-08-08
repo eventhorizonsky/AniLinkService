@@ -153,7 +153,7 @@ public class AnimeService {
      * @param animeId 弹弹动漫ID
      * @param rawJson 从缓存或上游获取的原始 JSON
      */
-    private void upsertAnimeFromRawJson(Long animeId, String rawJson) {
+    public void upsertAnimeFromRawJson(Long animeId, String rawJson) {
         // Only create/enrich Anime records when the media library actually contains episodes
         // for this anime, so raw-json fetches never produce orphan records without episodes.
         if (animeId == null) {
@@ -214,6 +214,29 @@ public class AnimeService {
         } catch (Exception e) {
             log.warn("Failed to upsert anime from raw JSON for animeId={}", animeId, e);
         }
+    }
+
+    /**
+     * 保存弹弹 bangumi 原始 JSON 到数据库缓存（供后续访问快速命中）。
+     *
+     * @param animeId 弹弹动漫ID
+     * @param rawJson 原始 JSON
+     */
+    public void saveBangumiCache(Long animeId, String rawJson) {
+        if (animeId == null || !StringUtils.hasText(rawJson)) {
+            return;
+        }
+        upsertCache(buildBangumiCacheKey(animeId), rawJson, LocalDateTime.now().plusMinutes(BANGUMI_CACHE_TTL_MINUTES));
+    }
+
+    /**
+     * 兜底：仅用媒体库中已有的剧集信息创建 Anime 记录（仅有 title）。
+     * 用于弹弹接口返回 404 等拿不到完整信息时的降级。
+     *
+     * @param animeId 弹弹动漫ID
+     */
+    public void ensureAnimeFromMediaFiles(Long animeId) {
+        tryCreateAnimeFromMediaFiles(animeId);
     }
 
     private String readTextField(JsonNode node, String fieldName, String defaultValue) {

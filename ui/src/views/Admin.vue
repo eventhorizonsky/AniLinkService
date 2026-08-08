@@ -13,6 +13,7 @@ const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
 const Version = defineAsyncComponent(() => import('./admin/Version.vue'))
 const CacheManage = defineAsyncComponent(() => import('./admin/CacheManage.vue'))
 const SiteConfig = defineAsyncComponent(() => import('./admin/SiteConfig.vue'))
+const ScheduledTasks = defineAsyncComponent(() => import('./admin/ScheduledTasks.vue'))
 const MediaLibrary = defineAsyncComponent(() => import('./admin/media/MediaLibrary.vue'))
 const VideoFileManager = defineAsyncComponent(() => import('./admin/media/VideoFileManager.vue'))
 const AnimeLibrary = defineAsyncComponent(() => import('./admin/media/AnimeLibrary.vue'))
@@ -28,14 +29,17 @@ const AdminDanmaku = defineAsyncComponent(() => import('./admin/AdminDanmaku.vue
 
 const mainMenuItems = [
   { id: 'system', title: '系统信息', icon: 'mdi-information', component: SystemInfo },
-  { id: 'version', title: '版本更新', icon: 'mdi-update', component: Version },
-  { id: 'cache', title: '缓存管理', icon: 'mdi-cached', component: CacheManage },
-  { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess },
   { id: 'users', title: '用户管理', icon: 'mdi-account-cog', component: UserManagement },
   { id: 'danmaku', title: '弹幕管理', icon: 'mdi-comment-text-multiple', component: AdminDanmaku }
 ]
 
-const siteMenuItem = { id: 'site', title: '服务配置', icon: 'mdi-web', component: SiteConfig }
+const systemSettingsMenuItems = [
+  { id: 'tasks', title: '定时任务', icon: 'mdi-timer-sand', component: ScheduledTasks },
+  { id: 'cache', title: '缓存管理', icon: 'mdi-cached', component: CacheManage },
+  { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess },
+  { id: 'version', title: '版本更新', icon: 'mdi-update', component: Version },
+  { id: 'site', title: '服务配置', icon: 'mdi-web', component: SiteConfig }
+]
 
 const mediaMenuItems = [
   { id: 'queue', title: '队列进度', icon: 'mdi-progress-clock', component: QueueProgress },
@@ -53,7 +57,7 @@ const resourceDownloadMenuItems = [
 ]
 
 const componentMap = Object.fromEntries(
-  [...mainMenuItems, ...mediaMenuItems, ...resourceDownloadMenuItems, siteMenuItem].map(item => [item.id, item.component])
+  [...mainMenuItems, ...systemSettingsMenuItems, ...mediaMenuItems, ...resourceDownloadMenuItems].map(item => [item.id, item.component])
 )
 
 const userInfo = ref(null)
@@ -62,8 +66,10 @@ const isSuperAdmin = computed(() =>
   Array.isArray(userInfo.value?.roleCodeList) && userInfo.value.roleCodeList.includes('super-admin')
 )
 
-const visibleMainMenuItems = computed(() =>
-  mainMenuItems.filter((item) => item.id !== 'mcp' || isSuperAdmin.value)
+const visibleMainMenuItems = computed(() => mainMenuItems)
+
+const visibleSystemSettingsItems = computed(() =>
+  systemSettingsMenuItems.filter((item) => item.id !== 'mcp' || isSuperAdmin.value)
 )
 
 // 获取当前用户信息
@@ -206,15 +212,28 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
           ></v-list-item>
         </v-list-group>
 
-        <v-list-item
-          :value="siteMenuItem.id"
-          :active="selectedItem === siteMenuItem.id"
-          @click="handleSelectMenu(siteMenuItem.id)"
-          :prepend-icon="siteMenuItem.icon"
-          :title="siteMenuItem.title"
-          color="primary"
-          link
-        ></v-list-item>
+        <v-list-group value="system-settings">
+          <template #activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-cog"
+              title="系统设置"
+            />
+          </template>
+
+          <v-list-item
+            v-for="item in visibleSystemSettingsItems"
+            :key="item.id"
+            :value="item.id"
+            :active="selectedItem === item.id"
+            @click="handleSelectMenu(item.id)"
+            :prepend-icon="item.icon"
+            :title="item.title"
+            class="pl-6"
+            color="primary"
+            link
+          ></v-list-item>
+        </v-list-group>
       </v-list>
 
       <template v-slot:append>

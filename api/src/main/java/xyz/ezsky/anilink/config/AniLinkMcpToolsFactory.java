@@ -1,6 +1,8 @@
 package xyz.ezsky.anilink.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -18,6 +20,7 @@ import xyz.ezsky.anilink.model.dto.ResourceSearchDownloadRequest;
 import xyz.ezsky.anilink.model.dto.UpdateBangumiCollectionRequest;
 import xyz.ezsky.anilink.model.entity.User;
 import xyz.ezsky.anilink.model.vo.QueueStatusVO;
+import xyz.ezsky.anilink.model.vo.ResourceSearchVO;
 import xyz.ezsky.anilink.service.AnimeFollowService;
 import xyz.ezsky.anilink.service.AnimeService;
 import xyz.ezsky.anilink.service.BangumiApiService;
@@ -174,14 +177,22 @@ public class AniLinkMcpToolsFactory {
         list.add(McpServerFeatures.SyncToolSpecification.builder()
                 .tool(tool("anilink_get_shin_schedule", """
                         【场景】当季/新番时间表（弹弹源，服务端缓存 JSON）。【非场景】不是本地文件列表；本地番剧用 anilink_list_animes。
-                        """, SCHEMA_EMPTY_OBJECT))
+                        【防过长】默认只返回前 20 条，可用 limit 调整（1-100）。
+                        """,
+                        """
+                        {"type":"object","properties":{
+                        "limit":{"type":"integer","description":"返回条数，1-100，默认20"}
+                        }}
+                        """))
                 .callHandler((ex, req) -> {
                     String raw = animeService.getShinRawJson();
                     if (raw == null) {
                         return err("暂无新番缓存数据");
                     }
                     try {
-                        return jsonOk(objectMapper.readTree(raw));
+                        int limit = clampLimit(intArg(req.arguments(), "limit", 20), 100, 20);
+                        return jsonOk(truncateJsonArray(objectMapper.readTree(raw),
+                                List.of("data", "bangumis", "list"), limit));
                     } catch (Exception e) {
                         return err("解析新番 JSON 失败: " + e.getMessage());
                     }
@@ -192,12 +203,14 @@ public class AniLinkMcpToolsFactory {
                 .tool(tool("anilink_dandan_search_episodes", """
                         【场景】按番名/话数/tmdb 找弹弹侧的剧集候选，用于对齐 episodeId、配弹幕。【前置】anime、episode、tmdbId 至少填一个。
                         【下一步】拿到 episodeId 后调用 anilink_dandan_get_comment。【勿用】不要用 anilink_resource_search 做弹幕匹配。
+                        【防过长】默认只返回前 10 条候选，可用 limit 调整（1-50）。
                         """,
                         """
                         {"type":"object","properties":{
                         "anime":{"type":"string","description":"番剧标题关键词"},
                         "episode":{"type":"string","description":"剧集关键词"},
-                        "tmdbId":{"type":"string","description":"TMDB ID"}
+                        "tmdbId":{"type":"string","description":"TMDB ID"},
+                        "limit":{"type":"integer","description":"返回条数，1-50，默认10"}
                         }}
                         """))
                 .callHandler((ex, req) -> {
@@ -210,7 +223,9 @@ public class AniLinkMcpToolsFactory {
                         if (raw == null) {
                             return err("未找到匹配结果");
                         }
-                        return jsonOk(objectMapper.readTree(raw));
+                        int limit = clampLimit(intArg(a, "limit", 10), 50, 10);
+                        return jsonOk(truncateJsonArray(objectMapper.readTree(raw),
+                                List.of("searchResults", "data", "results"), limit));
                     } catch (IllegalArgumentException e) {
                         return err(e.getMessage());
                     } catch (Exception e) {
@@ -222,12 +237,13 @@ public class AniLinkMcpToolsFactory {
         list.add(McpServerFeatures.SyncToolSpecification.builder()
                 .tool(tool("anilink_dandan_get_comment", """
                         【场景】拉取某弹弹 episodeId 的弹幕数据（JSON，带缓存）。【前置】episodeId 通常来自 anilink_dandan_search_episodes。
-                        【参数】withRelated=true 可含第三方关联弹幕。
+                        【参数】withRelated=true 可含第三方关联弹幕。为避免上下文过长，默认只返回前 500 条弹幕，可用 limit 调整（1-2000）。
                         """,
                         """
                         {"type":"object","required":["episodeId"],"properties":{
                         "episodeId":{"type":"integer","description":"弹幕库剧集 ID"},
-                        "withRelated":{"type":"boolean","description":"是否包含第三方关联弹幕，默认 false"}
+                        "withRelated":{"type":"boolean","description":"是否包含第三方关联弹幕，默认 false"},
+                        "limit":{"type":"integer","description":"返回弹幕条数，1-2000，默认500"}
                         }}
                         """))
                 .callHandler((ex, req) -> {
@@ -242,7 +258,8 @@ public class AniLinkMcpToolsFactory {
                         return err("弹幕数据不存在");
                     }
                     try {
-                        return jsonOk(objectMapper.readTree(raw));
+                        int limit = clampLimit(intArg(a, "limit", 500), 2000, 500);
+                        return jsonOk(truncateJsonArray(objectMapper.readTree(raw), List.of("comments"), limit));
                     } catch (Exception e) {
                         return err("解析弹幕 JSON 失败: " + e.getMessage());
                     }
@@ -508,11 +525,18 @@ public class AniLinkMcpToolsFactory {
                 .build());
 
         list.add(McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool("anilink_follows_all", "获取全部追番（不分页）", SCHEMA_EMPTY_OBJECT))
+                .tool(tool("anilink_follows_all", "获取全部追番（不分页）。为避免上下文过长，默认最多返回 50 条，可用 limit 调整（1-200）。", """
+                        {"type":"object","properties":{
+                        "limit":{"type":"integer","description":"返回条数，1-200，默认50"}
+                        }}
+                        """))
                 .callHandler((ex, req) -> {
                     Long userId = userIdFrom(ex);
-                    return userId == null ? err("缺少用户上下文")
-                            : jsonOk(animeFollowService.getUserFollowsList(userId, null));
+                    if (userId == null) {
+                        return err("缺少用户上下文");
+                    }
+                    List<?> follows = animeFollowService.getUserFollowsList(userId, null);
+                    return jsonOk(sliceList(follows, clampLimit(intArg(req.arguments(), "limit", 50), 200, 50)));
                 })
                 .build());
 
@@ -615,13 +639,18 @@ public class AniLinkMcpToolsFactory {
                 .build());
 
         list.add(McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool("anilink_messages_unread", "未读消息列表", SCHEMA_EMPTY_OBJECT))
+                .tool(tool("anilink_messages_unread", "未读消息列表。为避免上下文过长，默认最多返回 20 条，可用 limit 调整（1-50）。", """
+                        {"type":"object","properties":{
+                        "limit":{"type":"integer","description":"返回条数，1-50，默认20"}
+                        }}
+                        """))
                 .callHandler((ex, req) -> {
                     Long uid = userIdFrom(ex);
                     if (uid == null) {
                         return err("缺少用户上下文");
                     }
-                    return jsonOk(messageService.getUserUnreadMessages(uid));
+                    List<?> messages = messageService.getUserUnreadMessages(uid);
+                    return jsonOk(sliceList(messages, clampLimit(intArg(req.arguments(), "limit", 20), 50, 20)));
                 })
                 .build());
 
@@ -667,12 +696,13 @@ public class AniLinkMcpToolsFactory {
                 .callHandler((ex, req) -> requireSuper(ex, () -> jsonOk(resourceSearchProxyService.fetchTypes())))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool("anilink_resource_search", "资源搜索（需超级管理员）",
+                .tool(tool("anilink_resource_search", "资源搜索（需超级管理员）。为避免上下文过长，默认只返回前 10 条，可用 limit 调整（1-50）。",
                         """
                         {"type":"object","required":["keyword"],"properties":{
                         "keyword":{"type":"string"},
                         "subgroup":{"type":"integer"},
-                        "type":{"type":"integer"}
+                        "type":{"type":"integer"},
+                        "limit":{"type":"integer","description":"返回条数，1-50，默认10"}
                         }}
                         """))
                 .callHandler((ex, req) -> requireSuper(ex, () -> {
@@ -682,7 +712,15 @@ public class AniLinkMcpToolsFactory {
                     }
                     Integer subgroup = req.arguments().get("subgroup") instanceof Number n ? n.intValue() : null;
                     Integer type = req.arguments().get("type") instanceof Number n ? n.intValue() : null;
-                    return jsonOk(resourceSearchProxyService.fetchResources(keyword.trim(), subgroup, type));
+                    ResourceSearchVO.ResourceListResult result = resourceSearchProxyService.fetchResources(keyword.trim(), subgroup, type);
+                    int limit = clampLimit(intArg(req.arguments(), "limit", 10), 50, 10);
+                    if (result.getResources() != null && result.getResources().size() > limit) {
+                        return jsonOk(ResourceSearchVO.ResourceListResult.builder()
+                                .hasMore(true)
+                                .resources(new ArrayList<>(result.getResources().subList(0, limit)))
+                                .build());
+                    }
+                    return jsonOk(result);
                 }))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
@@ -719,8 +757,14 @@ public class AniLinkMcpToolsFactory {
                 }))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool("anilink_resource_download_tasks", "最近下载任务列表（需超级管理员）", SCHEMA_EMPTY_OBJECT))
-                .callHandler((ex, req) -> requireSuper(ex, () -> jsonOk(resourceDownloadService.listRecentTasks())))
+                .tool(tool("anilink_resource_download_tasks", "最近下载任务列表（需超级管理员）。为避免上下文过长，仅返回精简字段（无 magnet/路径/日志），默认最多 5 条，可用 limit 调整（1-20）。",
+                        """
+                        {"type":"object","properties":{
+                        "limit":{"type":"integer","description":"返回条数，1-20，默认5"}
+                        }}
+                        """))
+                .callHandler((ex, req) -> requireSuper(ex, () -> jsonOk(
+                        resourceDownloadService.listRecentTasksSummary(intArg(req.arguments(), "limit", 5)))))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
                 .tool(tool("anilink_resource_download_cancel", "取消下载任务（需超级管理员）",
@@ -763,8 +807,14 @@ public class AniLinkMcpToolsFactory {
                 }))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool("anilink_rss_list", "RSS 订阅列表（需超级管理员）", SCHEMA_EMPTY_OBJECT))
-                .callHandler((ex, req) -> requireSuper(ex, () -> jsonOk(resourceRssSubscriptionService.listSubscriptions())))
+                .tool(tool("anilink_rss_list", "RSS 订阅列表（需超级管理员）。为避免上下文过长，默认最多返回 50 条，可用 limit 调整（1-200）。", """
+                        {"type":"object","properties":{
+                        "limit":{"type":"integer","description":"返回条数，1-200，默认50"}
+                        }}
+                        """))
+                .callHandler((ex, req) -> requireSuper(ex, () -> jsonOk(sliceList(
+                        resourceRssSubscriptionService.listSubscriptions(),
+                        clampLimit(intArg(req.arguments(), "limit", 50), 200, 50)))))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
                 .tool(tool("anilink_rss_create", "创建 RSS 订阅（需超级管理员）",
@@ -824,7 +874,7 @@ public class AniLinkMcpToolsFactory {
                 }))
                 .build());
         list.add(McpServerFeatures.SyncToolSpecification.builder()
-                .tool(tool("anilink_rss_last_content", "查询 RSS 最近拉取内容（需超级管理员）",
+                .tool(tool("anilink_rss_last_content", "查询 RSS 最近拉取内容（需超级管理员）。为避免上下文过长，内容最多返回前 8000 字符。",
                         """
                         {"type":"object","required":["id"],"properties":{"id":{"type":"integer"}}}
                         """))
@@ -833,7 +883,12 @@ public class AniLinkMcpToolsFactory {
                     if (id == null) {
                         return err("id 必填");
                     }
-                    return jsonOk(resourceRssSubscriptionService.getLastFetchedContent(id));
+                    ResourceSearchVO.RssFetchedContent vo = resourceRssSubscriptionService.getLastFetchedContent(id);
+                    if (vo.getLastFetchedContent() != null && vo.getLastFetchedContent().length() > 8000) {
+                        vo.setLastFetchedContent(vo.getLastFetchedContent().substring(0, 8000)
+                                + "\n...[已截断，仅显示前 8000 字符]");
+                    }
+                    return jsonOk(vo);
                 }))
                 .build());
         return list;
@@ -1061,5 +1116,52 @@ public class AniLinkMcpToolsFactory {
             return b;
         }
         return defaultVal;
+    }
+
+    private static int clampLimit(int value, int max, int defaultVal) {
+        if (value <= 0) {
+            return defaultVal;
+        }
+        return Math.min(value, max);
+    }
+
+    private static List<?> sliceList(List<?> list, int limit) {
+        if (list == null || list.isEmpty() || limit <= 0 || list.size() <= limit) {
+            return list;
+        }
+        return new ArrayList<>(list.subList(0, limit));
+    }
+
+    private JsonNode truncateJsonArray(JsonNode root, List<String> fieldCandidates, int limit) {
+        if (root == null || root.isNull()) {
+            return root;
+        }
+        if (root.isArray()) {
+            ArrayNode arr = (ArrayNode) root;
+            if (arr.size() > limit) {
+                ArrayNode limited = objectMapper.createArrayNode();
+                for (int i = 0; i < limit; i++) {
+                    limited.add(arr.get(i));
+                }
+                return limited;
+            }
+            return root;
+        }
+        if (!root.isObject()) {
+            return root;
+        }
+        for (String field : fieldCandidates) {
+            JsonNode arr = root.get(field);
+            if (arr != null && arr.isArray() && arr.size() > limit) {
+                ObjectNode copy = ((ObjectNode) root).deepCopy();
+                ArrayNode limited = objectMapper.createArrayNode();
+                for (int i = 0; i < limit; i++) {
+                    limited.add(arr.get(i));
+                }
+                copy.set(field, limited);
+                return copy;
+            }
+        }
+        return root;
     }
 }
