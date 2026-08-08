@@ -149,26 +149,28 @@ onMounted(async () => {
 <template>
   <div>
     <v-card class="mb-4">
-      <v-card-text class="d-flex flex-wrap gap-3 align-center">
-        <v-text-field
-          v-model="keyword"
-          label="搜索用户名或邮箱"
-          variant="outlined"
-          density="comfortable"
-          prepend-inner-icon="mdi-magnify"
-          hide-details
-          class="flex-grow-1"
-          style="min-width: 260px"
-          @keyup.enter="searchUsers"
-        />
-        <v-btn color="primary" @click="searchUsers">
-          <v-icon start>mdi-magnify</v-icon>
-          搜索
-        </v-btn>
-        <v-btn variant="outlined" @click="resetSearch">
-          <v-icon start>mdi-refresh</v-icon>
-          重置
-        </v-btn>
+      <v-card-text>
+        <v-row dense class="align-center">
+          <v-col cols="12" md="8">
+            <v-text-field
+              v-model="keyword"
+              label="搜索用户名或邮箱"
+              variant="outlined"
+              density="compact"
+              prepend-inner-icon="mdi-magnify"
+              hide-details
+              clearable
+              @keyup.enter="searchUsers"
+            />
+          </v-col>
+          <v-col cols="12" md="4" class="d-flex ga-2 justify-md-end">
+            <v-btn color="primary" variant="elevated" size="small" @click="searchUsers">
+              <v-icon start>mdi-magnify</v-icon>
+              搜索
+            </v-btn>
+            <v-btn color="grey" variant="text" size="small" @click="resetSearch">重置</v-btn>
+          </v-col>
+        </v-row>
       </v-card-text>
     </v-card>
 
@@ -182,58 +184,116 @@ onMounted(async () => {
       </v-card-title>
 
       <v-card-text>
-        <v-data-table
-          :headers="[
-            { title: 'ID', key: 'id', width: '80px' },
-            { title: '用户名', key: 'username' },
-            { title: '邮箱', key: 'email' },
-            { title: '角色', key: 'roles', sortable: false },
-            { title: '状态', key: 'isActive', width: '100px' },
-            { title: '操作', key: 'actions', sortable: false, width: '120px' }
-          ]"
-          :items="users"
-          :loading="loading"
-          :items-per-page="pageSize"
-          item-value="id"
-          hide-default-footer
-        >
-          <template #item.email="{ item }">
-            {{ item.email || '-' }}
-          </template>
+        <div class="d-none d-lg-block">
+          <v-data-table
+            :headers="[
+              { title: 'ID', key: 'id', width: '80px' },
+              { title: '用户名', key: 'username' },
+              { title: '邮箱', key: 'email' },
+              { title: '角色', key: 'roles', sortable: false },
+              { title: '状态', key: 'isActive', width: '100px' },
+              { title: '操作', key: 'actions', sortable: false, width: '120px' }
+            ]"
+            :items="users"
+            :loading="loading"
+            :items-per-page="pageSize"
+            item-value="id"
+            hide-default-footer
+          >
+            <template #item.email="{ item }">
+              {{ item.email || '-' }}
+            </template>
 
-          <template #item.roles="{ item }">
-            <div class="d-flex flex-wrap ga-1">
-              <v-chip
-                v-for="roleCode in item.roleCodeList || []"
-                :key="`${item.id}-${roleCode}`"
-                size="small"
-                color="primary"
-                variant="outlined"
-              >
-                {{ roleCodeToName[roleCode] || roleCode }}
+            <template #item.roles="{ item }">
+              <div class="d-flex flex-wrap ga-1">
+                <v-chip
+                  v-for="roleCode in item.roleCodeList || []"
+                  :key="`${item.id}-${roleCode}`"
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                >
+                  {{ roleCodeToName[roleCode] || roleCode }}
+                </v-chip>
+                <span v-if="!item.roleCodeList || item.roleCodeList.length === 0">-</span>
+              </div>
+            </template>
+
+            <template #item.isActive="{ item }">
+              <v-chip :color="item.isActive ? 'success' : 'error'" size="small" variant="tonal">
+                {{ item.isActive ? '启用' : '禁用' }}
               </v-chip>
-              <span v-if="!item.roleCodeList || item.roleCodeList.length === 0">-</span>
+            </template>
+
+            <template #item.actions="{ item }">
+              <v-btn size="small" color="primary" variant="tonal" @click="openEditDialog(item)">
+                编辑
+              </v-btn>
+            </template>
+          </v-data-table>
+        </div>
+
+        <div class="d-lg-none">
+          <div v-if="loading" class="d-flex justify-center py-8">
+            <v-progress-circular indeterminate color="primary" />
+          </div>
+
+          <template v-else>
+            <v-card
+              v-for="user in users"
+              :key="user.id"
+              class="mb-3"
+              variant="outlined"
+            >
+              <v-card-item>
+                <template #prepend>
+                  <v-avatar color="primary" variant="tonal">
+                    <v-icon>mdi-account</v-icon>
+                  </v-avatar>
+                </template>
+                <v-card-title class="text-body-1 text-wrap">{{ user.username }}</v-card-title>
+                <v-card-subtitle class="text-body-2">{{ user.email || '-' }}</v-card-subtitle>
+                <template #append>
+                  <v-chip :color="user.isActive ? 'success' : 'error'" size="small" variant="tonal">
+                    {{ user.isActive ? '启用' : '禁用' }}
+                  </v-chip>
+                </template>
+              </v-card-item>
+
+              <v-card-text class="pt-2">
+                <div class="d-flex flex-wrap ga-1">
+                  <v-chip
+                    v-for="roleCode in user.roleCodeList || []"
+                    :key="`${user.id}-${roleCode}`"
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                  >
+                    {{ roleCodeToName[roleCode] || roleCode }}
+                  </v-chip>
+                  <span v-if="!user.roleCodeList || user.roleCodeList.length === 0">-</span>
+                </div>
+              </v-card-text>
+
+              <v-card-actions>
+                <v-spacer />
+                <v-btn size="small" color="primary" variant="tonal" @click="openEditDialog(user)">
+                  <v-icon start>mdi-account-edit</v-icon>
+                  编辑
+                </v-btn>
+              </v-card-actions>
+            </v-card>
+
+            <div v-if="users.length === 0" class="text-center text-medium-emphasis py-8">
+              暂无用户
             </div>
           </template>
-
-          <template #item.isActive="{ item }">
-            <v-chip :color="item.isActive ? 'success' : 'error'" size="small" variant="tonal">
-              {{ item.isActive ? '启用' : '禁用' }}
-            </v-chip>
-          </template>
-
-          <template #item.actions="{ item }">
-            <v-btn size="small" color="primary" variant="tonal" @click="openEditDialog(item)">
-              编辑
-            </v-btn>
-          </template>
-        </v-data-table>
+        </div>
 
         <div class="d-flex justify-end mt-4">
           <v-pagination
             v-model="page"
             :length="Math.max(totalPages, 1)"
-            :total-visible="7"
             @update:model-value="onPageChange"
           />
         </div>
@@ -307,3 +367,16 @@ onMounted(async () => {
     </v-dialog>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 1280px) {
+  .user-search-field {
+    flex: 1 0 100% !important;
+    min-width: 0 !important;
+  }
+  .user-search-actions {
+    flex: 1 1 auto !important;
+    min-width: 0;
+  }
+}
+</style>

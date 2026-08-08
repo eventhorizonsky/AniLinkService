@@ -161,6 +161,13 @@ const onSearch = () => {
   fetchAnimes(1)
 }
 
+// 重置搜索
+const resetSearch = () => {
+  search.value = ''
+  pagination.value.page = 1
+  fetchAnimes(1)
+}
+
 // 表格分页/排序/过滤变化（动漫列表）
 const onTableOptionsChange = (options) => {
   const page = options.page || 1
@@ -253,86 +260,154 @@ const closeSubtitleDialog = () => {
       <v-divider></v-divider>
 
       <v-card-text class="py-4">
-        <div class="d-flex gap-3 mb-4">
-          <v-text-field
-            v-model="search"
-            placeholder="搜索动漫标题..."
-            prepend-icon="mdi-magnify"
-            variant="outlined"
-            density="compact"
-            clearable
-            @keyup.enter="onSearch"
-          ></v-text-field>
-          <v-btn
-            color="primary"
-            @click="onSearch"
+        <v-row dense class="align-center mb-4">
+          <v-col cols="12" md="8">
+            <v-text-field
+              v-model="search"
+              placeholder="搜索动漫标题..."
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+              @keyup.enter="onSearch"
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" md="4" class="d-flex ga-2 justify-md-end">
+            <v-btn
+              color="primary"
+              variant="elevated"
+              size="small"
+              :loading="loading"
+              @click="onSearch"
+            >
+              <v-icon start>mdi-magnify</v-icon>
+              搜索
+            </v-btn>
+            <v-btn
+              color="grey"
+              variant="text"
+              size="small"
+              @click="resetSearch"
+            >
+              重置
+            </v-btn>
+          </v-col>
+        </v-row>
+
+        <!-- 动漫列表（桌面表格） -->
+        <div class="d-none d-lg-block">
+          <v-data-table-server
+            :headers="animeHeaders"
+            :items="animes"
             :loading="loading"
-            prepend-icon="mdi-search"
+            :items-per-page="pagination.itemsPerPage"
+            :items-length="pagination.pageCount"
+            density="compact"
+            class="elevation-1"
+            hover
+            @update:options="onTableOptionsChange"
           >
-            搜索
-          </v-btn>
-          <v-btn
-            variant="outlined"
-            @click="() => { search = ''; pagination.page = 1; fetchAnimes(1) }"
-            prepend-icon="mdi-refresh"
-          >
-            重置
-          </v-btn>
+            <template v-slot:item.title="{ item }">
+              <div class="text-truncate" :title="item.title">{{ item.title }}</div>
+            </template>
+
+            <template v-slot:item.altTitle="{ item }">
+              <div class="text-truncate text-caption text-grey" :title="item.altTitle">
+                {{ item.altTitle || '-' }}
+              </div>
+            </template>
+
+            <template v-slot:item.year="{ item }">
+              <v-chip size="small" variant="outlined">
+                {{ item.year || '-' }}
+              </v-chip>
+            </template>
+
+            <template v-slot:item.episodes="{ item }">
+              <v-badge :content="item.episodes || 0" color="info">
+                <v-icon small>mdi-list-box</v-icon>
+              </v-badge>
+            </template>
+
+            <template v-slot:item.actions="{ item }">
+              <v-btn
+                size="small"
+                variant="text"
+                color="primary"
+                @click="selectAnime(item)"
+                prepend-icon="mdi-eye"
+              >
+                查看
+              </v-btn>
+            </template>
+
+            <template v-slot:no-data>
+              <div class="text-center py-8 text-grey">
+                <v-icon size="48" class="mb-2">mdi-anime-box-outline</v-icon>
+                <div>暂无动漫数据</div>
+              </div>
+            </template>
+          </v-data-table-server>
         </div>
 
-        <!-- 动漫列表 -->
-        <v-data-table-server
-          :headers="animeHeaders"
-          :items="animes"
-          :loading="loading"
-          :items-per-page="pagination.itemsPerPage"
-          :items-length="pagination.pageCount"
-          density="compact"
-          class="elevation-1"
-          hover
-          @update:options="onTableOptionsChange"
-        >
-          <template v-slot:item.title="{ item }">
-            <div class="text-truncate" :title="item.title">{{ item.title }}</div>
-          </template>
+        <!-- 动漫列表（移动端卡片） -->
+        <div class="d-lg-none">
+          <div v-if="loading" class="text-center py-8">
+            <v-progress-circular indeterminate color="primary" />
+          </div>
 
-          <template v-slot:item.altTitle="{ item }">
-            <div class="text-truncate text-caption text-grey" :title="item.altTitle">
-              {{ item.altTitle || '-' }}
-            </div>
-          </template>
+          <template v-else-if="animes.length > 0">
+            <v-card v-for="item in animes" :key="item.animeId" class="mb-3" variant="outlined">
+              <v-card-item>
+                <template #prepend>
+                  <v-avatar color="primary" variant="tonal">
+                    <v-icon>mdi-anime</v-icon>
+                  </v-avatar>
+                </template>
+                <v-card-title class="text-body-1 text-wrap">{{ item.title }}</v-card-title>
+                <v-card-subtitle class="text-caption text-truncate" :title="item.altTitle">
+                  {{ item.altTitle || '备用标题：-' }}
+                </v-card-subtitle>
+              </v-card-item>
 
-          <template v-slot:item.year="{ item }">
-            <v-chip size="small" variant="outlined">
-              {{ item.year || '-' }}
-            </v-chip>
-          </template>
+              <v-card-text class="pt-2">
+                <div class="d-flex flex-wrap ga-2 align-center">
+                  <v-chip size="small" variant="outlined">{{ item.year || '-' }}</v-chip>
+                  <v-chip size="small" color="info" variant="tonal">
+                    <v-icon start size="14">mdi-list-box</v-icon>
+                    {{ item.episodes || 0 }} 集
+                  </v-chip>
+                  <span class="text-caption text-grey ml-auto">ID: {{ item.animeId }}</span>
+                </div>
+              </v-card-text>
 
-          <template v-slot:item.episodes="{ item }">
-            <v-badge :content="item.episodes || 0" color="info">
-              <v-icon small>mdi-list-box</v-icon>
-            </v-badge>
-          </template>
+              <v-card-actions>
+                <v-spacer />
+                <v-btn size="small" color="primary" variant="tonal" @click="selectAnime(item)">
+                  <v-icon start>mdi-eye</v-icon>
+                  查看
+                </v-btn>
+              </v-card-actions>
+            </v-card>
 
-          <template v-slot:item.actions="{ item }">
-            <v-btn
-              size="small"
-              variant="text"
-              color="primary"
-              @click="selectAnime(item)"
-              prepend-icon="mdi-eye"
+            <div
+              v-if="pagination.pageCount > pagination.itemsPerPage"
+              class="d-flex justify-center mt-2"
             >
-              查看
-            </v-btn>
-          </template>
-
-          <template v-slot:no-data>
-            <div class="text-center py-8 text-grey">
-              <v-icon size="48" class="mb-2">mdi-anime-box-outline</v-icon>
-              <div>暂无动漫数据</div>
+              <v-pagination
+                v-model="pagination.page"
+                :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+                @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
+              />
             </div>
           </template>
-        </v-data-table-server>
+
+          <div v-else class="text-center py-8 text-grey">
+            <v-icon size="48" class="mb-2">mdi-anime-box-outline</v-icon>
+            <div>暂无动漫数据</div>
+          </div>
+        </div>
       </v-card-text>
     </v-card>
 
