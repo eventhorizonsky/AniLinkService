@@ -6,9 +6,10 @@ import org.springframework.web.bind.annotation.*;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import xyz.ezsky.anilink.model.vo.ApiResponseVO;
+import xyz.ezsky.anilink.model.vo.DashboardStatsVO;
 import xyz.ezsky.anilink.model.vo.SystemInfoVO;
 import xyz.ezsky.anilink.model.vo.VersionInfoVO;
-import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.service.SystemInfoService;
 import xyz.ezsky.anilink.service.VersionService;
 
@@ -35,6 +36,17 @@ public class SystemInfoController {
     public ApiResponseVO<SystemInfoVO> getSystemInfo() {
         SystemInfoVO systemInfo = systemInfoService.getSystemInfo();
         return ApiResponseVO.success(systemInfo, "获取系统信息成功");
+    }
+
+    /**
+     * 获取看板统计数据
+     */
+    @GetMapping("dashboard")
+    @SaCheckRole("super-admin")
+    @Operation(summary = "获取看板统计数据", description = "获取收录番剧、媒体文件、字幕、弹幕、RSS订阅、未匹配等看板统计数据")
+    public ApiResponseVO<DashboardStatsVO> getDashboardStats() {
+        DashboardStatsVO stats = systemInfoService.getDashboardStats();
+        return ApiResponseVO.success(stats, "获取看板统计数据成功");
     }
 
     /**

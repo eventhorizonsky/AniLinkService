@@ -9,4 +9,6 @@ public interface ResourceRssSubscriptionRepository extends BaseRepository<Resour
     List<ResourceRssSubscription> findByEnabledTrueOrderByCreatedAtAsc();
 
     List<ResourceRssSubscription> findAllByOrderByCreatedAtDesc();
+
+    long countByEnabledTrue();
 }

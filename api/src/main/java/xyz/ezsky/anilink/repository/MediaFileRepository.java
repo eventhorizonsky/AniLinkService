@@ -49,6 +49,10 @@ public interface MediaFileRepository extends BaseRepository<MediaFile, Long> {
 
     long countByLibraryIdAndMatchStatusIn(Long libraryId, List<MatchStatus> matchStatuses);
 
+    /** 计算所有媒体文件的总大小（字节） */
+    @Query("SELECT COALESCE(SUM(m.size), 0) FROM MediaFile m")
+    long sumAllFileSize();
+
     // 新的分页查询，按数据库ID排序由调用方的 Pageable 决定
     Page<MediaFile> findByAnimeId(Long animeId, Pageable pageable);
 

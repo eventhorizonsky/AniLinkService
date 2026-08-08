@@ -3,7 +3,16 @@ package xyz.ezsky.anilink.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
+import xyz.ezsky.anilink.model.entity.MatchStatus;
+import xyz.ezsky.anilink.model.vo.DashboardStatsVO;
 import xyz.ezsky.anilink.model.vo.SystemInfoVO;
+import xyz.ezsky.anilink.repository.AnimeRepository;
+import xyz.ezsky.anilink.repository.DanmakuRecordRepository;
+import xyz.ezsky.anilink.repository.MediaFileRepository;
+import xyz.ezsky.anilink.repository.MediaLibraryRepository;
+import xyz.ezsky.anilink.repository.MediaSubtitleRepository;
+import xyz.ezsky.anilink.repository.ResourceRssSubscriptionRepository;
+import xyz.ezsky.anilink.repository.UserRepository;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
@@ -14,7 +23,9 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 
 /**
  * 系统信息服务
@@ -26,9 +37,57 @@ public class SystemInfoService {
     private final Environment environment;
     
     @Autowired
+    private AnimeRepository animeRepository;
+
+    @Autowired
+    private MediaFileRepository mediaFileRepository;
+
+    @Autowired
+    private MediaSubtitleRepository mediaSubtitleRepository;
+
+    @Autowired
+    private DanmakuRecordRepository danmakuRecordRepository;
+
+    @Autowired
+    private ResourceRssSubscriptionRepository resourceRssSubscriptionRepository;
+
+    @Autowired
+    private MediaLibraryRepository mediaLibraryRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private MediaMatchQueueManager mediaMatchQueueManager;
+
+    /** 视为"未匹配"的匹配状态：从未匹配过 + 尝试匹配但无结果 */
+    private static final List<MatchStatus> UNMATCHED_STATUSES =
+            Arrays.asList(MatchStatus.UNMATCHED, MatchStatus.NO_MATCH_FOUND);
+    
+    @Autowired
     public SystemInfoService(javax.sql.DataSource dataSource, Environment environment) {
         this.dataSource = dataSource;
         this.environment = environment;
+    }
+
+    /**
+     * 获取看板统计数据
+     */
+    public DashboardStatsVO getDashboardStats() {
+        DashboardStatsVO vo = new DashboardStatsVO();
+        vo.setAnimeCount(animeRepository.count());
+        vo.setMediaFileCount(mediaFileRepository.count());
+        vo.setSubtitleCount(mediaSubtitleRepository.count());
+        vo.setDanmakuCount(danmakuRecordRepository.count());
+        vo.setRssSubscriptionCount(resourceRssSubscriptionRepository.count());
+        vo.setRssEnabledCount(resourceRssSubscriptionRepository.countByEnabledTrue());
+        vo.setLibraryCount(mediaLibraryRepository.count());
+        vo.setUserCount(userRepository.count());
+        vo.setMatchedCount(mediaFileRepository.countByMatchStatus(MatchStatus.MATCHED));
+        vo.setUnmatchedCount(mediaFileRepository.countByMatchStatusIn(UNMATCHED_STATUSES));
+        vo.setPendingMatchQueueCount((long) mediaMatchQueueManager.getQueueSize());
+        vo.setMediaTotalSizeBytes(mediaFileRepository.sumAllFileSize());
+        return vo;
     }
     
     /**
