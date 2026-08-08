@@ -613,7 +613,9 @@ onMounted(() => {
 
 /* ========================= RESPONSIVE ========================= */
 @media (max-width: 768px) {
-  .discover-root { min-height: 0; }
+  .discover-root { min-height: 0; flex: none; }
+  .tab-content { flex: none; min-height: 0; }
+  .scroll-area { flex: none; min-height: 0; overflow-y: visible; overflow-x: visible; }
   .discover-tab { padding: 9px 16px; font-size: 0.82rem; gap: 5px; }
   .toolbar-row { flex-direction: column; align-items: stretch; }
   .search-box { width: 100%; }
@@ -630,12 +632,20 @@ onMounted(() => {
 </style>
 
 <style>
-/* 发现页：禁止外层滚动（含移动端），用 flex 精确撑满剩余高度；
+/* 发现页：禁止外层滚动（PC），用 flex 精确撑满剩余高度；
    内部仅 .scroll-area 滚动，避免出现两层滚动条 */
 .app-content:has(.discover-root) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 移动端恢复外层滚动，内容自然排布，避免内层滚动区域过小 */
+  .app-content:has(.discover-root) {
+    display: block;
+    overflow-y: auto;
+  }
 }
 </style>
 
