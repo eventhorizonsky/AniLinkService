@@ -35,6 +35,14 @@ public interface MediaFileRepository extends BaseRepository<MediaFile, Long> {
     /** Returns true when the media library contains at least one episode file for the anime. */
     boolean existsByAnimeId(Long animeId);
 
+    /**
+     * 查询媒体库中有剧集、但在 anime 表中尚未入库的 animeId（去重）。
+     * 用于定时任务调用弹弹接口补录 Anime 记录。
+     */
+    @Query("SELECT DISTINCT m.animeId FROM MediaFile m WHERE m.animeId IS NOT NULL " +
+            "AND NOT EXISTS (SELECT 1 FROM Anime a WHERE a.animeId = m.animeId)")
+    List<Long> findAnimeIdsMissingInAnimeTable();
+
     long countByLibraryIdAndMatchStatus(Long libraryId, MatchStatus matchStatus);
 
     long countByMatchStatusIn(List<MatchStatus> matchStatuses);

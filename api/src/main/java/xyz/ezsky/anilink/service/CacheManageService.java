@@ -1,12 +1,14 @@
 package xyz.ezsky.anilink.service;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import xyz.ezsky.anilink.model.vo.CacheClearResultVO;
 import xyz.ezsky.anilink.model.vo.CacheStatsVO;
 import xyz.ezsky.anilink.repository.ApiCacheRepository;
+import xyz.ezsky.anilink.schedule.ScheduledTaskDefinition;
+import xyz.ezsky.anilink.schedule.ScheduledTaskRegistry;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -35,6 +37,22 @@ public class CacheManageService {
 
     @Autowired
     private ApiCacheRepository apiCacheRepository;
+
+    @Autowired
+    private ScheduledTaskRegistry scheduledTaskRegistry;
+
+    @PostConstruct
+    public void registerScheduledTask() {
+        scheduledTaskRegistry.register(new ScheduledTaskDefinition(
+                "cache-clean",
+                "缓存自动清理",
+                "定期清理过期的番剧详情缓存，释放存储空间并保证数据更新。",
+                ScheduledTaskDefinition.TYPE_CRON,
+                "0 7 * * * *",
+                null,
+                this::scheduledCleanExpired
+        ));
+    }
 
     // ==================== 缓存统计 ====================
 
@@ -123,10 +141,9 @@ public class CacheManageService {
     // ==================== 定时自动清理 ====================
 
     /**
-     * 每小时自动清理一次过期缓存
+     * 自动清理过期缓存
      * 在整点过 7 分触发，避免与其他整点任务碰撞
      */
-    @Scheduled(cron = "0 7 * * * *")
     public void scheduledCleanExpired() {
         try {
             CacheClearResultVO result = clearExpired();

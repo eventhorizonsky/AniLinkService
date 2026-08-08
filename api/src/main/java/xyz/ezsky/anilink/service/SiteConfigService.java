@@ -66,6 +66,7 @@ public class SiteConfigService {
     private static final String MAIL_SEND_DAILY_LIMIT_PER_EMAIL = "mail_send_daily_limit_per_email";
     private static final String REGISTER_DAILY_LIMIT_PER_IP = "register_daily_limit_per_ip";
     private static final String THUMBNAIL_PLAYBACK_ENABLED = "thumbnail_playback_enabled";
+    private static final String SCHEDULED_TASK_ENABLED_PREFIX = "scheduled_task_enabled.";
     private static final String DEFAULT_DANDAN_BASE_URL = "https://api.dandanplay.net";
 
     // 简单内存缓存，避免每次请求都访问数据库
@@ -552,6 +553,30 @@ public class SiteConfigService {
 
     public String getDandanBaseUrl() {
         return normalizeDandanBaseUrl(getConfigValue(DANDAN_BASE_URL));
+    }
+
+    /**
+     * 获取定时任务开关状态。
+     *
+     * @param taskId 任务 ID
+     * @param defaultEnabled 未配置过时的默认值
+     */
+    public boolean getScheduledTaskEnabled(String taskId, boolean defaultEnabled) {
+        String value = getConfigValue(SCHEDULED_TASK_ENABLED_PREFIX + taskId);
+        if (value == null || value.isBlank()) {
+            return defaultEnabled;
+        }
+        return Boolean.parseBoolean(value);
+    }
+
+    /**
+     * 保存定时任务开关状态。
+     *
+     * @param taskId 任务 ID
+     * @param enabled 是否启用
+     */
+    public void setScheduledTaskEnabled(String taskId, boolean enabled) {
+        saveOrUpdateConfig(SCHEDULED_TASK_ENABLED_PREFIX + taskId, String.valueOf(enabled), "定时任务开关");
     }
     
     /**

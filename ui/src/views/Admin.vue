@@ -13,6 +13,7 @@ const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
 const Version = defineAsyncComponent(() => import('./admin/Version.vue'))
 const CacheManage = defineAsyncComponent(() => import('./admin/CacheManage.vue'))
 const SiteConfig = defineAsyncComponent(() => import('./admin/SiteConfig.vue'))
+const ScheduledTasks = defineAsyncComponent(() => import('./admin/ScheduledTasks.vue'))
 const MediaLibrary = defineAsyncComponent(() => import('./admin/media/MediaLibrary.vue'))
 const VideoFileManager = defineAsyncComponent(() => import('./admin/media/VideoFileManager.vue'))
 const AnimeLibrary = defineAsyncComponent(() => import('./admin/media/AnimeLibrary.vue'))
@@ -33,10 +34,11 @@ const mainMenuItems = [
 ]
 
 const systemSettingsMenuItems = [
-  { id: 'site', title: '服务配置', icon: 'mdi-web', component: SiteConfig },
-  { id: 'version', title: '版本更新', icon: 'mdi-update', component: Version },
+  { id: 'tasks', title: '定时任务', icon: 'mdi-timer-sand', component: ScheduledTasks },
   { id: 'cache', title: '缓存管理', icon: 'mdi-cached', component: CacheManage },
-  { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess }
+  { id: 'mcp', title: 'MCP 接入', icon: 'mdi-connection', component: McpAccess },
+  { id: 'version', title: '版本更新', icon: 'mdi-update', component: Version },
+  { id: 'site', title: '服务配置', icon: 'mdi-web', component: SiteConfig }
 ]
 
 const mediaMenuItems = [
