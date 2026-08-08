@@ -243,12 +243,10 @@ const closeSubtitleDialog = () => {
 <template>
   <div>
     <v-card elevation="2" class="mb-6">
-      <v-card-title class="text-h6">
-        <v-icon start>mdi-anime-box</v-icon>
+      <v-card-title class="d-flex align-center ga-2">
+        <i class="mdi mdi-library" style="color: #c45d2b;"></i>
         动漫库管理
       </v-card-title>
-
-      <v-divider></v-divider>
 
       <v-card-text class="py-4">
         <v-row dense class="align-center mb-4">
@@ -330,7 +328,7 @@ const closeSubtitleDialog = () => {
         </template>
 
         <div v-else class="text-center py-8 text-grey">
-          <v-icon size="48" class="mb-2">mdi-anime-box-outline</v-icon>
+          <v-icon size="48" class="mb-2">mdi-library-outline</v-icon>
           <div>暂无动漫数据</div>
         </div>
       </v-card-text>

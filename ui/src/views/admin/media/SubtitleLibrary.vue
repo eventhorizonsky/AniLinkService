@@ -167,6 +167,10 @@ onMounted(() => {
 <template>
   <div>
     <v-card class="mb-4">
+      <v-card-title class="d-flex align-center ga-2">
+        <i class="mdi mdi-subtitles-outline" style="color: #c45d2b;"></i>
+        字幕搜索
+      </v-card-title>
       <v-card-text class="pa-4">
         <v-row dense class="align-center">
           <v-col cols="12" md="5">

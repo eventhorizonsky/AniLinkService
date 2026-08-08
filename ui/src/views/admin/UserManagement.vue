@@ -149,6 +149,10 @@ onMounted(async () => {
 <template>
   <div>
     <v-card class="mb-4">
+      <v-card-title class="d-flex align-center ga-2">
+        <i class="mdi mdi-account-search" style="color: #c45d2b;"></i>
+        用户搜索
+      </v-card-title>
       <v-card-text>
         <v-row dense class="align-center">
           <v-col cols="12" md="8">
