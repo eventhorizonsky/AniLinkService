@@ -2377,12 +2377,10 @@ onBeforeUnmount(() => {
   background: #f9f4ef;
 }
 
-/* 平板/移动端控件约束：防止控件栏宽度溢出 */
-.artplayer-container :deep(.art-bottom) {
-  max-width: 100%;
-  overflow: hidden;
-}
-
+/* 平板/移动端控件约束：防止控件栏宽度溢出。
+   注意：.art-controls-left/.art-controls-right 不能设置 overflow:hidden，
+   否则会裁掉向上展开的音量面板、分集面板与 hover 提示气泡。
+   水平方向的溢出由 artplayer 自带 .art-bottom 的 overflow:hidden 兜底裁切。 */
 .artplayer-container :deep(.art-controls) {
   max-width: 100%;
   flex-wrap: nowrap;
@@ -2390,9 +2388,7 @@ onBeforeUnmount(() => {
 
 .artplayer-container :deep(.art-controls-left),
 .artplayer-container :deep(.art-controls-right) {
-  flex-shrink: 1;
-  min-width: 0;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 /* .art-mobile 同步后的非全屏安全区适配 */
