@@ -119,12 +119,8 @@ const currentComponent = computed(() => {
 
 const fallbackMenuId = computed(() => visibleMainMenuItems.value[0]?.id || 'system')
 
+// 移动端选中导航后收起侧边栏（分组子项同样生效，分组头展开不触发）
 const handleSelectMenu = (id) => {
-  selectedItem.value = id
-}
-
-// 移动端点击非分组导航后收起侧边栏
-const handleMainMenuSelect = (id) => {
   selectedItem.value = id
   if (isMobile()) drawer.value = false
 }
@@ -167,7 +163,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
           :key="item.id"
           :value="item.id"
           :active="selectedItem === item.id"
-          @click="handleMainMenuSelect(item.id)"
+          @click="handleSelectMenu(item.id)"
           :prepend-icon="item.icon"
           :title="item.title"
           color="primary"
