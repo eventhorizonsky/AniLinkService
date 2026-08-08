@@ -49,6 +49,7 @@ public class ResourceDownloadService {
     private static final int HANDLE_WAIT_SECONDS = 30;
     private static final int DOWNLOAD_TIMEOUT_SECONDS = 12 * 60 * 60;
     private static final int MAX_TERMINAL_TASKS = 300;
+    private static final int SHUTDOWN_GRACE_SECONDS = 30;
 
     @Autowired
     private ResourceDownloadTaskRepository taskRepository;
@@ -231,13 +232,10 @@ public class ResourceDownloadService {
         ActiveDownloadContext ctx = activeContexts.get(taskId);
         if (ctx != null) {
             ctx.cancelled.set(true);
-            // 避免在取消线程中直接移除句柄，防止与下载线程的 status() 轮询并发触发 JNI 崩溃。
-            // 统一由下载线程在 finally 中执行 remove(handle) 清理。
-        }
-
-        Future<?> future = taskFutures.get(taskId);
-        if (future != null) {
-            future.cancel(true);
+            // 不要调用 future.cancel(true)：Thread.interrupt() 对 H2 内嵌模式（MVStore/FileChannel）不安全，
+            // 中断正在执行数据库读写的下载线程会关闭整个 H2 库（90098）或引发行锁超时（50200）。
+            // 取消仅依赖 ctx.cancelled 协作式标记，由下载线程在轮询中检查并自行收尾，
+            // 同时避免在取消线程中直接移除句柄，防止与 status() 轮询并发触发 JNI 崩溃。
         }
 
         markCancelled(taskId, "任务已取消");
@@ -452,7 +450,7 @@ public class ResourceDownloadService {
                                         DownloadFinishedHook downloadFinishedHook,
                                         RuntimeLimitSettings limitSettings) {
         try {
-            TorrentHandle handle = addTorrentAndWaitHandle(magnet, tempDir);
+            TorrentHandle handle = addTorrentAndWaitHandle(magnet, tempDir, taskId, context);
             if (handle == null || !handle.isValid()) {
                 throw new IllegalStateException("jlibtorrent 未能创建下载任务句柄");
             }
@@ -523,16 +521,17 @@ public class ResourceDownloadService {
         }
     }
 
-    private TorrentHandle addTorrentAndWaitHandle(String magnet, Path tempDir) throws InterruptedException {
+    private TorrentHandle addTorrentAndWaitHandle(String magnet, Path tempDir, Long taskId, ActiveDownloadContext context) throws InterruptedException {
         synchronized (sessionLock) {
             List<String> before = listHandleKeys(globalSessionManager.getTorrentHandles());
             globalSessionManager.download(magnet, tempDir.toFile(), TorrentFlags.AUTO_MANAGED);
-            return waitForNewHandle(before);
+            return waitForNewHandle(before, taskId, context);
         }
     }
 
-    private TorrentHandle waitForNewHandle(List<String> existingKeys) throws InterruptedException {
+    private TorrentHandle waitForNewHandle(List<String> existingKeys, Long taskId, ActiveDownloadContext context) throws InterruptedException {
         for (int i = 0; i < HANDLE_WAIT_SECONDS; i++) {
+            checkCancellation(taskId, context);
             TorrentHandle[] handles = globalSessionManager.getTorrentHandles();
             if (handles != null && handles.length > 0) {
                 for (TorrentHandle handle : handles) {
@@ -816,6 +815,9 @@ public class ResourceDownloadService {
         if (task == null) {
             return;
         }
+        if (task.getStatus() == ResourceDownloadTask.DownloadStatus.CANCELLED) {
+            return;
+        }
         task.setStatus(ResourceDownloadTask.DownloadStatus.CANCELLED);
         task.setFinishedAt(Timestamp.from(Instant.now()));
         task.setOutputMessage(appendMessage(task.getOutputMessage(), message));
@@ -876,15 +878,35 @@ public class ResourceDownloadService {
 
     @PreDestroy
     public void destroy() {
-        synchronized (executorLock) {
-            if (executor != null && !executor.isShutdown()) {
-                executor.shutdownNow();
-            }
-        }
+        // 阶段 1：通知所有在途下载任务停止（协作式标记，不中断线程）。
+        // 避免 shutdownNow() 的 Thread.interrupt() 在停机期间再次触发 H2 内嵌库的中断不安全问题。
         for (ActiveDownloadContext context : new ArrayList<>(activeContexts.values())) {
             context.cancelled.set(true);
         }
+
+        // 阶段 2：拒绝新任务，等待在途任务在取消标记下自行收尾（轮询 <=1s，句柄等待循环也会检查取消）。
+        ThreadPoolExecutor executorToStop = null;
+        synchronized (executorLock) {
+            if (executor != null && !executor.isShutdown()) {
+                executor.shutdown();
+                executorToStop = executor;
+            }
+        }
+        if (executorToStop != null) {
+            try {
+                if (!executorToStop.awaitTermination(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS)) {
+                    log.warn("下载线程在 {}s 内未全部退出，强制中断兜底", SHUTDOWN_GRACE_SECONDS);
+                    executorToStop.shutdownNow();
+                    executorToStop.awaitTermination(5, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                executorToStop.shutdownNow();
+            }
+        }
         activeContexts.clear();
+
+        // 阶段 3：此刻无任何线程再访问 jlibtorrent 会话或数据库，才安全停止会话。
         synchronized (sessionLock) {
             try {
                 globalSessionManager.stop();
