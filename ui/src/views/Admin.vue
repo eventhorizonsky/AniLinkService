@@ -6,7 +6,9 @@ import axios from 'axios'
 const API_BASE = '/api'
 const router = useRouter()
 
-const drawer = ref(true)
+// 移动端默认收起侧边栏，桌面端默认展开
+const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 1280
+const drawer = ref(!isMobile())
 const selectedItem = ref('system')
 
 const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
@@ -121,6 +123,12 @@ const handleSelectMenu = (id) => {
   selectedItem.value = id
 }
 
+// 移动端点击非分组导航后收起侧边栏
+const handleMainMenuSelect = (id) => {
+  selectedItem.value = id
+  if (isMobile()) drawer.value = false
+}
+
 provide('navigateTo', handleSelectMenu)
 
 onMounted(() => {
@@ -159,7 +167,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
           :key="item.id"
           :value="item.id"
           :active="selectedItem === item.id"
-          @click="handleSelectMenu(item.id)"
+          @click="handleMainMenuSelect(item.id)"
           :prepend-icon="item.icon"
           :title="item.title"
           color="primary"
