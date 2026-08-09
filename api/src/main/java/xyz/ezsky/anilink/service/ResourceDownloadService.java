@@ -8,9 +8,13 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import xyz.ezsky.anilink.model.dto.ResourceSearchDownloadRequest;
+import xyz.ezsky.anilink.model.dto.ResourceSearchBatchDownloadRequest;
 import xyz.ezsky.anilink.model.entity.MediaFile;
 import xyz.ezsky.anilink.model.entity.MediaLibrary;
 import xyz.ezsky.anilink.model.entity.ResourceDownloadTask;
@@ -26,13 +30,17 @@ import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -72,13 +80,23 @@ public class ResourceDownloadService {
     private volatile ThreadPoolExecutor executor;
     private volatile int executorConcurrency = -1;
 
+    // 做种专用线程池:下载完成后做种交接到这里,不占用下载并发槽位。
+    // 做种任务每秒轮询(非空闲),cached 线程池不会因空闲被回收。
+    private final ThreadPoolExecutor seedingExecutor = (ThreadPoolExecutor) Executors.newCachedThreadPool(r -> {
+        Thread thread = new Thread(r, "anilink-seeding-" + r.hashCode());
+        thread.setDaemon(true);
+        return thread;
+    });
+
     private final ConcurrentHashMap<Long, Future<?>> taskFutures = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, ActiveDownloadContext> activeContexts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, long[]> activeSpeeds = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
     private static final Set<ResourceDownloadTask.DownloadStatus> ACTIVE_STATUSES = Set.of(
             ResourceDownloadTask.DownloadStatus.PENDING,
             ResourceDownloadTask.DownloadStatus.RUNNING,
+            ResourceDownloadTask.DownloadStatus.SEEDING,
             ResourceDownloadTask.DownloadStatus.MOVING,
             ResourceDownloadTask.DownloadStatus.SCANNING
     );
@@ -212,7 +230,7 @@ public class ResourceDownloadService {
         emitter.onError(e -> emitters.remove(emitter));
 
         try {
-            emitter.send(SseEmitter.event().name("download-progress").data(listRecentTasks()));
+            emitter.send(SseEmitter.event().name("download-progress").data(progressPayload()));
         } catch (Exception e) {
             emitters.remove(emitter);
         }
@@ -247,10 +265,7 @@ public class ResourceDownloadService {
         ResourceDownloadTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("下载任务不存在"));
 
-        if (task.getStatus() == ResourceDownloadTask.DownloadStatus.RUNNING
-                || task.getStatus() == ResourceDownloadTask.DownloadStatus.PENDING
-                || task.getStatus() == ResourceDownloadTask.DownloadStatus.MOVING
-                || task.getStatus() == ResourceDownloadTask.DownloadStatus.SCANNING) {
+        if (ACTIVE_STATUSES.contains(task.getStatus())) {
             throw new IllegalArgumentException("任务正在执行中，无法重试");
         }
 
@@ -267,7 +282,7 @@ public class ResourceDownloadService {
         return startDownload(request);
     }
 
-    public void deleteTask(Long taskId) {
+    public void deleteTask(Long taskId, boolean deleteFiles) {
         ResourceDownloadTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("下载任务不存在"));
 
@@ -275,8 +290,136 @@ public class ResourceDownloadService {
             throw new IllegalArgumentException("任务正在执行中，请先取消后再删除");
         }
 
+        if (deleteFiles && task.getTempDir() != null && !task.getTempDir().isBlank()) {
+            try {
+                deleteDirectoryQuietly(Paths.get(task.getTempDir()));
+            } catch (Exception e) {
+                log.warn("清理暂存目录失败, taskId={}, dir={}", taskId, task.getTempDir(), e);
+            }
+        }
+
+        activeSpeeds.remove(taskId);
         taskRepository.delete(task);
         broadcastProgress();
+    }
+
+    public ResourceSearchVO.DownloadTaskPageResult listTasks(int page, int size, String status, String keyword) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.max(1, Math.min(size, 100));
+
+        List<ResourceDownloadTask.DownloadStatus> statuses = null;
+        if (status != null && !status.isBlank()) {
+            if ("active".equalsIgnoreCase(status)) {
+                statuses = new ArrayList<>(ACTIVE_STATUSES);
+            } else {
+                try {
+                    statuses = List.of(ResourceDownloadTask.DownloadStatus.valueOf(status));
+                } catch (IllegalArgumentException ignored) {
+                    statuses = null;
+                }
+            }
+        }
+        String safeKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+        Pageable pageable = PageRequest.of(safePage - 1, safeSize);
+
+        Page<ResourceDownloadTask> pageResult = statuses == null
+                ? taskRepository.searchTasks(null, safeKeyword, pageable)
+                : taskRepository.searchTasksInStatuses(statuses, safeKeyword, pageable);
+
+        List<ResourceSearchVO.DownloadTask> items = pageResult.getContent().stream()
+                .map(this::toTaskVO)
+                .collect(Collectors.toList());
+
+        return ResourceSearchVO.DownloadTaskPageResult.builder()
+                .items(items)
+                .total(pageResult.getTotalElements())
+                .page(safePage)
+                .size(safeSize)
+                .hasMore(safePage < pageResult.getTotalPages())
+                .stats(buildStats())
+                .build();
+    }
+
+    public ResourceSearchVO.DownloadTaskStats buildStats() {
+        long pending = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.PENDING);
+        long running = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.RUNNING);
+        long seeding = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.SEEDING);
+        long moving = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.MOVING);
+        long scanning = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.SCANNING);
+        long completed = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.COMPLETED);
+        long failed = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.FAILED);
+        long cancelled = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.CANCELLED);
+
+        Timestamp startOfToday = Timestamp.valueOf(LocalDate.now().atStartOfDay());
+
+        long downloadBps = 0;
+        long uploadBps = 0;
+        for (long[] speeds : activeSpeeds.values()) {
+            downloadBps += speeds[0];
+            uploadBps += speeds[1];
+        }
+
+        return ResourceSearchVO.DownloadTaskStats.builder()
+                .pending(pending)
+                .running(running)
+                .seeding(seeding)
+                .moving(moving)
+                .scanning(scanning)
+                .completed(completed)
+                .failed(failed)
+                .cancelled(cancelled)
+                .active(pending + running + seeding + moving + scanning)
+                .todayCompleted(taskRepository.countByStatusFinishedAfter(ResourceDownloadTask.DownloadStatus.COMPLETED, startOfToday))
+                .todayFailed(taskRepository.countByStatusFinishedAfter(ResourceDownloadTask.DownloadStatus.FAILED, startOfToday))
+                .todayCancelled(taskRepository.countByStatusFinishedAfter(ResourceDownloadTask.DownloadStatus.CANCELLED, startOfToday))
+                .downloadBps(downloadBps)
+                .uploadBps(uploadBps)
+                .build();
+    }
+
+    public ResourceSearchVO.BatchDownloadResult startDownloadBatch(ResourceSearchBatchDownloadRequest request) {
+        if (request.getLibraryId() == null) {
+            throw new IllegalArgumentException("请选择媒体库");
+        }
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new IllegalArgumentException("没有待下载的资源");
+        }
+
+        List<String> errors = new ArrayList<>();
+        int created = 0;
+        int duplicated = 0;
+        for (ResourceSearchDownloadRequest item : request.getItems()) {
+            String title = item.getTitle() == null || item.getTitle().isBlank() ? "(无标题)" : item.getTitle();
+            try {
+                if (item.getMagnet() == null || item.getMagnet().isBlank()) {
+                    errors.add(title + ": 磁力链接无效");
+                    continue;
+                }
+                if (taskRepository.existsByMagnet(item.getMagnet())) {
+                    duplicated++;
+                    continue;
+                }
+                item.setLibraryId(request.getLibraryId());
+                startDownload(item);
+                created++;
+            } catch (Exception e) {
+                log.warn("批量下载失败, title={}", title, e);
+                errors.add(title + ": " + e.getMessage());
+            }
+        }
+
+        return ResourceSearchVO.BatchDownloadResult.builder()
+                .created(created)
+                .duplicated(duplicated)
+                .errors(errors)
+                .build();
+    }
+
+    private Map<String, Object> progressPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tasks", listRecentTasks());
+        payload.put("stats", buildStats());
+        return payload;
     }
 
     public ResourceSearchVO.BindingStatus getBindingStatus(Long taskId) {
@@ -327,21 +470,26 @@ public class ResourceDownloadService {
 
         ActiveDownloadContext context = new ActiveDownloadContext();
         if (task.getStatus() == ResourceDownloadTask.DownloadStatus.PENDING
-                || task.getStatus() == ResourceDownloadTask.DownloadStatus.RUNNING) {
+                || task.getStatus() == ResourceDownloadTask.DownloadStatus.RUNNING
+                || task.getStatus() == ResourceDownloadTask.DownloadStatus.SEEDING) {
             activeContexts.put(taskId, context);
         }
 
         try {
             Path movedPath = continueTask(taskId, task, context);
-            completeTask(taskId, movedPath);
+            if (!context.transferred.get()) {
+                completeTask(taskId, movedPath);
+            }
         } catch (DownloadCancelledException e) {
             markCancelled(taskId, "任务已取消");
         } catch (Exception e) {
             log.error("executeDownload error, taskId={}", taskId, e);
             failTask(taskId, "任务失败: " + e.getMessage());
         } finally {
-            activeContexts.remove(taskId);
-            taskFutures.remove(taskId);
+            if (!context.transferred.get()) {
+                activeContexts.remove(taskId);
+                taskFutures.remove(taskId);
+            }
         }
     }
 
@@ -358,7 +506,9 @@ public class ResourceDownloadService {
             return task.getFinalPath() != null ? Paths.get(task.getFinalPath()) : null;
         }
 
-        task.setStatus(ResourceDownloadTask.DownloadStatus.RUNNING);
+        if (task.getStatus() != ResourceDownloadTask.DownloadStatus.SEEDING) {
+            task.setStatus(ResourceDownloadTask.DownloadStatus.RUNNING);
+        }
         if (task.getStartedAt() == null) {
             task.setStartedAt(Timestamp.from(Instant.now()));
         }
@@ -385,7 +535,7 @@ public class ResourceDownloadService {
                 movedPathHolder[0] = moveToLibrary(taskId, false);
                 updateStatus(taskId, ResourceDownloadTask.DownloadStatus.SCANNING, "文件入库完成，开始触发媒体库扫描");
                 triggerScan(taskId);
-                updateStatus(taskId, ResourceDownloadTask.DownloadStatus.RUNNING, "媒体库扫描已触发，继续做种中");
+                updateStatus(taskId, ResourceDownloadTask.DownloadStatus.SEEDING, "媒体库扫描已触发，继续做种中");
             };
         }
 
@@ -397,6 +547,11 @@ public class ResourceDownloadService {
             updateStatus(taskId, ResourceDownloadTask.DownloadStatus.SCANNING, "文件迁移完成，开始触发媒体库扫描");
             triggerScan(taskId);
             return movedPath;
+        }
+
+        // seedSeconds > 0 时,下载完成后已把做种交接给独立做种线程,由它负责清理暂存目录并完成任务
+        if (context.transferred.get()) {
+            return null;
         }
 
         deleteDirectoryQuietly(tempDir);
@@ -433,6 +588,7 @@ public class ResourceDownloadService {
         latest.setStatus(ResourceDownloadTask.DownloadStatus.COMPLETED);
         latest.setProgressPercent(100);
         latest.setFinishedAt(Timestamp.from(Instant.now()));
+        activeSpeeds.remove(taskId);
         if (movedPath != null) {
             latest.setOutputMessage(appendMessage(latest.getOutputMessage(), "任务完成: " + movedPath));
         } else {
@@ -494,7 +650,17 @@ public class ResourceDownloadService {
                         finishMs = System.currentTimeMillis();
                     }
                     updateProgress(taskId, 100, downloadedBytes, totalBytes, downloadSpeed, uploadSpeed);
-                    if (seedSeconds <= 0 || (System.currentTimeMillis() - finishMs) / 1000 >= seedSeconds) {
+                    if (seedSeconds <= 0) {
+                        break;
+                    }
+                    // 需要做种:交接给独立做种线程,立即释放下载并发槽位
+                    if (!context.transferred.get()) {
+                        context.transferred.set(true);
+                        Future<?> seedingFuture = seedingExecutor.submit(() -> executeSeeding(taskId, context, seedSeconds));
+                        taskFutures.put(taskId, seedingFuture);
+                        break;
+                    }
+                    if ((System.currentTimeMillis() - finishMs) / 1000 >= seedSeconds) {
                         break;
                     }
                 }
@@ -510,7 +676,7 @@ public class ResourceDownloadService {
             throw new DownloadCancelledException("任务取消", taskId);
         } finally {
             TorrentHandle handle = context.handleRef.get();
-            if (handle != null) {
+            if (handle != null && !context.transferred.get()) {
                 try {
                     synchronized (sessionLock) {
                         globalSessionManager.remove(handle);
@@ -521,8 +687,72 @@ public class ResourceDownloadService {
         }
     }
 
-    private TorrentHandle addTorrentAndWaitHandle(String magnet, Path tempDir, Long taskId, ActiveDownloadContext context) throws InterruptedException {
-        synchronized (sessionLock) {
+    /**
+     * 做种阶段:在独立线程池中运行,不占用下载并发槽位。
+     * 持有交接过来的 torrent 句柄,周期性更新进度/速度,做种时长耗尽后清理暂存目录并完成任务。
+     */
+    private void executeSeeding(Long taskId, ActiveDownloadContext context, int seedSeconds) {
+        long finishMs = System.currentTimeMillis();
+        try {
+            while (true) {
+                checkCancellation(taskId, context);
+                TorrentStatus status;
+                synchronized (sessionLock) {
+                    TorrentHandle handle = context.handleRef.get();
+                    if (handle == null || !handle.isValid()) {
+                        throw new IllegalStateException("做种句柄已失效");
+                    }
+                    status = handle.status();
+                }
+                updateProgress(taskId, 100, status.totalDone(), status.totalWanted(),
+                        status.downloadRate(), status.uploadRate());
+                if ((System.currentTimeMillis() - finishMs) / 1000 >= seedSeconds) {
+                    break;
+                }
+                Thread.sleep(1000);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            markCancelled(taskId, "任务已取消");
+            return;
+        } catch (DownloadCancelledException e) {
+            markCancelled(taskId, "任务已取消");
+            return;
+        } catch (Exception e) {
+            log.error("executeSeeding error, taskId={}", taskId, e);
+            failTask(taskId, "做种失败: " + e.getMessage());
+            return;
+        } finally {
+            synchronized (sessionLock) {
+                TorrentHandle handle = context.handleRef.get();
+                if (handle != null) {
+                    try {
+                        globalSessionManager.remove(handle);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            activeContexts.remove(taskId);
+            taskFutures.remove(taskId);
+        }
+
+        // 做种时长耗尽,正常收尾
+        try {
+            ResourceDownloadTask latest = taskRepository.findById(taskId).orElse(null);
+            if (latest != null && latest.getTempDir() != null && !latest.getTempDir().isBlank()) {
+                deleteDirectoryQuietly(Paths.get(latest.getTempDir()));
+            }
+            Path finalPath = latest != null && latest.getFinalPath() != null
+                    ? Paths.get(latest.getFinalPath())
+                    : null;
+            completeTask(taskId, finalPath);
+        } catch (Exception e) {
+            log.error("做种完成收尾失败, taskId={}", taskId, e);
+            failTask(taskId, "做种完成但收尾失败: " + e.getMessage());
+        }
+    }
+
+    private TorrentHandle addTorrentAndWaitHandle(String magnet, Path tempDir, Long taskId, ActiveDownloadContext context) throws InterruptedException {        synchronized (sessionLock) {
             List<String> before = listHandleKeys(globalSessionManager.getTorrentHandles());
             globalSessionManager.download(magnet, tempDir.toFile(), TorrentFlags.AUTO_MANAGED);
             return waitForNewHandle(before, taskId, context);
@@ -579,6 +809,7 @@ public class ResourceDownloadService {
         task.setProgressPercent(Math.max(0, Math.min(100, progressPercent)));
         task.setDownloadedBytes(downloadedBytes);
         task.setTotalBytes(totalBytes > 0 ? totalBytes : null);
+        activeSpeeds.put(taskId, new long[]{downloadBytesPerSec, uploadBytesPerSec});
         String down = formatSpeed(downloadBytesPerSec);
         String up = formatSpeed(uploadBytesPerSec);
         task.setSpeedText("↓" + down + " / ↑" + up);
@@ -804,6 +1035,7 @@ public class ResourceDownloadService {
         task.setStatus(ResourceDownloadTask.DownloadStatus.FAILED);
         task.setErrorMessage(message);
         task.setFinishedAt(Timestamp.from(Instant.now()));
+        activeSpeeds.remove(taskId);
         task.setOutputMessage(appendMessage(task.getOutputMessage(), message));
         taskRepository.save(task);
         broadcastProgress();
@@ -820,6 +1052,7 @@ public class ResourceDownloadService {
         }
         task.setStatus(ResourceDownloadTask.DownloadStatus.CANCELLED);
         task.setFinishedAt(Timestamp.from(Instant.now()));
+        activeSpeeds.remove(taskId);
         task.setOutputMessage(appendMessage(task.getOutputMessage(), message));
         taskRepository.save(task);
         broadcastProgress();
@@ -904,6 +1137,18 @@ public class ResourceDownloadService {
                 executorToStop.shutdownNow();
             }
         }
+
+        // 阶段 2.5：等待做种线程退出（取消标记已置位，做种线程会在下一个轮询点退出）
+        seedingExecutor.shutdown();
+        try {
+            if (!seedingExecutor.awaitTermination(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS)) {
+                seedingExecutor.shutdownNow();
+                seedingExecutor.awaitTermination(5, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            seedingExecutor.shutdownNow();
+        }
         activeContexts.clear();
 
         // 阶段 3：此刻无任何线程再访问 jlibtorrent 会话或数据库，才安全停止会话。
@@ -919,7 +1164,7 @@ public class ResourceDownloadService {
         if (emitters.isEmpty()) {
             return;
         }
-        List<ResourceSearchVO.DownloadTask> payload = listRecentTasks();
+        Map<String, Object> payload = progressPayload();
         List<SseEmitter> removed = new ArrayList<>();
         for (SseEmitter emitter : emitters) {
             try {
@@ -936,6 +1181,7 @@ public class ResourceDownloadService {
     private static final class ActiveDownloadContext {
         private final AtomicReference<TorrentHandle> handleRef = new AtomicReference<>();
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicBoolean transferred = new AtomicBoolean(false);
     }
 
     private static final class DownloadCancelledException extends RuntimeException {
@@ -969,23 +1215,31 @@ public class ResourceDownloadService {
         }
     }
 
-    private ResourceSearchVO.DownloadTask toTaskVO(ResourceDownloadTask task) {
+    private String[] resolveSpeeds(ResourceDownloadTask task) {
+        String mergedSpeed = task.getSpeedText();
         String downloadSpeedText = null;
         String uploadSpeedText = null;
-        String mergedSpeed = task.getSpeedText();
-        if (mergedSpeed != null && mergedSpeed.contains("/")) {
-            String[] parts = mergedSpeed.split("/");
+        // speedText 形如 "↓901.7 KB/s / ↑33.0 KB/s",分隔符是 " / ",不能按 "/" 切分(会切坏 KB/s)
+        if (mergedSpeed != null && mergedSpeed.contains(" / ")) {
+            String[] parts = mergedSpeed.split(" / ");
             if (parts.length >= 2) {
-                downloadSpeedText = parts[0].replace("↓", "").trim();
-                uploadSpeedText = parts[1].replace("↑", "").trim();
+                downloadSpeedText = parts[0].replace("↓", "").replace("↑", "").trim();
+                uploadSpeedText = parts[1].replace("↓", "").replace("↑", "").trim();
             }
         }
         if (downloadSpeedText == null || downloadSpeedText.isBlank()) {
-            downloadSpeedText = mergedSpeed;
+            downloadSpeedText = mergedSpeed == null ? null : mergedSpeed.replace("↓", "").replace("↑", "").trim();
         }
         if (uploadSpeedText == null || uploadSpeedText.isBlank()) {
             uploadSpeedText = "0 B/s";
         }
+        return new String[]{downloadSpeedText, uploadSpeedText};
+    }
+
+    private ResourceSearchVO.DownloadTask toTaskVO(ResourceDownloadTask task) {
+        String[] speeds = resolveSpeeds(task);
+        String downloadSpeedText = speeds[0];
+        String uploadSpeedText = speeds[1];
 
         return ResourceSearchVO.DownloadTask.builder()
                 .id(task.getId())
@@ -1018,22 +1272,9 @@ public class ResourceDownloadService {
     }
 
     private ResourceSearchVO.DownloadTaskSummary toTaskSummaryVO(ResourceDownloadTask task) {
-        String downloadSpeedText = null;
-        String uploadSpeedText = null;
-        String mergedSpeed = task.getSpeedText();
-        if (mergedSpeed != null && mergedSpeed.contains("/")) {
-            String[] parts = mergedSpeed.split("/");
-            if (parts.length >= 2) {
-                downloadSpeedText = parts[0].replace("↓", "").trim();
-                uploadSpeedText = parts[1].replace("↑", "").trim();
-            }
-        }
-        if (downloadSpeedText == null || downloadSpeedText.isBlank()) {
-            downloadSpeedText = mergedSpeed;
-        }
-        if (uploadSpeedText == null || uploadSpeedText.isBlank()) {
-            uploadSpeedText = "0 B/s";
-        }
+        String[] speeds = resolveSpeeds(task);
+        String downloadSpeedText = speeds[0];
+        String uploadSpeedText = speeds[1];
 
         return ResourceSearchVO.DownloadTaskSummary.builder()
                 .id(task.getId())

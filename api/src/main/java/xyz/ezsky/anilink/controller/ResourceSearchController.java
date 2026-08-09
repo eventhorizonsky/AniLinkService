@@ -10,6 +10,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import xyz.ezsky.anilink.model.dto.ResourceRssSubscriptionRequest;
 import xyz.ezsky.anilink.model.dto.RssFilterPreviewRequest;
 import xyz.ezsky.anilink.model.dto.ResourceSearchDownloadRequest;
+import xyz.ezsky.anilink.model.dto.ResourceSearchBatchDownloadRequest;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.model.vo.ResourceSearchVO;
 import xyz.ezsky.anilink.service.ResourceDownloadService;
@@ -50,8 +51,9 @@ public class ResourceSearchController {
     public ApiResponseVO<ResourceSearchVO.ResourceListResult> list(
             @RequestParam String keyword,
             @RequestParam(required = false) Integer subgroup,
-            @RequestParam(required = false) Integer type) {
-        return ApiResponseVO.success(resourceSearchProxyService.fetchResources(keyword, subgroup, type));
+            @RequestParam(required = false) Integer type,
+            @RequestParam(required = false, defaultValue = "0") Integer offset) {
+        return ApiResponseVO.success(resourceSearchProxyService.fetchResources(keyword, subgroup, type, offset));
     }
 
     @PostMapping("/download")
@@ -60,10 +62,20 @@ public class ResourceSearchController {
         return ApiResponseVO.success(resourceDownloadService.startDownload(request), "下载任务已创建");
     }
 
+    @PostMapping("/download/batch")
+    @Operation(summary = "批量发起磁链下载任务")
+    public ApiResponseVO<ResourceSearchVO.BatchDownloadResult> createDownloadTasks(@RequestBody ResourceSearchBatchDownloadRequest request) {
+        return ApiResponseVO.success(resourceDownloadService.startDownloadBatch(request), "批量下载已提交");
+    }
+
     @GetMapping("/download-tasks")
-    @Operation(summary = "查询下载任务列表")
-    public ApiResponseVO<List<ResourceSearchVO.DownloadTask>> downloadTasks() {
-        return ApiResponseVO.success(resourceDownloadService.listRecentTasks());
+    @Operation(summary = "查询下载任务列表（分页 + 过滤 + 统计）")
+    public ApiResponseVO<ResourceSearchVO.DownloadTaskPageResult> downloadTasks(
+            @RequestParam(required = false, defaultValue = "1") int page,
+            @RequestParam(required = false, defaultValue = "20") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        return ApiResponseVO.success(resourceDownloadService.listTasks(page, size, status, keyword));
     }
 
     @GetMapping(value = "/download-tasks/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -85,10 +97,17 @@ public class ResourceSearchController {
     }
 
     @DeleteMapping("/download-tasks/{id}")
-    @Operation(summary = "删除下载任务")
-    public ApiResponseVO<Void> deleteTask(@PathVariable Long id) {
-        resourceDownloadService.deleteTask(id);
+    @Operation(summary = "删除下载任务（可清理暂存文件）")
+    public ApiResponseVO<Void> deleteTask(@PathVariable Long id,
+                                          @RequestParam(required = false, defaultValue = "false") boolean deleteFiles) {
+        resourceDownloadService.deleteTask(id, deleteFiles);
         return ApiResponseVO.success(null, "任务已删除");
+    }
+
+    @PostMapping("/test-connection")
+    @Operation(summary = "测试资源节点连接")
+    public ApiResponseVO<ResourceSearchVO.NodeConnectionTestResult> testConnection() {
+        return ApiResponseVO.success(resourceSearchProxyService.testConnection());
     }
 
     @GetMapping("/download-tasks/{id}/binding")

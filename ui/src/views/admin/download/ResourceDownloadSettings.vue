@@ -7,6 +7,8 @@ const API_BASE = '/api'
 
 const loading = ref(false)
 const saving = ref(false)
+const testingConnection = ref(false)
+const connectionResult = ref(null)
 
 const form = ref({
   resourceNodeBaseUrl: '',
@@ -48,6 +50,21 @@ const fetchConfig = async () => {
   }
 }
 
+const rules = {
+  positiveInt: (value) => !value || Number(value) >= 1 || '必须大于等于 1',
+  nonNegativeInt: (value) => !value || Number(value) >= 0 || '必须大于等于 0',
+  proxyPair: (value) => {
+    if (!form.value.resourceNodeProxyHost && !form.value.resourceNodeProxyPort) return true
+    if (form.value.resourceNodeProxyHost && Number(form.value.resourceNodeProxyPort) > 0) return true
+    return '代理主机和端口需同时填写'
+  },
+  rssProxyPair: (value) => {
+    if (!form.value.rssProxyHost && !form.value.rssProxyPort) return true
+    if (form.value.rssProxyHost && Number(form.value.rssProxyPort) > 0) return true
+    return '代理主机和端口需同时填写'
+  }
+}
+
 const saveConfig = async () => {
   saving.value = true
   try {
@@ -78,6 +95,30 @@ const saveConfig = async () => {
   }
 }
 
+const testConnection = async () => {
+  if (!form.value.resourceNodeBaseUrl) {
+    showAppMessage('请先填写资源搜索节点地址', 'warning')
+    return
+  }
+  testingConnection.value = true
+  connectionResult.value = null
+  try {
+    const res = await axios.post(`${API_BASE}/resource-search/test-connection`)
+    connectionResult.value = res.data?.data || null
+    if (res.data?.code === 200 && res.data?.data?.ok) {
+      showAppMessage(`连接成功，延迟 ${res.data.data.latencyMs}ms`, 'success')
+    } else {
+      showAppMessage(res.data?.data?.message || '连接失败', 'error')
+    }
+  } catch (error) {
+    console.error('测试连接失败:', error)
+    connectionResult.value = { ok: false, message: error.response?.data?.msg || '连接失败' }
+    showAppMessage(error.response?.data?.msg || '测试连接失败', 'error')
+  } finally {
+    testingConnection.value = false
+  }
+}
+
 onMounted(() => {
   fetchConfig()
 })
@@ -95,6 +136,11 @@ onMounted(() => {
           <v-alert type="info" variant="tonal" class="mb-4">
             这里统一管理资源节点接口、下载临时目录、并发与速率限制、做种时长和附加 Tracker。
           </v-alert>
+
+          <h3 class="text-h6 mb-4 text-primary font-weight-medium">
+            <v-icon start color="primary">mdi-download-network</v-icon>
+            节点与存储
+          </h3>
 
           <v-text-field
             v-model="form.resourceNodeBaseUrl"
@@ -120,6 +166,13 @@ onMounted(() => {
             :loading="loading"
           />
 
+          <v-divider class="my-4" />
+
+          <h3 class="text-h6 mb-4 text-primary font-weight-medium">
+            <v-icon start color="primary">mdi-speedometer</v-icon>
+            限速与做种
+          </h3>
+
           <v-row dense>
             <v-col cols="12" md="4">
               <v-text-field
@@ -131,6 +184,7 @@ onMounted(() => {
                 max="10"
                 variant="outlined"
                 color="primary"
+                :rules="[rules.positiveInt]"
                 class="mb-4"
                 :loading="loading"
               />
@@ -146,6 +200,7 @@ onMounted(() => {
                 color="primary"
                 hint="0 为不限速；按所有活跃下载任务动态分摊"
                 persistent-hint
+                :rules="[rules.nonNegativeInt]"
                 class="mb-4"
                 :loading="loading"
               />
@@ -161,6 +216,7 @@ onMounted(() => {
                 color="primary"
                 hint="0 为不限速；按所有活跃下载任务动态分摊"
                 persistent-hint
+                :rules="[rules.nonNegativeInt]"
                 class="mb-4"
                 :loading="loading"
               />
@@ -177,6 +233,7 @@ onMounted(() => {
             color="primary"
             hint=">0 时会先入库并触发扫描，再在暂存目录继续做种，结束后自动清理"
             persistent-hint
+            :rules="[rules.nonNegativeInt]"
             class="mb-4"
             :loading="loading"
           />
@@ -211,6 +268,7 @@ onMounted(() => {
                 color="primary"
                 hint="留空表示不启用"
                 persistent-hint
+                :rules="[rules.proxyPair]"
                 class="mb-4"
                 :loading="loading"
               />
@@ -239,6 +297,7 @@ onMounted(() => {
                 color="primary"
                 hint="留空表示不启用"
                 persistent-hint
+                :rules="[rules.rssProxyPair]"
                 class="mb-4"
                 :loading="loading"
               />
@@ -263,6 +322,19 @@ onMounted(() => {
       </v-card-text>
       <v-card-actions>
         <v-spacer />
+        <v-chip
+          v-if="connectionResult"
+          :color="connectionResult.ok ? 'success' : 'error'"
+          size="small"
+          variant="tonal"
+          class="mr-2"
+        >
+          {{ connectionResult.ok ? `节点连接正常 (${connectionResult.latencyMs}ms)` : `节点连接失败: ${connectionResult.message}` }}
+        </v-chip>
+        <v-btn variant="outlined" :loading="testingConnection" @click="testConnection">
+          <v-icon start>mdi-flash-outline</v-icon>
+          测试连接
+        </v-btn>
         <v-btn color="primary" :loading="saving" @click="saveConfig">保存配置</v-btn>
       </v-card-actions>
     </v-card>

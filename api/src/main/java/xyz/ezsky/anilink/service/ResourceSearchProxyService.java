@@ -46,8 +46,8 @@ public class ResourceSearchProxyService {
         return mapNamedItems(items);
     }
 
-    public ResourceSearchVO.ResourceListResult fetchResources(String keyword, Integer subgroup, Integer type) {
-        JsonNode root = executeGet("list", keyword, subgroup, type);
+    public ResourceSearchVO.ResourceListResult fetchResources(String keyword, Integer subgroup, Integer type, Integer offset) {
+        JsonNode root = executeGet("list", keyword, subgroup, type, offset);
         boolean hasMore = false;
         if (root.has("HasMore")) {
             hasMore = root.path("HasMore").asBoolean(false);
@@ -83,6 +83,24 @@ public class ResourceSearchProxyService {
                 .build();
     }
 
+    public ResourceSearchVO.NodeConnectionTestResult testConnection() {
+        long start = System.currentTimeMillis();
+        try {
+            executeGet("subgroup", null, null, null);
+            return ResourceSearchVO.NodeConnectionTestResult.builder()
+                    .ok(true)
+                    .latencyMs(System.currentTimeMillis() - start)
+                    .message("连接成功")
+                    .build();
+        } catch (Exception e) {
+            return ResourceSearchVO.NodeConnectionTestResult.builder()
+                    .ok(false)
+                    .latencyMs(System.currentTimeMillis() - start)
+                    .message(e.getMessage() == null ? "连接失败" : e.getMessage())
+                    .build();
+        }
+    }
+
     private List<ResourceSearchVO.NamedItem> mapNamedItems(JsonNode items) {
         List<ResourceSearchVO.NamedItem> list = new ArrayList<>();
         if (!items.isArray()) {
@@ -98,6 +116,10 @@ public class ResourceSearchProxyService {
     }
 
     private JsonNode executeGet(String path, String keyword, Integer subgroup, Integer type) {
+        return executeGet(path, keyword, subgroup, type, null);
+    }
+
+    private JsonNode executeGet(String path, String keyword, Integer subgroup, Integer type, Integer offset) {
         String baseUrl = siteConfigService.getResourceNodeBaseUrl();
         if (baseUrl == null || baseUrl.isBlank()) {
             throw new IllegalStateException("请先在站点配置中填写资源搜索节点地址");
@@ -123,6 +145,9 @@ public class ResourceSearchProxyService {
         }
         if (type != null && type >= 0) {
             urlBuilder.addQueryParameter("type", String.valueOf(type));
+        }
+        if (offset != null && offset >= 0) {
+            urlBuilder.addQueryParameter("offset", String.valueOf(offset));
         }
         urlBuilder.addQueryParameter("r", String.valueOf(ThreadLocalRandom.current().nextDouble()));
 

@@ -712,7 +712,7 @@ public class AniLinkMcpToolsFactory {
                     }
                     Integer subgroup = req.arguments().get("subgroup") instanceof Number n ? n.intValue() : null;
                     Integer type = req.arguments().get("type") instanceof Number n ? n.intValue() : null;
-                    ResourceSearchVO.ResourceListResult result = resourceSearchProxyService.fetchResources(keyword.trim(), subgroup, type);
+                    ResourceSearchVO.ResourceListResult result = resourceSearchProxyService.fetchResources(keyword.trim(), subgroup, type, null);
                     int limit = clampLimit(intArg(req.arguments(), "limit", 10), 50, 10);
                     if (result.getResources() != null && result.getResources().size() > limit) {
                         return jsonOk(ResourceSearchVO.ResourceListResult.builder()
@@ -802,7 +802,7 @@ public class AniLinkMcpToolsFactory {
                     if (id == null) {
                         return err("taskId 必填");
                     }
-                    resourceDownloadService.deleteTask(id);
+                    resourceDownloadService.deleteTask(id, false);
                     return jsonOk(Map.of("ok", true));
                 }))
                 .build());

@@ -87,6 +87,7 @@ public class ResourceDownloadTask {
     public enum DownloadStatus {
         PENDING,
         RUNNING,
+        SEEDING,
         MOVING,
         SCANNING,
         COMPLETED,

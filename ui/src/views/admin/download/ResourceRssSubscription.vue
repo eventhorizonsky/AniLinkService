@@ -324,11 +324,21 @@ onMounted(async () => {
               <td>{{ formatLocalDateTime(row.lastCheckedAt) }}</td>
               <td class="ellipsis">{{ row.lastError || '-' }}</td>
               <td>
-                <div class="d-flex ga-2">
-                  <v-btn size="small" variant="outlined" color="info" :loading="triggeringId === row.id" @click="triggerNow(row)">立即检查</v-btn>
-                  <v-btn size="small" variant="outlined" color="secondary" @click="viewLastFetchedContent(row)">查看解析结果</v-btn>
-                  <v-btn size="small" variant="outlined" @click="openEdit(row)">编辑</v-btn>
-                  <v-btn size="small" variant="outlined" color="error" @click="deleteSubscription(row)">删除</v-btn>
+                <div class="d-flex align-center ga-1">
+                  <v-btn size="small" variant="outlined" color="info" :loading="triggeringId === row.id" @click="triggerNow(row)">
+                    <v-icon start size="small">mdi-refresh</v-icon>
+                    检查
+                  </v-btn>
+                  <v-menu location="bottom end">
+                    <template #activator="{ props: menuProps }">
+                      <v-btn v-bind="menuProps" size="small" variant="text" icon="mdi-dots-vertical" />
+                    </template>
+                    <v-list density="compact">
+                      <v-list-item prepend-icon="mdi-code-json" title="查看解析结果" @click="viewLastFetchedContent(row)" />
+                      <v-list-item prepend-icon="mdi-pencil-outline" title="编辑" @click="openEdit(row)" />
+                      <v-list-item prepend-icon="mdi-delete-outline" title="删除" color="error" @click="deleteSubscription(row)" />
+                    </v-list>
+                  </v-menu>
                 </div>
               </td>
             </tr>
