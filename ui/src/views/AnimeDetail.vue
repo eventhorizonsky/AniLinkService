@@ -514,17 +514,21 @@ onMounted(async () => {
 });
 
 // Watch route params
-watch(() => resolvedAnimeId.value, () => {
-  closeResourceDialog();
-  isSummaryExpanded.value = false;
-  activeSection.value = 'episodes';
-  commentsAvailable.value = true;
-  bgmCollectionEditMode.value = false;
-  bgmCollectionExists.value = false;
-  bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
-  animeResume.value = null;
-  fetchAnimeData();
-});
+watch(
+  () => [props.bgmMode, route.params.animeId, route.params.subjectId],
+  () => {
+    resolvedAnimeId.value = null;
+    closeResourceDialog();
+    isSummaryExpanded.value = false;
+    activeSection.value = 'episodes';
+    commentsAvailable.value = true;
+    bgmCollectionEditMode.value = false;
+    bgmCollectionExists.value = false;
+    bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
+    animeResume.value = null;
+    fetchAnimeData();
+  }
+);
 
 // Utility Functions
 const formatDate = (iso) => iso ? iso.slice(0, 10) : '';
