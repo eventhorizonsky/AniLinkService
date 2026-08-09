@@ -12,10 +12,13 @@ import xyz.ezsky.anilink.model.dto.RssFilterPreviewRequest;
 import xyz.ezsky.anilink.model.dto.ResourceSearchDownloadRequest;
 import xyz.ezsky.anilink.model.dto.ResourceSearchBatchDownloadRequest;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
+import xyz.ezsky.anilink.model.vo.CombinedTrackerListVO;
 import xyz.ezsky.anilink.model.vo.ResourceSearchVO;
+import xyz.ezsky.anilink.model.vo.TrackerListStatusVO;
 import xyz.ezsky.anilink.service.ResourceDownloadService;
 import xyz.ezsky.anilink.service.ResourceRssSubscriptionService;
 import xyz.ezsky.anilink.service.ResourceSearchProxyService;
+import xyz.ezsky.anilink.service.TrackerListService;
 
 import java.util.List;
 
@@ -33,6 +36,9 @@ public class ResourceSearchController {
 
     @Autowired
     private ResourceRssSubscriptionService rssSubscriptionService;
+
+    @Autowired
+    private TrackerListService trackerListService;
 
     @GetMapping("/subgroup")
     @Operation(summary = "获取字幕组列表")
@@ -159,5 +165,23 @@ public class ResourceSearchController {
     @Operation(summary = "预览 RSS 正则过滤结果")
     public ApiResponseVO<ResourceSearchVO.RssFilterPreviewResult> previewRssFilter(@RequestBody RssFilterPreviewRequest request) {
         return ApiResponseVO.success(rssSubscriptionService.previewFilter(request));
+    }
+
+    @GetMapping("/tracker-list/status")
+    @Operation(summary = "查询 Tracker 列表订阅状态")
+    public ApiResponseVO<TrackerListStatusVO> trackerListStatus() {
+        return ApiResponseVO.success(trackerListService.getStatus());
+    }
+
+    @PostMapping("/tracker-list/refresh")
+    @Operation(summary = "立即刷新 Tracker 列表订阅")
+    public ApiResponseVO<TrackerListStatusVO> refreshTrackerList() {
+        return ApiResponseVO.success(trackerListService.refreshNow(), "已触发 Tracker 列表刷新");
+    }
+
+    @GetMapping("/tracker-list/combined")
+    @Operation(summary = "查看最终 Tracker 列表", description = "返回自定义 Tracker 与订阅 Tracker 合并去重后的最终列表")
+    public ApiResponseVO<CombinedTrackerListVO> combinedTrackerList() {
+        return ApiResponseVO.success(resourceDownloadService.getCombinedTrackerList());
     }
 }

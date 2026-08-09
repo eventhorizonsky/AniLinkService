@@ -42,6 +42,7 @@ public class SiteConfigService {
     private static final String RESOURCE_UPLOAD_LIMIT_KBPS = "resource_upload_limit_kbps";
     private static final String RESOURCE_SEED_TIME_SECONDS = "resource_seed_time_seconds";
     private static final String RESOURCE_CUSTOM_TRACKERS = "resource_custom_trackers";
+    private static final String RESOURCE_TRACKER_LIST_URL = "resource_tracker_list_url";
     private static final String RESOURCE_NODE_PROXY_HOST = "resource_node_proxy_host";
     private static final String RESOURCE_NODE_PROXY_PORT = "resource_node_proxy_port";
     private static final String RSS_PROXY_HOST = "rss_proxy_host";
@@ -119,6 +120,7 @@ public class SiteConfigService {
         vo.setResourceUploadLimitKbps(getResourceUploadLimitKbps());
         vo.setResourceSeedTimeSeconds(getResourceSeedTimeSeconds());
         vo.setResourceCustomTrackers(getResourceCustomTrackers());
+        vo.setResourceTrackerListUrl(getResourceTrackerListUrl());
         vo.setResourceNodeProxyHost(getResourceNodeProxyHost());
         vo.setResourceNodeProxyPort(getResourceNodeProxyPort());
         vo.setRssProxyHost(getRssProxyHost());
@@ -290,6 +292,9 @@ public class SiteConfigService {
         if (request.getResourceCustomTrackers() != null) {
             saveOrUpdateConfig(RESOURCE_CUSTOM_TRACKERS, request.getResourceCustomTrackers(), "新任务附加 Tracker");
         }
+        if (request.getResourceTrackerListUrl() != null) {
+            saveOrUpdateConfig(RESOURCE_TRACKER_LIST_URL, request.getResourceTrackerListUrl(), "Tracker 列表订阅地址");
+        }
         if (request.getResourceNodeProxyHost() != null) {
             saveOrUpdateConfig(RESOURCE_NODE_PROXY_HOST, request.getResourceNodeProxyHost(), "资源节点请求代理主机");
         }
@@ -411,6 +416,10 @@ public class SiteConfigService {
 
     public String getResourceCustomTrackers() {
         return getConfigValue(RESOURCE_CUSTOM_TRACKERS);
+    }
+
+    public String getResourceTrackerListUrl() {
+        return getConfigValue(RESOURCE_TRACKER_LIST_URL);
     }
 
     public String getResourceNodeProxyHost() {

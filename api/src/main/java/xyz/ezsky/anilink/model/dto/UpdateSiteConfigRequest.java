@@ -53,6 +53,9 @@ public class UpdateSiteConfigRequest {
     @Schema(description = "新任务附加 Tracker（每行一个或逗号分隔）", example = "udp://tracker.opentrackr.org:1337/announce")
     private String resourceCustomTrackers;
 
+    @Schema(description = "Tracker 列表订阅地址（每行一个或逗号分隔）", example = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt")
+    private String resourceTrackerListUrl;
+
     @Schema(description = "资源节点请求代理主机", example = "127.0.0.1")
     private String resourceNodeProxyHost;
 

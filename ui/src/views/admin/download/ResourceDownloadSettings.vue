@@ -10,6 +10,27 @@ const saving = ref(false)
 const testingConnection = ref(false)
 const connectionResult = ref(null)
 
+const trackerListLoading = ref(false)
+const trackerListStatus = ref(null)
+
+const combinedDialog = ref(false)
+const combinedLoading = ref(false)
+const combinedData = ref(null)
+
+const viewCombinedTrackers = async () => {
+  combinedLoading.value = true
+  try {
+    const res = await axios.get(`${API_BASE}/resource-search/tracker-list/combined`)
+    combinedData.value = res.data?.data || null
+    combinedDialog.value = true
+  } catch (error) {
+    console.error('获取最终 Tracker 列表失败:', error)
+    showAppMessage(error.response?.data?.msg || '获取最终 Tracker 列表失败', 'error')
+  } finally {
+    combinedLoading.value = false
+  }
+}
+
 const form = ref({
   resourceNodeBaseUrl: '',
   resourceDownloadTempDir: './data/media-data/download-temp',
@@ -18,6 +39,7 @@ const form = ref({
   resourceUploadLimitKbps: 0,
   resourceSeedTimeSeconds: 0,
   resourceCustomTrackers: '',
+  resourceTrackerListUrl: '',
   resourceNodeProxyHost: '',
   resourceNodeProxyPort: 0,
   rssProxyHost: '',
@@ -37,6 +59,7 @@ const fetchConfig = async () => {
       resourceUploadLimitKbps: data.resourceUploadLimitKbps || 0,
       resourceSeedTimeSeconds: data.resourceSeedTimeSeconds || 0,
       resourceCustomTrackers: data.resourceCustomTrackers || '',
+      resourceTrackerListUrl: data.resourceTrackerListUrl || '',
       resourceNodeProxyHost: data.resourceNodeProxyHost || '',
       resourceNodeProxyPort: data.resourceNodeProxyPort || 0,
       rssProxyHost: data.rssProxyHost || '',
@@ -48,6 +71,54 @@ const fetchConfig = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const fetchTrackerListStatus = async () => {
+  try {
+    const res = await axios.get(`${API_BASE}/resource-search/tracker-list/status`)
+    trackerListStatus.value = res.data?.data || null
+  } catch (error) {
+    console.error('获取 Tracker 列表订阅状态失败:', error)
+    trackerListStatus.value = null
+  }
+}
+
+const refreshTrackerList = async () => {
+  trackerListLoading.value = true
+  try {
+    const res = await axios.post(`${API_BASE}/resource-search/tracker-list/refresh`)
+    trackerListStatus.value = res.data?.data || null
+    if (trackerListStatus.value?.trackerCount > 0) {
+      showAppMessage(`Tracker 列表刷新成功，共 ${trackerListStatus.value.trackerCount} 个`, 'success')
+    } else if (trackerListStatus.value?.lastError) {
+      showAppMessage(`Tracker 列表刷新失败: ${trackerListStatus.value.lastError}`, 'error')
+    } else {
+      showAppMessage('未从订阅地址解析到 Tracker', 'warning')
+    }
+  } catch (error) {
+    console.error('刷新 Tracker 列表失败:', error)
+    showAppMessage(error.response?.data?.msg || '刷新 Tracker 列表失败', 'error')
+  } finally {
+    trackerListLoading.value = false
+  }
+}
+
+const formatTrackerListTime = (value) => {
+  if (!value) {
+    return '-'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
 }
 
 const rules = {
@@ -76,6 +147,7 @@ const saveConfig = async () => {
       resourceUploadLimitKbps: Math.max(0, Number(form.value.resourceUploadLimitKbps || 0)),
       resourceSeedTimeSeconds: Math.max(0, Number(form.value.resourceSeedTimeSeconds || 0)),
       resourceCustomTrackers: form.value.resourceCustomTrackers || '',
+      resourceTrackerListUrl: form.value.resourceTrackerListUrl || '',
       resourceNodeProxyHost: form.value.resourceNodeProxyHost || '',
       resourceNodeProxyPort: Math.max(0, Number(form.value.resourceNodeProxyPort || 0)),
       rssProxyHost: form.value.rssProxyHost || '',
@@ -84,6 +156,9 @@ const saveConfig = async () => {
     const res = await axios.put(`${API_BASE}/site/config`, payload)
     if (res.data?.code === 200) {
       showAppMessage('下载器配置保存成功', 'success')
+      if (form.value.resourceTrackerListUrl) {
+        refreshTrackerList()
+      }
     } else {
       showAppMessage(res.data?.msg || '保存失败', 'error')
     }
@@ -121,6 +196,7 @@ const testConnection = async () => {
 
 onMounted(() => {
   fetchConfig()
+  fetchTrackerListStatus()
 })
 </script>
 
@@ -250,6 +326,156 @@ onMounted(() => {
             persistent-hint
             :loading="loading"
           />
+
+          <v-divider class="my-4" />
+
+          <h3 class="text-h6 mb-4 text-primary font-weight-medium">
+            <v-icon start color="primary">mdi-tray-arrow-down</v-icon>
+            Tracker 列表订阅
+          </h3>
+
+          <p class="text-body-2 text-medium-emphasis mb-2">
+            <v-icon start size="small" color="success">mdi-thumb-up-outline</v-icon>
+            推荐使用：
+            <a
+              href="https://github.com/ngosang/trackerslist"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary"
+            >ngosang/trackerslist</a>，
+            <a
+              href="https://github.com/XIU2/TrackersListCollection"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-primary"
+            >XIU2/TrackersListCollection</a>
+          </p>
+
+          <v-textarea
+            v-model="form.resourceTrackerListUrl"
+            label="订阅地址（每行一个，HTTP/HTTPS）"
+            prepend-inner-icon="mdi-rss"
+            variant="outlined"
+            color="primary"
+            auto-grow
+            rows="3"
+            hint="例如: https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt；拉取走 RSS 代理配置，失败时保留上一次结果"
+            persistent-hint
+            :loading="loading"
+          />
+
+          <v-row dense align="center" class="mb-4">
+            <v-col cols="12" md="auto">
+              <v-chip
+                :color="trackerListStatus?.enabled ? 'primary' : 'default'"
+                size="small"
+                variant="tonal"
+              >
+                {{ trackerListStatus?.enabled ? '已启用' : '未配置' }}
+              </v-chip>
+              <v-chip
+                v-if="trackerListStatus?.trackerCount > 0"
+                color="success"
+                size="small"
+                variant="tonal"
+                class="ml-2"
+              >
+                {{ trackerListStatus.trackerCount }} 个 Tracker
+              </v-chip>
+              <v-chip
+                v-if="trackerListStatus?.refreshing"
+                color="info"
+                size="small"
+                variant="tonal"
+                class="ml-2"
+              >
+                刷新中...
+              </v-chip>
+            </v-col>
+            <v-col cols="12" md="auto">
+              <span class="text-caption text-medium-emphasis">
+                最近拉取: {{ formatTrackerListTime(trackerListStatus?.lastFetchedAt) }}
+              </span>
+            </v-col>
+          </v-row>
+
+          <v-alert
+            v-if="trackerListStatus?.lastError"
+            type="error"
+            variant="tonal"
+            dense
+            class="mb-4"
+          >
+            最近一次拉取异常: {{ trackerListStatus.lastError }}
+          </v-alert>
+
+          <v-row dense align="center">
+            <v-col cols="12" md="auto">
+              <v-btn
+                variant="outlined"
+                color="primary"
+                :loading="trackerListLoading"
+                :disabled="!form.resourceTrackerListUrl"
+                @click="refreshTrackerList"
+              >
+                <v-icon start>mdi-refresh</v-icon>
+                立即刷新订阅列表
+              </v-btn>
+            </v-col>
+            <v-col cols="12" md="auto">
+              <v-btn
+                variant="outlined"
+                :loading="combinedLoading"
+                @click="viewCombinedTrackers"
+              >
+                <v-icon start>mdi-format-list-bulleted</v-icon>
+                查看最终 Tracker 列表
+              </v-btn>
+            </v-col>
+          </v-row>
+
+          <v-dialog v-model="combinedDialog" max-width="640">
+            <v-card>
+              <v-card-title class="d-flex align-center">
+                <v-icon start color="primary" class="mr-2">mdi-format-list-bulleted</v-icon>
+                最终 Tracker 列表
+              </v-card-title>
+              <v-card-text>
+                <v-chip size="small" variant="tonal" color="primary" class="mr-2">
+                  自定义 {{ combinedData?.customTrackers?.length || 0 }} 个
+                </v-chip>
+                <v-chip size="small" variant="tonal" color="info" class="mr-2">
+                  订阅 {{ combinedData?.subscribedTrackers?.length || 0 }} 个
+                </v-chip>
+                <v-chip size="small" variant="tonal" color="success">
+                  合并后 {{ combinedData?.combinedTrackers?.length || 0 }} 个
+                </v-chip>
+
+                <v-divider class="my-3" />
+
+                <div
+                  v-if="combinedData?.combinedTrackers?.length"
+                  style="max-height: 60vh; overflow-y: auto;"
+                >
+                  <div
+                    v-for="(t, index) in combinedData.combinedTrackers"
+                    :key="index"
+                    class="text-body-2 mb-1"
+                    style="font-family: monospace; word-break: break-all;"
+                  >
+                    {{ t }}
+                  </div>
+                </div>
+                <v-alert v-else type="info" variant="tonal">
+                  暂无 Tracker，请先配置自定义 Tracker 或订阅 Tracker 列表
+                </v-alert>
+              </v-card-text>
+              <v-card-actions>
+                <v-spacer />
+                <v-btn color="primary" @click="combinedDialog = false">关闭</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-dialog>
 
           <v-divider class="my-4" />
 

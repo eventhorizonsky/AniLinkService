@@ -18,14 +18,15 @@ import xyz.ezsky.anilink.model.dto.ResourceSearchBatchDownloadRequest;
 import xyz.ezsky.anilink.model.entity.MediaFile;
 import xyz.ezsky.anilink.model.entity.MediaLibrary;
 import xyz.ezsky.anilink.model.entity.ResourceDownloadTask;
+import xyz.ezsky.anilink.model.vo.CombinedTrackerListVO;
 import xyz.ezsky.anilink.model.vo.ResourceSearchVO;
 import xyz.ezsky.anilink.repository.MediaFileRepository;
 import xyz.ezsky.anilink.repository.MediaLibraryRepository;
 import xyz.ezsky.anilink.repository.ResourceDownloadTaskRepository;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.net.URLEncoder;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -33,8 +34,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -73,6 +77,9 @@ public class ResourceDownloadService {
 
     @Autowired
     private SiteConfigService siteConfigService;
+
+    @Autowired
+    private TrackerListService trackerListService;
 
     private final Object executorLock = new Object();
     private final Object sessionLock = new Object();
@@ -820,25 +827,137 @@ public class ResourceDownloadService {
     }
 
     private String appendTrackers(String magnet) {
-        String trackers = siteConfigService.getResourceCustomTrackers();
-        if (trackers == null || trackers.isBlank()) {
+        Set<String> candidates = collectCombinedTrackers();
+        if (candidates.isEmpty()) {
             return magnet;
         }
-        String merged = magnet;
-        String[] parts = trackers.split("[\\r\\n,]");
-        for (String raw : parts) {
-            String tracker = raw == null ? "" : raw.trim();
-            if (tracker.isEmpty()) {
+
+        Set<String> existing = parseMagnetTrackerValues(magnet);
+        StringBuilder merged = new StringBuilder(magnet);
+        for (String tracker : candidates) {
+            String key = tracker.toLowerCase(Locale.ROOT);
+            if (existing.contains(key)) {
                 continue;
             }
-            String encoded = URLEncoder.encode(tracker, StandardCharsets.UTF_8);
-            String marker = "tr=" + encoded;
-            if (merged.contains(marker)) {
-                continue;
-            }
-            merged = merged + "&tr=" + encoded;
+            existing.add(key);
+            merged.append("&tr=").append(percentEncodeTracker(tracker));
         }
-        return merged;
+        return merged.toString();
+    }
+
+    /**
+     * 收集新下载任务会附加的所有 Tracker：自定义 Tracker + 订阅 Tracker 列表，大小写不敏感去重。
+     */
+    private Set<String> collectCombinedTrackers() {
+        Set<String> seen = new HashSet<>();
+        Set<String> candidates = new LinkedHashSet<>();
+        String custom = siteConfigService.getResourceCustomTrackers();
+        if (custom != null && !custom.isBlank()) {
+            for (String raw : custom.split("[\\r\\n,]")) {
+                String tracker = raw == null ? "" : raw.trim();
+                if (!tracker.isEmpty() && seen.add(tracker.toLowerCase(Locale.ROOT))) {
+                    candidates.add(tracker);
+                }
+            }
+        }
+        for (String tracker : trackerListService.getSubscribedTrackers()) {
+            if (seen.add(tracker.toLowerCase(Locale.ROOT))) {
+                candidates.add(tracker);
+            }
+        }
+        return candidates;
+    }
+
+    /**
+     * 查看新下载任务最终会附加的 Tracker 列表（自定义 + 订阅，大小写不敏感去重）。
+     */
+    public CombinedTrackerListVO getCombinedTrackerList() {
+        Set<String> custom = new LinkedHashSet<>();
+        String configured = siteConfigService.getResourceCustomTrackers();
+        if (configured != null && !configured.isBlank()) {
+            for (String raw : configured.split("[\\r\\n,]")) {
+                String tracker = raw == null ? "" : raw.trim();
+                if (!tracker.isEmpty()) {
+                    custom.add(tracker);
+                }
+            }
+        }
+        List<String> subscribed = new ArrayList<>(trackerListService.getSubscribedTrackers());
+
+        Set<String> seen = new HashSet<>();
+        List<String> combined = new ArrayList<>();
+        for (String tracker : custom) {
+            if (seen.add(tracker.toLowerCase(Locale.ROOT))) {
+                combined.add(tracker);
+            }
+        }
+        for (String tracker : subscribed) {
+            if (seen.add(tracker.toLowerCase(Locale.ROOT))) {
+                combined.add(tracker);
+            }
+        }
+        return new CombinedTrackerListVO(new ArrayList<>(custom), subscribed, combined);
+    }
+
+    /**
+     * 解析磁力链接中已有的 tr 参数值（百分号解码后转小写），用于精确去重。
+     * 相比子串 contains 匹配，可避免前缀子串误判与大小写不一致导致的重复。
+     */
+    private Set<String> parseMagnetTrackerValues(String magnet) {
+        Set<String> values = new HashSet<>();
+        int queryStart = magnet.indexOf('?');
+        if (queryStart < 0) {
+            return values;
+        }
+        String query = magnet.substring(queryStart + 1);
+        for (String param : query.split("[&;]")) {
+            if (param.length() <= 3 || !param.regionMatches(true, 0, "tr=", 0, 3)) {
+                continue;
+            }
+            values.add(percentDecode(param.substring(3)).toLowerCase(Locale.ROOT));
+        }
+        return values;
+    }
+
+    /**
+     * RFC 3986 百分号编码（保留 -._~ 与字母数字，空格编码为 %20）。
+     */
+    private String percentEncodeTracker(String value) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
+            int c = b & 0xFF;
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                    || c == '-' || c == '_' || c == '.' || c == '~') {
+                sb.append((char) c);
+            } else {
+                sb.append('%');
+                sb.append(Character.toUpperCase(Character.forDigit((c >> 4) & 0xF, 16)));
+                sb.append(Character.toUpperCase(Character.forDigit(c & 0xF, 16)));
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 仅解码百分号序列，保留 + 字面值（与磁力链接的 RFC 3986 语义一致）。
+     */
+    private String percentDecode(String value) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '%' && i + 2 < value.length()) {
+                int hi = Character.digit(value.charAt(i + 1), 16);
+                int lo = Character.digit(value.charAt(i + 2), 16);
+                if (hi >= 0 && lo >= 0) {
+                    out.write((hi << 4) | lo);
+                    i += 2;
+                    continue;
+                }
+            }
+            byte[] bytes = String.valueOf(c).getBytes(StandardCharsets.UTF_8);
+            out.write(bytes, 0, bytes.length);
+        }
+        return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private void applySessionGlobalRateLimit(RuntimeLimitSettings limitSettings) {
