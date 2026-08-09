@@ -596,6 +596,7 @@ public class ResourceDownloadService {
         latest.setProgressPercent(100);
         latest.setFinishedAt(Timestamp.from(Instant.now()));
         activeSpeeds.remove(taskId);
+        latest.setSpeedText(null);
         if (movedPath != null) {
             latest.setOutputMessage(appendMessage(latest.getOutputMessage(), "任务完成: " + movedPath));
         } else {
@@ -1155,6 +1156,7 @@ public class ResourceDownloadService {
         task.setErrorMessage(message);
         task.setFinishedAt(Timestamp.from(Instant.now()));
         activeSpeeds.remove(taskId);
+        task.setSpeedText(null);
         task.setOutputMessage(appendMessage(task.getOutputMessage(), message));
         taskRepository.save(task);
         broadcastProgress();
@@ -1172,6 +1174,7 @@ public class ResourceDownloadService {
         task.setStatus(ResourceDownloadTask.DownloadStatus.CANCELLED);
         task.setFinishedAt(Timestamp.from(Instant.now()));
         activeSpeeds.remove(taskId);
+        task.setSpeedText(null);
         task.setOutputMessage(appendMessage(task.getOutputMessage(), message));
         taskRepository.save(task);
         broadcastProgress();
@@ -1335,6 +1338,10 @@ public class ResourceDownloadService {
     }
 
     private String[] resolveSpeeds(ResourceDownloadTask task) {
+        // 终态任务不再展示速度：speedText 记录的是完成前的瞬时速度,展示无意义
+        if (task.getStatus() != null && TERMINAL_STATUSES.contains(task.getStatus())) {
+            return new String[]{null, null};
+        }
         String mergedSpeed = task.getSpeedText();
         String downloadSpeedText = null;
         String uploadSpeedText = null;
