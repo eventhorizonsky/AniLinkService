@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { formatAnimeType } from '../utils/animeType'
@@ -56,8 +56,11 @@ const libSearch = () => {
   router.push({ path: '/search', query: q })
 }
 
+const libOuterEl = ref(null)
+
 const onLibScroll = () => {
-  const el = libScrollEl.value
+  const isMobile = window.matchMedia('(max-width: 768px)').matches
+  const el = isMobile ? libOuterEl.value : libScrollEl.value
   if (!el || libLoadingMore.value || !libHasMore.value) return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
     libPage.value++
@@ -163,6 +166,13 @@ watch(() => route.query.q, () => syncAndFetch())
 onMounted(() => {
   syncAndFetch()
   fetchSeasons()
+  libOuterEl.value = document.querySelector('.app-content')
+  libOuterEl.value?.addEventListener('scroll', onLibScroll, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  libOuterEl.value?.removeEventListener('scroll', onLibScroll)
+  libOuterEl.value = null
 })
 </script>
 
