@@ -1,11 +1,29 @@
 <script setup>
-import { ref, onMounted, inject } from 'vue'
+import { ref, onMounted, onUnmounted, inject } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
 
 const API_BASE = '/api'
 
 const navigateTo = inject('navigateTo', null)
+
+const isMobile = ref(false)
+
+const checkViewport = () => {
+  isMobile.value =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+}
+
+onMounted(() => {
+  checkViewport()
+  window.addEventListener('resize', checkViewport)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkViewport)
+})
 
 // RSS proxy status
 const rssProxyConfigured = ref(false)
@@ -288,7 +306,7 @@ onMounted(async () => {
           </template>
         </v-alert>
 
-        <v-table density="compact" fixed-header height="460">
+        <v-table v-if="!isMobile" density="compact" fixed-header height="460">
           <thead>
             <tr>
               <th>名称</th>
@@ -347,6 +365,92 @@ onMounted(async () => {
             </tr>
           </tbody>
         </v-table>
+
+        <!-- ===== 移动端：卡片 ===== -->
+        <template v-else>
+          <div v-if="loading && subscriptions.length === 0" class="text-center py-8">
+            <v-progress-circular indeterminate size="28" color="primary" />
+          </div>
+          <div v-else-if="subscriptions.length === 0" class="text-center text-medium-emphasis py-6">暂无 RSS 订阅</div>
+          <template v-else>
+            <v-card v-for="row in subscriptions" :key="row.id" class="mb-3">
+              <v-card-item>
+                <template #title>
+                  <div class="d-flex align-center ga-2" style="min-width: 0">
+                    <div class="flex-grow-1" style="min-width: 0">
+                      <div class="text-subtitle-2 font-weight-bold text-truncate">{{ row.name }}</div>
+                    </div>
+                    <v-chip
+                      :color="row.enabled ? 'success' : 'grey'"
+                      size="small"
+                      variant="tonal"
+                      class="flex-shrink-0"
+                    >
+                      {{ row.enabled ? '启用' : '停用' }}
+                    </v-chip>
+                  </div>
+                </template>
+                <template #subtitle>
+                  <div class="text-caption text-medium-emphasis text-truncate">{{ row.feedUrl }}</div>
+                </template>
+              </v-card-item>
+
+              <v-card-text class="pt-0">
+                <div class="d-flex flex-wrap text-body-2">
+                  <div class="w-50 py-1 pr-2">
+                    <div class="text-caption text-medium-emphasis">目标媒体库</div>
+                    <div class="text-body-2 text-truncate">{{ row.libraryName || row.libraryId || '-' }}</div>
+                  </div>
+                  <div class="w-50 py-1">
+                    <div class="text-caption text-medium-emphasis">间隔</div>
+                    <div class="text-body-2">{{ row.intervalMinutes }} 分钟</div>
+                  </div>
+                  <div class="w-50 py-1 pr-2">
+                    <div class="text-caption text-medium-emphasis">最近检查</div>
+                    <div class="text-body-2 text-truncate">{{ formatLocalDateTime(row.lastCheckedAt) }}</div>
+                  </div>
+                  <div class="w-50 py-1">
+                    <div class="text-caption text-medium-emphasis">错误</div>
+                    <div class="text-body-2 text-truncate">{{ row.lastError || '-' }}</div>
+                  </div>
+                </div>
+
+                <div v-if="row.includeFilter || row.excludeFilter" class="mt-2">
+                  <v-chip v-if="row.includeFilter" size="x-small" color="primary" variant="tonal" class="mr-1">
+                    包含: {{ row.includeFilter }}
+                  </v-chip>
+                  <v-chip v-if="row.excludeFilter" size="x-small" color="warning" variant="tonal">
+                    排除: {{ row.excludeFilter }}
+                  </v-chip>
+                </div>
+
+                <div class="d-flex align-center ga-2 mt-3">
+                  <v-btn
+                    size="small"
+                    variant="outlined"
+                    color="info"
+                    :loading="triggeringId === row.id"
+                    @click="triggerNow(row)"
+                  >
+                    <v-icon start size="small">mdi-refresh</v-icon>
+                    检查
+                  </v-btn>
+                  <v-spacer />
+                  <v-menu location="top end">
+                    <template #activator="{ props: menuProps }">
+                      <v-btn v-bind="menuProps" size="small" variant="text" icon="mdi-dots-vertical" />
+                    </template>
+                    <v-list density="compact">
+                      <v-list-item prepend-icon="mdi-code-json" title="查看解析结果" @click="viewLastFetchedContent(row)" />
+                      <v-list-item prepend-icon="mdi-pencil-outline" title="编辑" @click="openEdit(row)" />
+                      <v-list-item prepend-icon="mdi-delete-outline" title="删除" color="error" @click="deleteSubscription(row)" />
+                    </v-list>
+                  </v-menu>
+                </div>
+              </v-card-text>
+            </v-card>
+          </template>
+        </template>
       </v-card-text>
     </v-card>
 

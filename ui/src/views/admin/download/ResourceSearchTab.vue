@@ -1,9 +1,27 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
 
 const API_BASE = '/api'
+
+const isMobile = ref(false)
+
+const checkViewport = () => {
+  isMobile.value =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+}
+
+onMounted(() => {
+  checkViewport()
+  window.addEventListener('resize', checkViewport)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkViewport)
+})
 
 const loading = ref(false)
 const searching = ref(false)
@@ -22,6 +40,13 @@ const selectedLibraryId = ref(null)
 const hasMore = ref(false)
 const resources = ref([])
 const selection = ref([])
+const detailDialog = ref(false)
+const detailRow = ref(null)
+
+const openDetail = (row) => {
+  detailRow.value = row
+  detailDialog.value = true
+}
 
 const fetchSubgroups = async () => {
   try {
@@ -268,7 +293,7 @@ onMounted(async () => {
           </v-col>
         </v-row>
 
-        <div class="mt-4 d-flex ga-3 align-center">
+        <div class="mt-4 d-flex ga-3 align-center flex-wrap">
           <v-btn color="primary" :loading="searching" :disabled="loading || searching" @click="searchResources(false)">
             <v-icon start>mdi-magnify</v-icon>
             搜索
@@ -298,7 +323,7 @@ onMounted(async () => {
         </div>
       </v-card-title>
       <v-card-text>
-        <v-table density="compact" fixed-header height="360">
+        <v-table v-if="!isMobile" density="compact" fixed-header height="360">
           <thead>
             <tr>
               <th style="width: 40px;">
@@ -356,6 +381,74 @@ onMounted(async () => {
           </tbody>
         </v-table>
 
+        <!-- ===== 移动端：卡片 ===== -->
+        <template v-else>
+          <div v-if="searching && resources.length === 0" class="text-center py-8">
+            <v-progress-circular indeterminate size="28" color="primary" />
+          </div>
+          <div v-else-if="resources.length === 0" class="text-center text-medium-emphasis py-6">暂无搜索结果</div>
+          <template v-else>
+            <v-card
+              v-for="row in resources"
+              :key="rowKey(row)"
+              class="mb-3"
+              :class="{ 'task-selected': selection.includes(rowKey(row)) }"
+            >
+              <v-card-item>
+                <template #title>
+                  <div class="d-flex align-center ga-2" style="min-width: 0">
+                    <v-checkbox
+                      :model-value="selection.includes(rowKey(row))"
+                      density="compact"
+                      hide-details
+                      class="flex-shrink-0"
+                      @update:model-value="toggleOne(rowKey(row))"
+                    />
+                    <div class="flex-grow-1 detail-trigger" style="min-width: 0" @click="openDetail(row)">
+                      <div class="text-subtitle-2 font-weight-bold text-truncate">{{ row.title }}</div>
+                    </div>
+                    <v-btn
+                      size="small"
+                      color="teal-darken-1"
+                      variant="outlined"
+                      class="flex-shrink-0"
+                      :loading="isDownloading(row)"
+                      :disabled="isDownloading(row) || !selectedLibraryId"
+                      @click="createDownloadTask(row)"
+                    >
+                      下载
+                    </v-btn>
+                  </div>
+                </template>
+              </v-card-item>
+              <v-card-text class="pt-0">
+                <div class="d-flex flex-wrap text-body-2">
+                  <div class="w-50 py-1 pr-2">
+                    <div class="text-caption text-medium-emphasis">类型</div>
+                    <div class="text-body-2 text-truncate">{{ row.typeName || '-' }}</div>
+                  </div>
+                  <div class="w-50 py-1">
+                    <div class="text-caption text-medium-emphasis">字幕组</div>
+                    <div class="text-body-2 text-truncate">{{ row.subgroupName || '-' }}</div>
+                  </div>
+                  <div class="w-50 py-1 pr-2">
+                    <div class="text-caption text-medium-emphasis">大小</div>
+                    <div class="text-body-2 text-truncate">{{ row.fileSize || '-' }}</div>
+                  </div>
+                  <div class="w-50 py-1">
+                    <div class="text-caption text-medium-emphasis">发布时间</div>
+                    <div class="text-body-2 text-truncate">{{ row.publishDate || '-' }}</div>
+                  </div>
+                </div>
+              </v-card-text>
+            </v-card>
+
+            <div v-if="searching" class="text-center py-4">
+              <v-progress-circular indeterminate size="28" color="primary" />
+            </div>
+          </template>
+        </template>
+
         <div v-if="hasMore" class="text-center mt-3">
           <v-btn variant="outlined" :loading="searching" @click="searchResources(true)">
             <v-icon start>mdi-chevron-down</v-icon>
@@ -364,6 +457,36 @@ onMounted(async () => {
         </div>
       </v-card-text>
     </v-card>
+
+    <v-dialog v-model="detailDialog" max-width="560">
+      <v-card v-if="detailRow">
+        <v-card-title>资源详情</v-card-title>
+        <v-card-text>
+          <div class="text-subtitle-1 font-weight-bold mb-3 detail-title">{{ detailRow.title }}</div>
+          <v-list lines="two">
+            <v-list-item title="字幕组" :subtitle="detailRow.subgroupName || '-'" />
+            <v-list-item title="资源类型" :subtitle="detailRow.typeName || '-'" />
+            <v-list-item title="文件大小" :subtitle="detailRow.fileSize || '-'" />
+            <v-list-item title="发布时间" :subtitle="detailRow.publishDate || '-'" />
+            <v-list-item title="磁力链接" :subtitle="detailRow.magnet || '-'" />
+            <v-list-item title="来源页面" :subtitle="detailRow.pageUrl || '-'" />
+          </v-list>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="detailDialog = false">关闭</v-btn>
+          <v-btn
+            color="teal-darken-1"
+            :loading="isDownloading(detailRow)"
+            :disabled="isDownloading(detailRow) || !selectedLibraryId"
+            @click="createDownloadTask(detailRow); detailDialog = false"
+          >
+            <v-icon start>mdi-download</v-icon>
+            下载
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -373,5 +496,18 @@ onMounted(async () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.task-selected {
+  border: 1px solid rgb(var(--v-theme-primary)) !important;
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.detail-trigger {
+  cursor: pointer;
+}
+
+.detail-title {
+  word-break: break-word;
 }
 </style>

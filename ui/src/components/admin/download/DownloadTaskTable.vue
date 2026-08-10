@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   title: {
@@ -83,6 +83,23 @@ const activeFilter = ref('all')
 const keyword = ref('')
 const detailDialog = ref(false)
 const detailTask = ref(null)
+const isMobile = ref(false)
+
+const checkViewport = () => {
+  isMobile.value =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+}
+
+onMounted(() => {
+  checkViewport()
+  window.addEventListener('resize', checkViewport)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkViewport)
+})
 
 const formatStatus = (status) => STATUS_META[status]?.label || status || '-'
 const statusColor = (status) => STATUS_META[status]?.color || 'grey'
@@ -91,14 +108,16 @@ const canCancel = (status) => ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANN
 const canRetry = (status) => ['FAILED', 'CANCELLED'].includes(status)
 const canDelete = (status) => ['COMPLETED', 'FAILED', 'CANCELLED'].includes(status)
 
+const toNum = (v) => Number(v) || 0
+
 const statusFilters = computed(() => {
   const s = props.stats || {}
   return [
-    { key: 'all', label: '全部', count: props.total },
-    { key: 'active', label: '进行中', count: s.active || 0 },
-    { key: 'COMPLETED', label: '已完成', count: s.completed || 0 },
-    { key: 'FAILED', label: '失败', count: s.failed || 0 },
-    { key: 'CANCELLED', label: '已取消', count: s.cancelled || 0 }
+    { key: 'all', label: '全部', count: toNum(s.active) + toNum(s.completed) + toNum(s.failed) + toNum(s.cancelled) },
+    { key: 'active', label: '进行中', count: toNum(s.active) },
+    { key: 'COMPLETED', label: '已完成', count: toNum(s.completed) },
+    { key: 'FAILED', label: '失败', count: toNum(s.failed) },
+    { key: 'CANCELLED', label: '已取消', count: toNum(s.cancelled) }
   ]
 })
 
@@ -228,7 +247,7 @@ const sizeOptions = [20, 50, 100]
 
     <v-card-text>
       <div class="d-flex align-center justify-space-between ga-3 mb-3 flex-wrap">
-        <div class="d-flex align-center ga-1">
+        <div class="d-flex align-center ga-1 flex-wrap">
           <v-chip
             v-for="filter in statusFilters"
             :key="filter.key"
@@ -250,7 +269,7 @@ const sizeOptions = [20, 50, 100]
             density="compact"
             hide-details
             clearable
-            style="max-width: 260px;"
+            class="search-field"
             @keyup.enter="emitFilterChange"
           />
         </div>
@@ -288,7 +307,7 @@ const sizeOptions = [20, 50, 100]
         <v-btn size="x-small" variant="text" color="primary" @click="emit('reconnect')">重连</v-btn>
       </v-alert>
 
-      <v-table density="compact" fixed-header height="420">
+      <v-table v-if="!isMobile" density="compact" fixed-header height="420">
         <thead>
           <tr>
             <th style="width: 40px;">
@@ -415,7 +434,137 @@ const sizeOptions = [20, 50, 100]
         </tbody>
       </v-table>
 
-      <div class="d-flex align-center justify-end ga-4 mt-3">
+      <!-- ===== 移动端：卡片 ===== -->
+      <template v-else>
+        <div v-if="props.loading && props.tasks.length === 0" class="text-center py-8">
+          <v-progress-circular indeterminate size="28" color="primary" />
+        </div>
+        <div v-else-if="props.tasks.length === 0" class="text-center py-10">
+          <v-icon size="40" color="grey-lighten-1" class="mb-2">mdi-download-off</v-icon>
+          <div class="text-medium-emphasis">暂无下载任务</div>
+        </div>
+        <template v-else>
+          <v-card
+            v-for="task in props.tasks"
+            :key="task.id"
+            class="mb-3"
+            :class="{ 'task-selected': isSelected(task.id) }"
+          >
+            <v-card-item>
+              <template #title>
+                <div class="d-flex align-center ga-2" style="min-width: 0">
+                  <v-checkbox
+                    :model-value="isSelected(task.id)"
+                    density="compact"
+                    hide-details
+                    class="flex-shrink-0"
+                    @update:model-value="toggleOne(task.id)"
+                  />
+                  <div class="flex-grow-1" style="min-width: 0">
+                    <div class="text-subtitle-2 font-weight-bold text-truncate">{{ task.title }}</div>
+                    <div v-if="task.subgroupName || task.typeName" class="text-caption text-medium-emphasis text-truncate">
+                      {{ [task.subgroupName, task.typeName].filter(Boolean).join(' · ') }}
+                    </div>
+                  </div>
+                  <v-chip :color="statusColor(task.status)" size="small" variant="flat" class="flex-shrink-0">
+                    {{ formatStatus(task.status) }}
+                  </v-chip>
+                </div>
+              </template>
+            </v-card-item>
+
+            <v-card-text class="pt-0">
+              <div class="d-flex align-center ga-2 mb-2">
+                <v-progress-linear
+                  :model-value="task.progressPercent || 0"
+                  height="8"
+                  rounded
+                  :color="task.status === 'FAILED' ? 'error' : 'primary'"
+                />
+                <span class="text-caption flex-shrink-0">{{ task.progressPercent || 0 }}%</span>
+              </div>
+
+              <div class="d-flex flex-wrap text-body-2">
+                <div class="w-50 py-1 pr-2">
+                  <div class="text-caption text-medium-emphasis">目标库</div>
+                  <div class="text-body-2 text-truncate">{{ task.libraryName || task.libraryId || '-' }}</div>
+                </div>
+                <div class="w-50 py-1">
+                  <div class="text-caption text-medium-emphasis">大小</div>
+                  <div class="text-body-2 text-truncate">{{ formatBytes(task.downloadedBytes) }} / {{ formatBytes(task.totalBytes) }}</div>
+                </div>
+                <div class="w-50 py-1 pr-2">
+                  <div class="text-caption text-medium-emphasis">下载速度</div>
+                  <div class="text-body-2">
+                    <v-icon size="14" color="primary">mdi-arrow-down</v-icon>
+                    {{ resolveTaskSpeed(task).down }}
+                  </div>
+                </div>
+                <div class="w-50 py-1">
+                  <div class="text-caption text-medium-emphasis">上传速度</div>
+                  <div class="text-body-2">
+                    <v-icon size="14" color="info">mdi-arrow-up</v-icon>
+                    {{ resolveTaskSpeed(task).up }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex align-center ga-2 mt-2">
+                <v-btn
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  :loading="props.actionLoadingTaskId === task.id"
+                  :disabled="!canCancel(task.status)"
+                  @click="emit('cancel', task)"
+                >
+                  <v-icon start size="small">mdi-stop-circle-outline</v-icon>
+                  取消
+                </v-btn>
+                <v-btn
+                  v-if="canRetry(task.status)"
+                  size="small"
+                  color="info"
+                  variant="outlined"
+                  :loading="props.actionLoadingTaskId === task.id"
+                  @click="emit('retry', task)"
+                >
+                  <v-icon start size="small">mdi-restart</v-icon>
+                  重试
+                </v-btn>
+                <v-spacer />
+                <v-menu location="top end">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn v-bind="menuProps" size="small" variant="text" icon="mdi-dots-vertical" />
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item prepend-icon="mdi-information-outline" title="详情" @click="openDetail(task)" />
+                    <v-list-item
+                      prepend-icon="mdi-link-variant"
+                      title="查看绑定"
+                      :disabled="task.status !== 'COMPLETED'"
+                      @click="emit('binding', task.id)"
+                    />
+                    <v-list-item
+                      prepend-icon="mdi-delete-outline"
+                      title="删除"
+                      color="error"
+                      :disabled="!canDelete(task.status)"
+                      @click="emit('delete', task)"
+                    />
+                  </v-list>
+                </v-menu>
+              </div>
+            </v-card-text>
+          </v-card>
+
+          <div v-if="props.loading" class="text-center py-4">
+            <v-progress-circular indeterminate size="28" color="primary" />
+          </div>
+        </template>
+      </template>
+
+      <div class="d-flex align-center justify-end ga-4 mt-3 flex-wrap">
         <v-select
           :model-value="props.size"
           :items="sizeOptions"
@@ -428,7 +577,7 @@ const sizeOptions = [20, 50, 100]
         <v-pagination
           :model-value="props.page"
           :length="pageCount"
-          :total-visible="7"
+          :total-visible="isMobile ? 3 : 7"
           density="compact"
           @update:model-value="emit('update:page', $event)"
         />
@@ -495,6 +644,18 @@ const sizeOptions = [20, 50, 100]
 
 .row-selected {
   background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.task-selected {
+  border: 1px solid rgb(var(--v-theme-primary)) !important;
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+@media (max-width: 768px) {
+  .search-field {
+    max-width: none !important;
+    width: 100%;
+  }
 }
 
 .log-box {

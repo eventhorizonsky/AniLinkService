@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, provide, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, onUnmounted, provide, defineAsyncComponent } from 'vue'
 import { useDownloadTasks } from '../../../composables/useDownloadTasks'
 import DownloadTasksTab from './DownloadTasksTab.vue'
 import ResourceSearchTab from './ResourceSearchTab.vue'
@@ -28,6 +28,23 @@ const {
 
 const activeTab = ref('tasks')
 const actions = { cancelTask, retryTask, deleteTask, openBinding, reconnect }
+const isMobile = ref(false)
+
+const checkViewport = () => {
+  isMobile.value =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+}
+
+onMounted(() => {
+  checkViewport()
+  window.addEventListener('resize', checkViewport)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkViewport)
+})
 
 const applyStats = (stats) => {
   if (stats) {
@@ -54,23 +71,23 @@ onBeforeUnmount(() => {
       <v-tabs v-model="activeTab" color="primary" grow>
         <v-tab value="tasks">
           <v-icon start>mdi-download-multiple</v-icon>
-          任务
+          <span class="tab-label">任务</span>
         </v-tab>
         <v-tab value="search">
           <v-icon start>mdi-cloud-search</v-icon>
-          资源搜索
+          <span class="tab-label">资源搜索</span>
         </v-tab>
         <v-tab value="rss">
           <v-icon start>mdi-rss-box</v-icon>
-          RSS 订阅
+          <span class="tab-label">RSS 订阅</span>
         </v-tab>
         <v-tab value="settings">
           <v-icon start>mdi-tune-variant</v-icon>
-          设置
+          <span class="tab-label">设置</span>
         </v-tab>
       </v-tabs>
 
-      <v-window v-model="activeTab">
+      <v-window v-model="activeTab" :touch="false">
         <v-window-item value="tasks">
           <div class="pa-4">
             <DownloadTasksTab
@@ -112,3 +129,15 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 768px) {
+  :deep(.tab-label) {
+    display: none;
+  }
+
+  :deep(.v-icon--start) {
+    margin: 0;
+  }
+}
+</style>
