@@ -206,9 +206,9 @@ const sizeOptions = [20, 50, 100]
 
 <template>
   <v-card>
-    <v-card-title class="d-flex align-center justify-space-between ga-3">
+    <v-card-title class="d-flex align-center justify-space-between ga-3 title-row">
       <span>{{ props.title }}</span>
-      <div class="d-flex align-center ga-2">
+      <div class="d-flex align-center ga-2 status-chips">
         <v-chip size="small" color="primary" variant="tonal">
           <v-icon start size="small">mdi-arrow-down</v-icon>
           下载 {{ formatSpeed(props.stats?.downloadBps) }}
@@ -654,6 +654,17 @@ const sizeOptions = [20, 50, 100]
 }
 
 @media (max-width: 768px) {
+  .title-row {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .status-chips {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    max-width: 100%;
+  }
+
   .search-field {
     max-width: none !important;
     width: 100%;
