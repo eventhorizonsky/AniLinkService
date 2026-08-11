@@ -108,6 +108,7 @@ const statusColor = (status) => STATUS_META[status]?.color || 'grey'
 const canCancel = (status) => ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING'].includes(status)
 const canRetry = (status) => ['FAILED', 'CANCELLED', 'STALLED'].includes(status)
 const canDelete = (status) => ['COMPLETED', 'FAILED', 'CANCELLED', 'STALLED'].includes(status)
+const canViewBinding = (status) => ['COMPLETED', 'SEEDING'].includes(status)
 
 const toNum = (v) => Number(v) || 0
 
@@ -407,7 +408,7 @@ const sizeOptions = [20, 50, 100]
                     <v-list-item
                       prepend-icon="mdi-link-variant"
                       title="查看绑定"
-                      :disabled="task.status !== 'COMPLETED'"
+                      :disabled="!canViewBinding(task.status)"
                       @click="emit('binding', task.id)"
                     />
                     <v-list-item
@@ -544,7 +545,7 @@ const sizeOptions = [20, 50, 100]
                     <v-list-item
                       prepend-icon="mdi-link-variant"
                       title="查看绑定"
-                      :disabled="task.status !== 'COMPLETED'"
+                      :disabled="!canViewBinding(task.status)"
                       @click="emit('binding', task.id)"
                     />
                     <v-list-item
