@@ -1020,10 +1020,14 @@ public class ResourceDownloadService {
         int uploadBps = globalUploadKbps > 0 ? globalUploadKbps * 1024 : -1;
 
         synchronized (sessionLock) {
-            invokeLimitMethod(globalSessionManager, "setDownloadRateLimit", downloadBps);
-            invokeLimitMethod(globalSessionManager, "setUploadRateLimit", uploadBps);
-            invokeLimitMethod(globalSessionManager, "setDownloadLimit", downloadBps);
-            invokeLimitMethod(globalSessionManager, "setUploadLimit", uploadBps);
+            invokeLimitMethod(globalSessionManager, "downloadRateLimit", downloadBps);
+            invokeLimitMethod(globalSessionManager, "uploadRateLimit", uploadBps);
+        }
+    }
+
+    public void refreshGlobalRateLimit() {
+        synchronized (sessionLock) {
+            applySessionGlobalRateLimit(loadRuntimeLimitSettings());
         }
     }
 
