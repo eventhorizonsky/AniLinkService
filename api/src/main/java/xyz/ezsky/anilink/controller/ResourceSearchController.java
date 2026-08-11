@@ -103,10 +103,9 @@ public class ResourceSearchController {
     }
 
     @DeleteMapping("/download-tasks/{id}")
-    @Operation(summary = "删除下载任务（可清理暂存文件）")
-    public ApiResponseVO<Void> deleteTask(@PathVariable Long id,
-                                          @RequestParam(required = false, defaultValue = "false") boolean deleteFiles) {
-        resourceDownloadService.deleteTask(id, deleteFiles);
+    @Operation(summary = "删除下载任务（同步清理暂存文件，媒体库文件不受影响）")
+    public ApiResponseVO<Void> deleteTask(@PathVariable Long id) {
+        resourceDownloadService.deleteTask(id);
         return ApiResponseVO.success(null, "任务已删除");
     }
 

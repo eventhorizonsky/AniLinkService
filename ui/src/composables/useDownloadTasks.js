@@ -81,10 +81,8 @@ export function useDownloadTasks() {
   const retryTask = (task) =>
     runAction('重试', () => axios.post(`${API_BASE}/resource-search/download-tasks/${task.id}/retry`))
 
-  const deleteTask = (task, deleteFiles = false) =>
-    runAction('删除', () => axios.delete(`${API_BASE}/resource-search/download-tasks/${task.id}`, {
-      params: { deleteFiles }
-    }))
+  const deleteTask = (task) =>
+    runAction('删除', () => axios.delete(`${API_BASE}/resource-search/download-tasks/${task.id}`))
 
   const openBinding = async (taskId) => {
     bindingLoading.value = true

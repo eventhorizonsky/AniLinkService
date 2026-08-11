@@ -92,6 +92,7 @@ public class ResourceDownloadTask {
         SCANNING,
         COMPLETED,
         CANCELLED,
-        FAILED
+        FAILED,
+        STALLED
     }
 }

@@ -74,7 +74,8 @@ const STATUS_META = {
   SCANNING: { label: '扫描中', color: 'teal' },
   COMPLETED: { label: '已完成', color: 'success' },
   CANCELLED: { label: '已取消', color: 'warning' },
-  FAILED: { label: '失败', color: 'error' }
+  FAILED: { label: '失败', color: 'error' },
+  STALLED: { label: '停滞', color: 'orange' }
 }
 
 const ACTIVE_STATUSES = ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING']
@@ -105,19 +106,20 @@ const formatStatus = (status) => STATUS_META[status]?.label || status || '-'
 const statusColor = (status) => STATUS_META[status]?.color || 'grey'
 
 const canCancel = (status) => ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING'].includes(status)
-const canRetry = (status) => ['FAILED', 'CANCELLED'].includes(status)
-const canDelete = (status) => ['COMPLETED', 'FAILED', 'CANCELLED'].includes(status)
+const canRetry = (status) => ['FAILED', 'CANCELLED', 'STALLED'].includes(status)
+const canDelete = (status) => ['COMPLETED', 'FAILED', 'CANCELLED', 'STALLED'].includes(status)
 
 const toNum = (v) => Number(v) || 0
 
 const statusFilters = computed(() => {
   const s = props.stats || {}
   return [
-    { key: 'all', label: '全部', count: toNum(s.active) + toNum(s.completed) + toNum(s.failed) + toNum(s.cancelled) },
+    { key: 'all', label: '全部', count: toNum(s.active) + toNum(s.completed) + toNum(s.failed) + toNum(s.cancelled) + toNum(s.stalled) },
     { key: 'active', label: '进行中', count: toNum(s.active) },
     { key: 'COMPLETED', label: '已完成', count: toNum(s.completed) },
     { key: 'FAILED', label: '失败', count: toNum(s.failed) },
-    { key: 'CANCELLED', label: '已取消', count: toNum(s.cancelled) }
+    { key: 'CANCELLED', label: '已取消', count: toNum(s.cancelled) },
+    { key: 'STALLED', label: '停滞', count: toNum(s.stalled) }
   ]
 })
 
@@ -355,7 +357,7 @@ const sizeOptions = [20, 50, 100]
                   :model-value="task.progressPercent || 0"
                   height="8"
                   rounded
-                  :color="task.status === 'FAILED' ? 'error' : 'primary'"
+                  :color="task.status === 'FAILED' ? 'error' : task.status === 'STALLED' ? 'orange' : 'primary'"
                   style="width: 100px;"
                 />
                 <span class="text-caption">{{ task.progressPercent || 0 }}%</span>
@@ -479,7 +481,7 @@ const sizeOptions = [20, 50, 100]
                   :model-value="task.progressPercent || 0"
                   height="8"
                   rounded
-                  :color="task.status === 'FAILED' ? 'error' : 'primary'"
+                  :color="task.status === 'FAILED' ? 'error' : task.status === 'STALLED' ? 'orange' : 'primary'"
                 />
                 <span class="text-caption flex-shrink-0">{{ task.progressPercent || 0 }}%</span>
               </div>

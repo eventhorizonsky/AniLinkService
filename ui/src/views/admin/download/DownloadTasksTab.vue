@@ -38,7 +38,6 @@ const page = ref(1)
 const size = ref(20)
 const selection = ref([])
 const deletingTarget = ref(null)
-const deleteFiles = ref(false)
 
 const filterStatus = ref('all')
 const filterKeyword = ref('')
@@ -94,6 +93,7 @@ const statCards = computed(() => [
   { label: '下载速度', value: formatSpeed(props.stats?.downloadBps), icon: 'mdi-arrow-down-bold', color: 'blue' },
   { label: '上传速度', value: formatSpeed(props.stats?.uploadBps), icon: 'mdi-arrow-up-bold', color: 'indigo' },
   { label: '今日完成', value: props.stats?.todayCompleted ?? '-', icon: 'mdi-check-circle-outline', color: 'success' },
+  { label: '停滞', value: props.stats?.stalled ?? '-', icon: 'mdi-pause-circle-outline', color: 'orange' },
   { label: '今日失败', value: props.stats?.todayFailed ?? '-', icon: 'mdi-alert-circle-outline', color: 'error' },
   { label: '今日取消', value: props.stats?.todayCancelled ?? '-', icon: 'mdi-cancel', color: 'warning' }
 ])
@@ -189,13 +189,12 @@ const handleRetry = async (task) => {
 
 const openDeleteDialog = (task) => {
   deletingTarget.value = task
-  deleteFiles.value = false
 }
 
 const confirmDelete = async () => {
   const task = deletingTarget.value
   if (!task) return
-  const ok = await props.actions.deleteTask?.(task, deleteFiles.value)
+  const ok = await props.actions.deleteTask?.(task)
   if (ok) {
     selection.value = selection.value.filter((id) => id !== task.id)
     scheduleRefresh()
@@ -244,7 +243,7 @@ const handleBatchCancel = async (ids) => {
 const handleBatchDelete = async (ids) => {
   const confirmed = await askAppConfirm({
     title: '批量删除',
-    message: `确认删除选中的 ${ids.length} 个下载任务记录吗？（磁盘文件不会被清理）`,
+    message: `确认删除选中的 ${ids.length} 个下载任务吗？对应暂存文件将一并清理，媒体库文件不受影响`,
     color: 'error'
   })
   if (!confirmed) return
@@ -330,7 +329,7 @@ onBeforeUnmount(() => {
         </v-card-title>
         <v-card-text>
           <div class="mb-2">确认删除任务「{{ deletingTarget.title }}」？</div>
-          <v-checkbox v-model="deleteFiles" label="同时清理暂存目录中的文件" density="compact" color="error" />
+          <div class="text-body-2 text-medium-emphasis">对应暂存文件将一并清理，媒体库中已入库的文件不受影响。</div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />

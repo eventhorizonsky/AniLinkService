@@ -38,6 +38,7 @@ const form = ref({
   resourceDownloadLimitKbps: 0,
   resourceUploadLimitKbps: 0,
   resourceSeedTimeSeconds: 0,
+  resourceDownloadStallTimeoutSeconds: 21600,
   resourceCustomTrackers: '',
   resourceTrackerListUrl: '',
   resourceNodeProxyHost: '',
@@ -58,6 +59,7 @@ const fetchConfig = async () => {
       resourceDownloadLimitKbps: data.resourceDownloadLimitKbps || 0,
       resourceUploadLimitKbps: data.resourceUploadLimitKbps || 0,
       resourceSeedTimeSeconds: data.resourceSeedTimeSeconds || 0,
+      resourceDownloadStallTimeoutSeconds: data.resourceDownloadStallTimeoutSeconds || 21600,
       resourceCustomTrackers: data.resourceCustomTrackers || '',
       resourceTrackerListUrl: data.resourceTrackerListUrl || '',
       resourceNodeProxyHost: data.resourceNodeProxyHost || '',
@@ -146,6 +148,7 @@ const saveConfig = async () => {
       resourceDownloadLimitKbps: Math.max(0, Number(form.value.resourceDownloadLimitKbps || 0)),
       resourceUploadLimitKbps: Math.max(0, Number(form.value.resourceUploadLimitKbps || 0)),
       resourceSeedTimeSeconds: Math.max(0, Number(form.value.resourceSeedTimeSeconds || 0)),
+      resourceDownloadStallTimeoutSeconds: Math.max(0, Number(form.value.resourceDownloadStallTimeoutSeconds || 0)),
       resourceCustomTrackers: form.value.resourceCustomTrackers || '',
       resourceTrackerListUrl: form.value.resourceTrackerListUrl || '',
       resourceNodeProxyHost: form.value.resourceNodeProxyHost || '',
@@ -308,6 +311,21 @@ onMounted(() => {
             variant="outlined"
             color="primary"
             hint=">0 时会先入库并触发扫描，再在暂存目录继续做种，结束后自动清理"
+            persistent-hint
+            :rules="[rules.nonNegativeInt]"
+            class="mb-4"
+            :loading="loading"
+          />
+
+          <v-text-field
+            v-model.number="form.resourceDownloadStallTimeoutSeconds"
+            label="下载停滞判定时长 (秒)"
+            prepend-inner-icon="mdi-alert-octagon-outline"
+            type="number"
+            min="0"
+            variant="outlined"
+            color="primary"
+            hint="超过该时长无新进度则标记为“停滞”（默认 21600 秒 = 6 小时），0 表示不启用"
             persistent-hint
             :rules="[rules.nonNegativeInt]"
             class="mb-4"

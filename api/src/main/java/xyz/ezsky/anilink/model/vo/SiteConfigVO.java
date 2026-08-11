@@ -53,6 +53,9 @@ public class SiteConfigVO {
     @Schema(description = "下载完成后的做种时长（秒）", example = "0")
     private Integer resourceSeedTimeSeconds;
 
+    @Schema(description = "下载停滞判定时长（秒），超过该时长无新进度则标记为停滞，0 表示不启用", example = "21600")
+    private Integer resourceDownloadStallTimeoutSeconds;
+
     @Schema(description = "新任务附加 Tracker（每行一个或逗号分隔）", example = "udp://tracker.opentrackr.org:1337/announce")
     private String resourceCustomTrackers;
 

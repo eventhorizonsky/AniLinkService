@@ -59,7 +59,6 @@ import java.util.stream.Stream;
 public class ResourceDownloadService {
 
     private static final int HANDLE_WAIT_SECONDS = 30;
-    private static final int DOWNLOAD_TIMEOUT_SECONDS = 12 * 60 * 60;
     private static final int MAX_TERMINAL_TASKS = 300;
     private static final int SHUTDOWN_GRACE_SECONDS = 30;
 
@@ -111,7 +110,8 @@ public class ResourceDownloadService {
         private static final Set<ResourceDownloadTask.DownloadStatus> TERMINAL_STATUSES = Set.of(
             ResourceDownloadTask.DownloadStatus.COMPLETED,
             ResourceDownloadTask.DownloadStatus.CANCELLED,
-            ResourceDownloadTask.DownloadStatus.FAILED
+            ResourceDownloadTask.DownloadStatus.FAILED,
+            ResourceDownloadTask.DownloadStatus.STALLED
         );
 
     @PostConstruct
@@ -250,7 +250,8 @@ public class ResourceDownloadService {
 
         if (task.getStatus() == ResourceDownloadTask.DownloadStatus.COMPLETED
                 || task.getStatus() == ResourceDownloadTask.DownloadStatus.FAILED
-                || task.getStatus() == ResourceDownloadTask.DownloadStatus.CANCELLED) {
+                || task.getStatus() == ResourceDownloadTask.DownloadStatus.CANCELLED
+                || task.getStatus() == ResourceDownloadTask.DownloadStatus.STALLED) {
             return toTaskVO(task);
         }
 
@@ -275,21 +276,51 @@ public class ResourceDownloadService {
         if (ACTIVE_STATUSES.contains(task.getStatus())) {
             throw new IllegalArgumentException("任务正在执行中，无法重试");
         }
+        if (task.getStatus() == ResourceDownloadTask.DownloadStatus.COMPLETED) {
+            throw new IllegalArgumentException("任务已完成，无需重试");
+        }
 
-        ResourceSearchDownloadRequest request = new ResourceSearchDownloadRequest(
-                task.getTitle(),
-                task.getMagnet(),
-                task.getPageUrl(),
-                task.getFileSize(),
-                task.getPublishDate(),
-                task.getSubgroupName(),
-                task.getTypeName(),
-                task.getLibrary() != null ? task.getLibrary().getId() : null
-        );
-        return startDownload(request);
+        // 等上一轮线程完全收尾，避免新旧任务并发访问同一 jlibtorrent 句柄/暂存目录。
+        Future<?> existing = taskFutures.get(taskId);
+        if (existing != null && !existing.isDone()) {
+            throw new IllegalArgumentException("任务正在收尾中，请稍后再试");
+        }
+
+        // 文件已成功迁入媒体库（如失败发生在扫描/入库阶段）：只需补触发扫描并完成任务，不再重复下载。
+        String finalPath = task.getFinalPath();
+        if (finalPath != null && !finalPath.isBlank() && Files.exists(Paths.get(finalPath))) {
+            task.setStatus(ResourceDownloadTask.DownloadStatus.SCANNING);
+            task.setErrorMessage(null);
+            task.setStartedAt(null);
+            task.setFinishedAt(null);
+            task.setOutputMessage(appendMessage(task.getOutputMessage(), "任务重试：文件已存在，重新触发扫描入库"));
+            taskRepository.save(task);
+            submitTask(task.getId());
+            broadcastProgress();
+            return toTaskVO(task);
+        }
+
+        // 正常断点续传：复用原任务与原暂存目录重新添加同一磁链，
+        // jlibtorrent 会校验已下载的 piece 并只补齐缺失部分，避免从头下载与孤儿文件堆积。
+        task.setStatus(ResourceDownloadTask.DownloadStatus.PENDING);
+        task.setProgressPercent(0);
+        task.setDownloadedBytes(0L);
+        task.setTotalBytes(null);
+        task.setSpeedText(null);
+        task.setErrorMessage(null);
+        task.setStartedAt(null);
+        task.setFinishedAt(null);
+        task.setFinalPath(null);
+        task.setMediaFileId(null);
+        task.setOutputMessage(appendMessage(task.getOutputMessage(), "任务重试：复用原暂存目录断点续传"));
+        taskRepository.save(task);
+
+        submitTask(task.getId());
+        broadcastProgress();
+        return toTaskVO(task);
     }
 
-    public void deleteTask(Long taskId, boolean deleteFiles) {
+    public void deleteTask(Long taskId) {
         ResourceDownloadTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("下载任务不存在"));
 
@@ -297,7 +328,14 @@ public class ResourceDownloadService {
             throw new IllegalArgumentException("任务正在执行中，请先取消后再删除");
         }
 
-        if (deleteFiles && task.getTempDir() != null && !task.getTempDir().isBlank()) {
+        // 等上一轮线程完全收尾，避免并发访问同一 jlibtorrent 句柄/暂存目录。
+        Future<?> existing = taskFutures.get(taskId);
+        if (existing != null && !existing.isDone()) {
+            throw new IllegalArgumentException("任务正在收尾中，请稍后再删除");
+        }
+
+        // 暂存目录与任务强绑定：删除任务即清理暂存文件；媒体库中的已入库文件不受影响。
+        if (task.getTempDir() != null && !task.getTempDir().isBlank()) {
             try {
                 deleteDirectoryQuietly(Paths.get(task.getTempDir()));
             } catch (Exception e) {
@@ -356,6 +394,7 @@ public class ResourceDownloadService {
         long completed = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.COMPLETED);
         long failed = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.FAILED);
         long cancelled = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.CANCELLED);
+        long stalled = taskRepository.countByStatus(ResourceDownloadTask.DownloadStatus.STALLED);
 
         Timestamp startOfToday = Timestamp.valueOf(LocalDate.now().atStartOfDay());
 
@@ -375,6 +414,7 @@ public class ResourceDownloadService {
                 .completed(completed)
                 .failed(failed)
                 .cancelled(cancelled)
+                .stalled(stalled)
                 .active(pending + running + seeding + moving + scanning)
                 .todayCompleted(taskRepository.countByStatusFinishedAfter(ResourceDownloadTask.DownloadStatus.COMPLETED, startOfToday))
                 .todayFailed(taskRepository.countByStatusFinishedAfter(ResourceDownloadTask.DownloadStatus.FAILED, startOfToday))
@@ -471,7 +511,8 @@ public class ResourceDownloadService {
 
         if (task.getStatus() == ResourceDownloadTask.DownloadStatus.CANCELLED
                 || task.getStatus() == ResourceDownloadTask.DownloadStatus.FAILED
-                || task.getStatus() == ResourceDownloadTask.DownloadStatus.COMPLETED) {
+                || task.getStatus() == ResourceDownloadTask.DownloadStatus.COMPLETED
+                || task.getStatus() == ResourceDownloadTask.DownloadStatus.STALLED) {
             return;
         }
 
@@ -489,6 +530,8 @@ public class ResourceDownloadService {
             }
         } catch (DownloadCancelledException e) {
             markCancelled(taskId, "任务已取消");
+        } catch (DownloadStalledException e) {
+            markStalled(taskId, e.getMessage());
         } catch (Exception e) {
             log.error("executeDownload error, taskId={}", taskId, e);
             failTask(taskId, "任务失败: " + e.getMessage());
@@ -620,10 +663,12 @@ public class ResourceDownloadService {
             }
             context.handleRef.set(handle);
 
-            long startMs = System.currentTimeMillis();
             int seedSeconds = limitSettings.seedSeconds;
             long finishMs = -1;
             boolean finishedHandled = false;
+            int stallTimeoutSeconds = siteConfigService.getResourceDownloadStallTimeoutSeconds();
+            long lastProgressMs = System.currentTimeMillis();
+            long lastDownloadedBytes = -1;
             while (true) {
                 checkCancellation(taskId, context);
                 TorrentStatus status;
@@ -644,6 +689,16 @@ public class ResourceDownloadService {
                 long uploadSpeed = status.uploadRate();
 
                 updateProgress(taskId, progress, downloadedBytes, totalBytes, downloadSpeed, uploadSpeed);
+
+                if (!status.isFinished()) {
+                    if (downloadedBytes > lastDownloadedBytes || downloadSpeed > 0) {
+                        lastProgressMs = System.currentTimeMillis();
+                        lastDownloadedBytes = downloadedBytes;
+                    } else if (stallTimeoutSeconds > 0
+                            && System.currentTimeMillis() - lastProgressMs >= stallTimeoutSeconds * 1000L) {
+                        throw new DownloadStalledException("下载停滞: 超过 " + stallTimeoutSeconds + " 秒无新进度，请检查做种情况或重试");
+                    }
+                }
 
                 if (status.isFinished()) {
                     if (!finishedHandled && downloadFinishedHook != null) {
@@ -671,10 +726,6 @@ public class ResourceDownloadService {
                     if ((System.currentTimeMillis() - finishMs) / 1000 >= seedSeconds) {
                         break;
                     }
-                }
-
-                if ((System.currentTimeMillis() - startMs) / 1000 > DOWNLOAD_TIMEOUT_SECONDS) {
-                    throw new IllegalStateException("下载超时，超过 " + DOWNLOAD_TIMEOUT_SECONDS + " 秒");
                 }
 
                 Thread.sleep(1000);
@@ -1181,6 +1232,25 @@ public class ResourceDownloadService {
         trimTerminalTasksIfNeeded();
     }
 
+    private void markStalled(Long taskId, String message) {
+        ResourceDownloadTask task = taskRepository.findById(taskId).orElse(null);
+        if (task == null) {
+            return;
+        }
+        if (task.getStatus() == ResourceDownloadTask.DownloadStatus.STALLED) {
+            return;
+        }
+        task.setStatus(ResourceDownloadTask.DownloadStatus.STALLED);
+        task.setFinishedAt(Timestamp.from(Instant.now()));
+        task.setErrorMessage(message);
+        activeSpeeds.remove(taskId);
+        task.setSpeedText(null);
+        task.setOutputMessage(appendMessage(task.getOutputMessage(), message));
+        taskRepository.save(task);
+        broadcastProgress();
+        trimTerminalTasksIfNeeded();
+    }
+
     private void trimTerminalTasksIfNeeded() {
         List<ResourceDownloadTask> terminalTasks = taskRepository.findTop500ByStatusInOrderByCreatedAtDesc(new ArrayList<>(TERMINAL_STATUSES));
         if (terminalTasks.size() <= MAX_TERMINAL_TASKS) {
@@ -1189,6 +1259,12 @@ public class ResourceDownloadService {
         List<ResourceDownloadTask> toDelete = terminalTasks.subList(MAX_TERMINAL_TASKS, terminalTasks.size());
         if (toDelete.isEmpty()) {
             return;
+        }
+        // 暂存目录与任务强绑定：被裁剪的任务记录同时清理对应暂存文件。
+        for (ResourceDownloadTask task : toDelete) {
+            if (task.getTempDir() != null && !task.getTempDir().isBlank()) {
+                deleteDirectoryQuietly(Paths.get(task.getTempDir()));
+            }
         }
         taskRepository.deleteAll(toDelete);
     }
@@ -1304,6 +1380,12 @@ public class ResourceDownloadService {
         private final AtomicReference<TorrentHandle> handleRef = new AtomicReference<>();
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final AtomicBoolean transferred = new AtomicBoolean(false);
+    }
+
+    private static final class DownloadStalledException extends RuntimeException {
+        private DownloadStalledException(String message) {
+            super(message);
+        }
     }
 
     private static final class DownloadCancelledException extends RuntimeException {

@@ -24,7 +24,8 @@ const taskStatusMap = {
   SCANNING: '扫描中',
   COMPLETED: '已完成',
   CANCELLED: '已取消',
-  FAILED: '失败'
+  FAILED: '失败',
+  STALLED: '停滞'
 }
 
 const matchStatusMap = {

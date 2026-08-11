@@ -116,6 +116,7 @@ public final class ResourceSearchVO {
         private long completed;
         private long failed;
         private long cancelled;
+        private long stalled;
         private long active;
         private long todayCompleted;
         private long todayFailed;

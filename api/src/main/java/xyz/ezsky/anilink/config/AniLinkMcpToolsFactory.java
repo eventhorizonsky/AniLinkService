@@ -802,7 +802,7 @@ public class AniLinkMcpToolsFactory {
                     if (id == null) {
                         return err("taskId 必填");
                     }
-                    resourceDownloadService.deleteTask(id, false);
+                    resourceDownloadService.deleteTask(id);
                     return jsonOk(Map.of("ok", true));
                 }))
                 .build());
