@@ -154,7 +154,7 @@ const kpiCards = computed(() => {
     { id: 'unmatched', label: '未匹配', icon: 'mdi-sync-alert', color: 'error', value: formatNumber(s.unmatchedCount) },
     { label: '字幕文件', icon: 'mdi-subtitles', color: 'purple', value: formatNumber(s.subtitleCount), trend: `弹幕 ${formatNumber(s.danmakuCount)}` },
     { label: 'RSS 订阅', icon: 'mdi-rss', color: 'orange', value: formatNumber(s.rssSubscriptionCount), trend: `活跃中 ${formatNumber(s.rssEnabledCount)}` },
-    { label: '媒体库', icon: 'mdi-library-books', color: 'indigo', value: formatNumber(s.libraryCount), trend: `用户 ${formatNumber(s.userCount)}` },
+    { label: '媒体库', icon: 'mdi-bookshelf', color: 'indigo', value: formatNumber(s.libraryCount), trend: `用户 ${formatNumber(s.userCount)}` },
     { label: '待匹配队列', icon: 'mdi-progress-clock', color: 'warning', value: formatNumber(s.pendingMatchQueueCount), trend: queueStatus.value },
     { label: '总大小', icon: 'mdi-database', color: 'pink', value: storage.value, unit: storage.unit, trend: `${formatNumber(s.mediaTotalSizeBytes)} B` }
   ]
