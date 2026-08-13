@@ -237,8 +237,8 @@ onMounted(() => {
 @keyframes ra-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 .remote-card {
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 16px;
   padding: 24px;
   display: flex;
@@ -264,9 +264,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  color: #b45309;
+  background: var(--al-warning-bg);
+  border: 1px solid var(--al-warning-border);
+  color: var(--al-warning);
   border-radius: 12px;
   padding: 12px 16px;
   font-size: 13px;
@@ -304,14 +304,14 @@ onMounted(() => {
 
 .remote-info-panel {
   min-width: 0;
-  border-left: 1px solid #f0f0f0;
+  border-left: 1px solid var(--al-border-neutral);
   padding-left: 20px;
 }
 
 .payload-panel {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
   padding-top: 16px;
-  border-left: 1px solid #f0f0f0;
+  border-left: 1px solid var(--al-border-neutral);
   padding-left: 20px;
 }
 
@@ -331,9 +331,9 @@ onMounted(() => {
 }
 
 .qr-canvas-wrap {
-  border: 1px solid #eceff3;
+  border: 1px solid var(--al-border-panel);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--al-bg);
   padding: 8px;
 }
 
@@ -344,13 +344,13 @@ onMounted(() => {
 
 .qr-caption {
   margin-top: 8px;
-  color: #7b6d60;
+  color: var(--al-text-brown-16);
   font-size: 13px;
 }
 
 .qr-hint {
   margin-top: 4px;
-  color: #968679;
+  color: var(--al-text-brown-17);
   font-size: 12px;
 }
 
@@ -366,7 +366,7 @@ onMounted(() => {
 
 .info-item {
   border: none;
-  border-bottom: 1px dashed #f0f0f0;
+  border-bottom: 1px dashed var(--al-border-neutral);
   border-radius: 0;
   background: transparent;
   padding: 8px 0;
@@ -381,13 +381,13 @@ onMounted(() => {
 }
 
 .info-label {
-  color: #7a6c5f;
+  color: var(--al-text-brown-15);
   font-size: 12px;
   margin-bottom: 4px;
 }
 
 .info-value {
-  color: #2f2b28;
+  color: var(--al-text-brown-20);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -409,12 +409,12 @@ onMounted(() => {
 .token-row input {
   flex: 1;
   min-width: 0;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--al-border-input);
   border-radius: 10px;
   padding: 9px 12px;
   font-size: 13px;
   color: var(--anime-text-main);
-  background: #f9fafb;
+  background: var(--al-bg-soft);
   font-family: inherit;
   outline: none;
 }
@@ -431,7 +431,7 @@ onMounted(() => {
   margin: 0;
   padding: 12px 0 0;
   border: none;
-  border-top: 1px dashed #f0f0f0;
+  border-top: 1px dashed var(--al-border-neutral);
   border-radius: 10px;
   background: transparent;
   white-space: pre-wrap;
@@ -452,7 +452,7 @@ onMounted(() => {
 
   .remote-info-panel {
     border-left: none;
-    border-top: 1px solid #f0f0f0;
+    border-top: 1px solid var(--al-border-neutral);
     padding-left: 0;
     padding-top: 14px;
   }

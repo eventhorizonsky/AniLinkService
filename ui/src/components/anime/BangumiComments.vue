@@ -168,7 +168,7 @@ onMounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--anime-accent-red, #c45d2b);
+  background: var(--anime-accent-red, var(--al-accent));
   animation: bgm-bounce 1.2s ease-in-out infinite;
 }
 
@@ -182,7 +182,7 @@ onMounted(() => {
 
 .bgm-comments-empty {
   text-align: center;
-  color: var(--anime-text-secondary, #6b5f55);
+  color: var(--anime-text-secondary, var(--al-text-secondary));
   padding: 36px 0;
   font-size: 0.95rem;
 }
@@ -191,7 +191,7 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   padding: 14px 0;
-  border-bottom: 1px solid var(--anime-border-light, #e5d8cc);
+  border-bottom: 1px solid var(--anime-border-light, var(--al-border));
 }
 
 .bgm-comment-item:last-of-type {
@@ -208,7 +208,7 @@ onMounted(() => {
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  background: var(--anime-bg-beige, #f4eee7);
+  background: var(--anime-bg-beige, var(--al-bg-beige));
 }
 
 .bgm-comment-body {
@@ -227,12 +227,12 @@ onMounted(() => {
 .bgm-comment-name {
   font-weight: 600;
   font-size: 0.9rem;
-  color: var(--anime-primary-dark, #2e241e);
+  color: var(--anime-primary-dark, var(--al-text-strong));
   text-decoration: none;
 }
 
 .bgm-comment-name:hover {
-  color: var(--anime-accent-red, #c45d2b);
+  color: var(--anime-accent-red, var(--al-accent));
 }
 
 .bgm-comment-stars {
@@ -243,29 +243,29 @@ onMounted(() => {
 
 .bgm-star {
   font-size: 0.85rem;
-  color: #d4b896;
+  color: var(--al-star-2);
 }
 
 .bgm-star.filled {
-  color: #e8954a;
+  color: var(--al-star-3);
 }
 
 .bgm-comment-rate {
   font-size: 0.78rem;
-  color: var(--anime-text-secondary, #6b5f55);
+  color: var(--anime-text-secondary, var(--al-text-secondary));
   margin-left: 4px;
 }
 
 .bgm-comment-date {
   font-size: 0.78rem;
-  color: var(--anime-accent-brown, #b99a7e);
+  color: var(--anime-accent-brown, var(--al-accent-brown));
   margin-left: auto;
 }
 
 .bgm-comment-text {
   margin: 0;
   font-size: 0.92rem;
-  color: var(--anime-text-main, #2e2a26);
+  color: var(--anime-text-main, var(--al-text));
   line-height: 1.6;
   word-break: break-word;
 }
@@ -277,8 +277,8 @@ onMounted(() => {
 
 .bgm-load-more-btn {
   background: none;
-  border: 1.5px solid var(--anime-accent-red, #c45d2b);
-  color: var(--anime-accent-red, #c45d2b);
+  border: 1.5px solid var(--anime-accent-red, var(--al-accent));
+  color: var(--anime-accent-red, var(--al-accent));
   border-radius: 20px;
   padding: 6px 24px;
   font-size: 0.88rem;
@@ -287,8 +287,8 @@ onMounted(() => {
 }
 
 .bgm-load-more-btn:hover:not(:disabled) {
-  background: var(--anime-accent-red, #c45d2b);
-  color: #fff;
+  background: var(--anime-accent-red, var(--al-accent));
+  color: var(--al-text-on-accent);
 }
 
 .bgm-load-more-btn:disabled {
@@ -298,6 +298,6 @@ onMounted(() => {
 
 .bgm-no-more {
   font-size: 0.82rem;
-  color: var(--anime-accent-brown, #b99a7e);
+  color: var(--anime-accent-brown, var(--al-accent-brown));
 }
 </style>

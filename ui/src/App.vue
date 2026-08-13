@@ -1,6 +1,6 @@
 <template>
   <v-app>
-    <v-main class="bg-grey-lighten-5">
+    <v-main class="bg-background">
       <v-container v-if="checkingInstall" class="fill-height d-flex align-center justify-center">
         <v-card class="elevation-2" width="100%" max-width="450">
           <v-card-text class="text-center pa-12">

@@ -2,6 +2,9 @@
 import { ref, computed, onMounted, watch, defineAsyncComponent, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { useTheme } from '../composables/useTheme'
+
+const { isDark } = useTheme()
 
 const API_BASE = '/api'
 const router = useRouter()
@@ -218,7 +221,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
       </template>
     </v-navigation-drawer>
 
-    <v-app-bar color="primary" elevation="2">
+    <v-app-bar :color="isDark ? 'surface' : 'primary'" elevation="2">
       <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
       <v-app-bar-title class="text-white">管理后台</v-app-bar-title>
       <v-spacer />
@@ -228,7 +231,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
       </v-btn>
     </v-app-bar>
 
-    <v-main class="bg-grey-lighten-5">
+    <v-main class="bg-background">
       <v-container class="pa-6">
         <component :is="currentComponent" />
       </v-container>

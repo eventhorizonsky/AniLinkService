@@ -586,8 +586,8 @@ const closeSubtitleDialog = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f4f4f5;
-  color: #c3b7ab;
+  background: rgb(var(--v-theme-surface-variant));
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .anime-card-body {
   padding: 10px 12px 12px;
@@ -596,7 +596,7 @@ const closeSubtitleDialog = () => {
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.4;
-  color: #1f2937;
+  color: rgb(var(--v-theme-on-surface));
   margin-bottom: 6px;
   display: -webkit-box;
   -webkit-line-clamp: 2;

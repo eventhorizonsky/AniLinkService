@@ -173,7 +173,7 @@ const playEpisode = (ep) => {
 
 /* 正在播放的剧集样式 */
 .anime-episode-card.is-current {
-  background: linear-gradient(135deg, #fef3e8 0%, #ffebd0 100%);
+  background: linear-gradient(135deg, var(--al-bg-highlight-1) 0%, var(--al-bg-highlight-2) 100%);
   border: 2px solid var(--anime-accent-red);
   box-shadow: 0 4px 16px rgba(196, 93, 43, 0.2);
   position: relative;
@@ -183,7 +183,7 @@ const playEpisode = (ep) => {
 .anime-current-tag {
   display: inline-block;
   background: linear-gradient(135deg, var(--anime-accent-red) 0%, var(--anime-accent-orange) 100%);
-  color: white;
+  color: var(--al-text-on-accent);
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 0.85rem;
@@ -204,7 +204,7 @@ const playEpisode = (ep) => {
 /* 当前播放状态下的按钮样式 */
 .anime-episode-card.is-current .anime-watch-btn {
   background: linear-gradient(135deg, var(--anime-accent-red) 0%, var(--anime-accent-orange) 100%) !important;
-  color: white !important;
+  color: var(--al-text-on-accent) !important;
   box-shadow: 0 4px 12px rgba(196, 93, 43, 0.3) !important;
 }
 
@@ -214,8 +214,8 @@ const playEpisode = (ep) => {
 }
 
 .anime-watch-btn.disabled {
-  background: #d4d4d8;
-  color: #71717a;
+  background: var(--al-gray-chip);
+  color: var(--al-gray-chip-text);
   cursor: not-allowed;
   box-shadow: none;
 }

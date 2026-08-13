@@ -441,7 +441,7 @@ onMounted(fetchComments)
 }
 
 .bgm-ep-content .bgm-ep-mask {
-  background: #3c3129;
+  background: var(--al-text-brown-23);
   color: transparent;
   border-radius: 3px;
   padding: 0 4px;
@@ -454,8 +454,8 @@ onMounted(fetchComments)
 }
 
 .bgm-ep-content .bgm-ep-mask:hover {
-  background: #e8e2da;
-  color: #4a4039;
+  background: var(--al-bg-beige-12);
+  color: var(--al-text-brown-22);
 }
 
 .bgm-ep-content .bgm-ep-mask:hover img {
@@ -473,7 +473,7 @@ onMounted(fetchComments)
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #c45d2b;
+  background: var(--al-accent);
   animation: bgm-ep-bounce 1.2s ease-in-out infinite;
 }
 
@@ -487,7 +487,7 @@ onMounted(fetchComments)
 
 .bgm-ep-empty {
   text-align: center;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   padding: 32px 12px;
   font-size: 0.85rem;
   line-height: 1.6;
@@ -499,14 +499,14 @@ onMounted(fetchComments)
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px 10px;
-  border-bottom: 1px solid #efe7de;
+  border-bottom: 1px solid var(--al-bg-beige-6);
   margin-bottom: 4px;
 }
 
 .bgm-ep-link {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #c45d2b;
+  color: var(--al-accent);
   text-decoration: none;
 }
 
@@ -516,7 +516,7 @@ onMounted(fetchComments)
 
 .bgm-ep-num {
   font-size: 0.75rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -524,7 +524,7 @@ onMounted(fetchComments)
   display: flex;
   gap: 10px;
   padding: 12px 10px;
-  border-bottom: 1px solid #f0e8df;
+  border-bottom: 1px solid var(--al-bg-beige-5);
 }
 
 .bgm-ep-item:last-of-type {
@@ -541,7 +541,7 @@ onMounted(fetchComments)
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  background: #e8e2da;
+  background: var(--al-bg-beige-12);
 }
 
 .bgm-ep-body {
@@ -560,17 +560,17 @@ onMounted(fetchComments)
 .bgm-ep-name {
   font-weight: 600;
   font-size: 0.8rem;
-  color: #3c3129;
+  color: var(--al-text-brown-23);
   text-decoration: none;
 }
 
 .bgm-ep-name:hover {
-  color: #c45d2b;
+  color: var(--al-accent);
 }
 
 .bgm-ep-date {
   font-size: 0.7rem;
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
@@ -578,7 +578,7 @@ onMounted(fetchComments)
 .bgm-ep-content {
   margin: 0;
   font-size: 0.82rem;
-  color: #4a4039;
+  color: var(--al-text-brown-22);
   line-height: 1.55;
   word-break: break-word;
 }
@@ -593,21 +593,21 @@ onMounted(fetchComments)
   object-fit: contain;
   margin: 6px 0;
   border-radius: 8px;
-  background: #f0e8df;
+  background: var(--al-bg-beige-5);
   cursor: zoom-in;
 }
 
 .bgm-ep-content a {
-  color: #c45d2b;
+  color: var(--al-accent);
   word-break: break-all;
 }
 
 .bgm-ep-content .bgm-ep-quote {
   margin: 6px 0;
   padding: 6px 10px;
-  border-left: 3px solid #dccfc0;
-  background: #faf5ef;
-  color: #7a6c60;
+  border-left: 3px solid var(--al-border-soft-10);
+  background: var(--al-bg-comment);
+  color: var(--al-text-brown-14);
   font-size: 0.78rem;
 }
 
@@ -619,20 +619,20 @@ onMounted(fetchComments)
   padding: 2px 0;
   font-size: 0.72rem;
   font-weight: 500;
-  color: #b0876b;
+  color: var(--al-text-brown-24);
   cursor: pointer;
   text-decoration: none;
 }
 
 .bgm-ep-replies-toggle:hover {
-  color: #c45d2b;
+  color: var(--al-accent);
   text-decoration: underline;
 }
 
 .bgm-ep-replies {
   margin: 6px 0 2px;
   padding: 4px 0 2px 8px;
-  border-left: 2px solid #ece1d6;
+  border-left: 2px solid var(--al-border-soft-12);
 }
 
 .bgm-ep-reply {

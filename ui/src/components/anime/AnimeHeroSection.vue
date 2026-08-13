@@ -228,7 +228,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
   top: calc(100% + 8px);
   left: 0;
   z-index: 100;
-  background: #fff;
+  background: var(--al-bg);
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.08);
   padding: 10px 6px;
@@ -237,9 +237,9 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 
 .follow-status-title {
   font-size: 0.78rem;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   padding: 4px 12px 8px;
-  border-bottom: 1px solid #efe7de;
+  border-bottom: 1px solid var(--al-bg-beige-6);
   margin-bottom: 4px;
 }
 
@@ -261,7 +261,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   transition: background 0.15s, color 0.15s;
   text-align: left;
 }
@@ -271,8 +271,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 }
 
 .follow-status-cascade-item.active {
-  background: #fef9f5;
-  color: #c45d2b;
+  background: var(--al-bg-active-soft);
+  color: var(--al-accent);
   font-weight: 600;
 }
 
@@ -288,7 +288,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 }
 
 .cascade-check {
-  color: #c45d2b;
+  color: var(--al-accent);
   font-size: 1rem;
 }
 
@@ -302,16 +302,16 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
   background: none;
   padding: 9px 12px;
   margin-top: 4px;
-  border-top: 1px solid #efe7de;
+  border-top: 1px solid var(--al-bg-beige-6);
   border-radius: 0;
   cursor: pointer;
   font-size: 0.82rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   transition: color 0.15s;
 }
 
 .follow-status-unfollow:hover {
-  color: #ef5350;
+  color: var(--al-danger-coral);
 }
 
 /* 过渡动画 */

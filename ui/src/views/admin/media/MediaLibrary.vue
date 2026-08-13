@@ -424,7 +424,7 @@ onUnmounted(() => {
           <v-expand-transition>
             <div v-if="showProgress[library.id]">
               <v-divider />
-              <v-card variant="flat" class="ma-2 pa-4" color="grey-lighten-5">
+              <v-card variant="flat" class="ma-2 pa-4" color="surface">
                 <!-- 元数据扫描进度 -->
                 <div v-if="progressData[library.id] && progressData[library.id].metadata" class="mb-6">
                   <div class="d-flex justify-space-between align-center mb-2">

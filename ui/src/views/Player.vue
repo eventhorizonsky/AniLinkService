@@ -1940,12 +1940,12 @@ onBeforeUnmount(() => {
 .error-state {
   text-align: center;
   font-size: 1.1rem;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
   padding: 60px 20px;
 }
 
 .error-state {
-  color: #d32f2f;
+  color: var(--al-danger-strong);
 }
 
 /* Player page — 播放器撑满剩余高度，无滚动 */
@@ -1961,7 +1961,7 @@ onBeforeUnmount(() => {
 .player-layout {
   display: flex;
   flex-direction: column;
-  background: white;
+  background: var(--al-bg);
   border-radius: 32px;
   overflow: hidden;
   padding: 24px;
@@ -1995,7 +1995,7 @@ onBeforeUnmount(() => {
 /* Player Card */
 .player-card {
   position: relative;
-  background: #fff;
+  background: var(--al-bg);
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -2007,8 +2007,8 @@ onBeforeUnmount(() => {
   width: 360px;
   display: flex;
   flex-direction: column;
-  background: #fdfbf9;
-  border: 1px solid #e7ddd3;
+  background: var(--al-bg-offwhite);
+  border: 1px solid var(--al-border-soft-2);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -2019,7 +2019,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   align-items: flex-start;
   padding: 14px 16px 10px;
-  border-bottom: 1px solid #efe7de;
+  border-bottom: 1px solid var(--al-bg-beige-6);
 }
 
 .episode-panel-poster {
@@ -2028,7 +2028,7 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
-  background: #e8e2da;
+  background: var(--al-bg-beige-12);
 }
 
 .episode-panel-meta {
@@ -2039,7 +2039,7 @@ onBeforeUnmount(() => {
 .episode-panel-title {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #2e241e;
+  color: var(--al-text-strong);
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2048,7 +2048,7 @@ onBeforeUnmount(() => {
 
 .episode-panel-sub {
   font-size: 0.78rem;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2060,18 +2060,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 3px;
   font-size: 0.78rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   text-decoration: none;
   padding: 3px 8px;
-  border: 1px solid #e7ddd3;
+  border: 1px solid var(--al-border-soft-2);
   border-radius: 6px;
   flex-shrink: 0;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .episode-panel-back:hover {
-  color: #c45d2b;
-  border-color: #c45d2b;
+  color: var(--al-accent);
+  border-color: var(--al-accent);
 }
 
 /* Tab 切换 — 底部下划线 + 右侧计数 */
@@ -2080,7 +2080,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0;
   padding: 0 16px;
-  border-bottom: 1px solid #efe7de;
+  border-bottom: 1px solid var(--al-bg-beige-6);
 }
 
 .episode-panel-tab {
@@ -2088,7 +2088,7 @@ onBeforeUnmount(() => {
   background: none;
   padding: 8px 14px;
   font-size: 0.8rem;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -2096,19 +2096,19 @@ onBeforeUnmount(() => {
 }
 
 .episode-panel-tab:hover {
-  color: #5f5148;
+  color: var(--al-text-brown-21);
 }
 
 .episode-panel-tab.active {
-  color: #c45d2b;
-  border-bottom-color: #c45d2b;
+  color: var(--al-accent);
+  border-bottom-color: var(--al-accent);
   font-weight: 600;
 }
 
 .episode-panel-count {
   margin-left: auto;
   font-size: 0.72rem;
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
   padding-right: 4px;
 }
 
@@ -2141,7 +2141,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   text-align: left;
   font-size: 0.8rem;
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   transition: background 0.1s;
   flex-shrink: 0;
 }
@@ -2151,8 +2151,8 @@ onBeforeUnmount(() => {
 }
 
 .episode-panel-item.is-current {
-  background: #fff7f0;
-  color: #c45d2b;
+  background: var(--al-bg-hover-warm);
+  color: var(--al-accent);
   font-weight: 600;
   border-radius: 8px;
 }
@@ -2179,12 +2179,12 @@ onBeforeUnmount(() => {
 .episode-item-date {
   flex-shrink: 0;
   font-size: 0.72rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   font-variant-numeric: tabular-nums;
 }
 
 .episode-panel-item.is-current .episode-item-date {
-  color: #c45d2b;
+  color: var(--al-accent);
 }
 
 .player-switching-overlay {
@@ -2305,7 +2305,7 @@ onBeforeUnmount(() => {
 
 .resource-dialog {
   width: min(560px, 100%);
-  background: #ffffff;
+  background: var(--al-bg);
   border-radius: 16px;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
   padding: 20px;
@@ -2314,12 +2314,12 @@ onBeforeUnmount(() => {
 .resource-dialog-title {
   margin: 0;
   font-size: 1.2rem;
-  color: #2e241e;
+  color: var(--al-text-strong);
 }
 
 .resource-dialog-subtitle {
   margin: 8px 0 14px;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2333,8 +2333,8 @@ onBeforeUnmount(() => {
 }
 
 .resource-item {
-  border: 1px solid #e9e2dc;
-  background: #fffaf6;
+  border: 1px solid var(--al-border-soft);
+  background: var(--al-bg-watch);
   border-radius: 10px;
   padding: 12px 14px;
   text-align: left;
@@ -2347,26 +2347,26 @@ onBeforeUnmount(() => {
 }
 
 .resource-item:hover {
-  border-color: #c45d2b;
-  background: #fff1e8;
+  border-color: var(--al-accent);
+  background: var(--al-bg-active-warm);
 }
 
 .resource-name {
-  color: #2e241e;
+  color: var(--al-text-strong);
   font-weight: 600;
 }
 
 .resource-meta {
-  color: #8b7e74;
+  color: var(--al-text-muted);
   font-size: 0.85rem;
 }
 
 .resource-cancel-btn {
   margin-top: 14px;
   width: 100%;
-  border: 1px solid #dfd2c8;
-  background: #ffffff;
-  color: #5f5148;
+  border: 1px solid var(--al-border-soft-4);
+  background: var(--al-bg);
+  color: var(--al-text-brown-21);
   border-radius: 10px;
   height: 40px;
   cursor: pointer;
@@ -2374,7 +2374,7 @@ onBeforeUnmount(() => {
 }
 
 .resource-cancel-btn:hover {
-  background: #f9f4ef;
+  background: var(--al-bg-panel);
 }
 
 /* 平板/移动端控件约束：防止控件栏宽度溢出。

@@ -677,9 +677,9 @@ const sizeOptions = [20, 50, 100]
   overflow: auto;
   padding: 10px;
   margin: 0;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 8px;
-  background: #fafafa;
+  background: rgb(var(--v-theme-surface-variant));
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;

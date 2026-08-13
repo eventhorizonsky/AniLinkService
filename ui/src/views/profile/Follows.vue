@@ -403,8 +403,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 
 .filter-pills { display: flex; gap: 8px; flex-wrap: wrap; }
 .pill {
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid var(--al-border-input);
+  background: var(--al-bg);
   color: var(--anime-text-secondary);
   padding: 7px 16px;
   border-radius: 999px;
@@ -421,17 +421,17 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f9fafb;
-  border: 1.5px solid #e5e7eb;
+  background: var(--al-bg-soft);
+  border: 1.5px solid var(--al-border-input);
   border-radius: 999px;
   padding: 0 14px;
   min-width: 220px;
   transition: all 0.2s;
 }
-.search-box:focus-within { border-color: var(--anime-accent-red); background: #fff; box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12); }
-.search-box i { color: #9ca3af; }
+.search-box:focus-within { border-color: var(--anime-accent-red); background: var(--al-bg); box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12); }
+.search-box i { color: var(--al-text-placeholder); }
 .search-box input { flex: 1; border: none; outline: none; background: transparent; padding: 9px 0; font-size: 13px; font-family: inherit; color: var(--anime-text-main); }
-.search-box .clear-btn { border: none; background: none; color: #9ca3af; cursor: pointer; padding: 0; display: flex; }
+.search-box .clear-btn { border: none; background: none; color: var(--al-text-placeholder); cursor: pointer; padding: 0; display: flex; }
 .search-box .clear-btn:hover { color: var(--anime-accent-red); }
 
 .follow-card { overflow: visible; }
@@ -447,8 +447,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 .poster-ph {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  color: #c3b7ab; font-size: 2rem;
-  background: linear-gradient(135deg, #f4eee7, #e8e0d6);
+  color: var(--al-gray-muted); font-size: 2rem;
+  background: linear-gradient(135deg, var(--al-bg-beige), var(--al-bg-beige-13));
 }
 .unbound-tag {
   position: absolute; top: 12px; right: 12px;
@@ -467,8 +467,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #e53935;
-  color: #fff;
+  background: var(--al-danger-hot);
+  color: var(--al-text-on-accent);
   font-size: 12px;
   font-weight: 700;
   line-height: 20px;
@@ -485,7 +485,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   display: flex; align-items: center; justify-content: center;
   transition: background 0.2s;
 }
-.more-btn:hover:not(:disabled) { background: #f0f0f0; color: var(--anime-accent-red); }
+.more-btn:hover:not(:disabled) { background: var(--al-border-neutral); color: var(--anime-accent-red); }
 .more-btn:disabled { opacity: 0.5; }
 
 .menu-panel {
@@ -493,8 +493,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   top: calc(100% + 6px);
   right: 0;
   z-index: 60;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
   padding: 6px;
@@ -509,11 +509,11 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   font-size: 13px; cursor: pointer; transition: background 0.15s;
   text-align: left;
 }
-.menu-item:hover { background: #f8f8f8; }
+.menu-item:hover { background: var(--al-border-hover-2); }
 .menu-item.selected { font-weight: 700; }
 .menu-item .dot { width: 9px; height: 9px; border-radius: 50%; }
-.menu-item.danger { color: #dc2626; }
-.menu-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
+.menu-item.danger { color: var(--al-danger); }
+.menu-divider { height: 1px; background: var(--al-border-neutral); margin: 4px 0; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -531,7 +531,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .dialog {
-  background: #fff; border-radius: 16px;
+  background: var(--al-bg); border-radius: 16px;
   width: 90%; max-width: 460px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   overflow: hidden;
@@ -540,7 +540,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 .dialog-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid #f0f0f0;
+  padding: 16px 20px; border-bottom: 1px solid var(--al-border-neutral);
 }
 .dialog-head h3 { margin: 0; font-size: 16px; }
 .dialog-close { border: none; background: none; color: var(--anime-text-secondary); font-size: 20px; cursor: pointer; }
@@ -551,13 +551,13 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
 }
 .dialog-hint { margin: 0 0 14px; font-size: 13px; color: var(--anime-text-secondary); line-height: 1.6; }
 
 .bind-search { display: flex; gap: 8px; }
 .bind-search input {
-  flex: 1; border: 1.5px solid #e5e7eb; border-radius: 10px;
+  flex: 1; border: 1.5px solid var(--al-border-input); border-radius: 10px;
   padding: 9px 12px; font-size: 13px; outline: none; font-family: inherit;
 }
 .bind-search input:focus { border-color: var(--anime-accent-red); }
@@ -565,13 +565,13 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 .bind-results { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; max-height: 300px; overflow-y: auto; }
 .bind-result {
   display: flex; align-items: center; gap: 10px;
-  border: 1px solid #eceff3; border-radius: 12px;
-  padding: 8px; background: #fff; cursor: pointer;
+  border: 1px solid var(--al-border-panel); border-radius: 12px;
+  padding: 8px; background: var(--al-bg); cursor: pointer;
   transition: border-color 0.2s;
   text-align: left;
 }
 .bind-result:hover { border-color: var(--anime-accent-red); }
-.bind-result img { width: 42px; height: 56px; object-fit: cover; border-radius: 8px; background: #f0f0f0; }
+.bind-result img { width: 42px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--al-border-neutral); }
 .bind-result-title { font-size: 13px; font-weight: 600; color: var(--anime-text-main); }
 .bind-result-meta { font-size: 12px; color: var(--anime-text-secondary); margin-top: 2px; }
 .bind-empty { padding: 20px; text-align: center; color: var(--anime-text-secondary); font-size: 13px; }

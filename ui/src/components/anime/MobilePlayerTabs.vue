@@ -167,8 +167,8 @@ const activeTab = ref('info')
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #fdfbf9;
-  border: 1px solid #e7ddd3;
+  background: var(--al-bg-offwhite);
+  border: 1px solid var(--al-border-soft-2);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -179,8 +179,8 @@ const activeTab = ref('info')
   gap: 12px;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid #efe7de;
-  background: #fff;
+  border-bottom: 1px solid var(--al-bg-beige-6);
+  background: var(--al-bg);
 }
 
 .mpt-poster {
@@ -189,7 +189,7 @@ const activeTab = ref('info')
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
-  background: #e8e2da;
+  background: var(--al-bg-beige-12);
 }
 
 .mpt-head-meta {
@@ -200,7 +200,7 @@ const activeTab = ref('info')
 .mpt-title {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #2e241e;
+  color: var(--al-text-strong);
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -211,7 +211,7 @@ const activeTab = ref('info')
 
 .mpt-sub {
   font-size: 0.78rem;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -224,14 +224,14 @@ const activeTab = ref('info')
   gap: 12px;
   margin-top: 6px;
   font-size: 0.75rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
 }
 
 .mpt-score {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: #c45d2b;
+  color: var(--al-accent);
   font-weight: 600;
 }
 
@@ -248,25 +248,25 @@ const activeTab = ref('info')
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #e7ddd3;
+  border: 1px solid var(--al-border-soft-2);
   border-radius: 50%;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   font-size: 18px;
   text-decoration: none;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .mpt-detail:active {
-  color: #c45d2b;
-  border-color: #c45d2b;
+  color: var(--al-accent);
+  border-color: var(--al-accent);
 }
 
 /* ===== Tab 栏 ===== */
 .mpt-tabs {
   display: flex;
   padding: 0 12px;
-  border-bottom: 1px solid #efe7de;
-  background: #fff;
+  border-bottom: 1px solid var(--al-bg-beige-6);
+  background: var(--al-bg);
 }
 
 .mpt-tab {
@@ -275,7 +275,7 @@ const activeTab = ref('info')
   background: none;
   padding: 12px 0;
   font-size: 0.88rem;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -283,8 +283,8 @@ const activeTab = ref('info')
 }
 
 .mpt-tab.active {
-  color: #c45d2b;
-  border-bottom-color: #c45d2b;
+  color: var(--al-accent);
+  border-bottom-color: var(--al-accent);
   font-weight: 600;
 }
 
@@ -308,7 +308,7 @@ const activeTab = ref('info')
 .mpt-summary {
   margin: 0 0 12px;
   font-size: 0.85rem;
-  color: #4a4039;
+  color: var(--al-text-brown-22);
   line-height: 1.7;
   word-break: break-word;
 }
@@ -321,13 +321,13 @@ const activeTab = ref('info')
 }
 
 .mpt-meta-list dt {
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
   font-size: 0.78rem;
 }
 
 .mpt-meta-list dd {
   margin: 0;
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   font-size: 0.8rem;
 }
 
@@ -339,21 +339,21 @@ const activeTab = ref('info')
 
 .mpt-staff-item {
   font-size: 0.78rem;
-  color: #7a6c60;
+  color: var(--al-text-brown-14);
   line-height: 1.6;
 }
 
 .mpt-staff-item :deep(strong) {
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   margin-right: 6px;
 }
 
 .mpt-copyright {
   margin-top: 14px;
   padding-top: 10px;
-  border-top: 1px dashed #e7ddd3;
+  border-top: 1px dashed var(--al-border-soft-2);
   font-size: 0.72rem;
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
 }
 
 /* 选集 */
@@ -368,7 +368,7 @@ const activeTab = ref('info')
 .mpt-eps-group-title {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
   padding: 6px 10px 4px;
 }
 
@@ -384,7 +384,7 @@ const activeTab = ref('info')
   cursor: pointer;
   text-align: left;
   font-size: 0.82rem;
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   transition: background 0.1s;
 }
 
@@ -393,8 +393,8 @@ const activeTab = ref('info')
 }
 
 .mpt-ep-item.is-current {
-  background: #fff7f0;
-  color: #c45d2b;
+  background: var(--al-bg-hover-warm);
+  color: var(--al-accent);
   font-weight: 600;
 }
 
@@ -420,12 +420,12 @@ const activeTab = ref('info')
 .mpt-ep-date {
   flex-shrink: 0;
   font-size: 0.72rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   font-variant-numeric: tabular-nums;
 }
 
 .mpt-ep-item.is-current .mpt-ep-date {
-  color: #c45d2b;
+  color: var(--al-accent);
 }
 
 /* 吐槽 */
@@ -435,7 +435,7 @@ const activeTab = ref('info')
 
 .mpt-empty {
   text-align: center;
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
   padding: 32px 0;
   font-size: 0.82rem;
 }

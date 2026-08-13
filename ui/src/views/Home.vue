@@ -339,9 +339,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .home-root {
-  --accent: #c45d2b;
+  --accent: var(--al-accent);
   --accent-soft: rgba(196, 93, 43, 0.12);
-  --bg-beige: #f4eee7;
+  --bg-beige: var(--al-bg-beige);
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-full: 9999px;
@@ -366,7 +366,7 @@ onBeforeUnmount(() => {
   touch-action: pan-y;
 }
 .hero-skeleton {
-  background: linear-gradient(135deg, var(--bg-beige) 25%, #ede3d8 50%, var(--bg-beige) 75%);
+  background: linear-gradient(135deg, var(--bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--bg-beige) 75%);
   background-size: 200% 100%;
   animation: shim 1.4s ease-in-out infinite;
 }
@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
   aspect-ratio: 283 / 400;
   border-radius: 16px;
   overflow: hidden;
-  background: #e6e0d6;
+  background: var(--al-bg-poster);
   border: 2px solid rgba(255, 255, 255, 0.28);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.25);
   z-index: 2;
@@ -482,8 +482,8 @@ onBeforeUnmount(() => {
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #e53935;
-  color: #fff;
+  background: var(--al-danger-hot);
+  color: var(--al-text-on-accent);
   font-size: 12px;
   font-weight: 700;
   line-height: 20px;
@@ -511,7 +511,7 @@ onBeforeUnmount(() => {
   transition: var(--transition);
   padding: 0;
 }
-.hero-controls button.active { background: #fff; width: 28px; border-radius: 6px; }
+.hero-controls button.active { background: var(--al-bg); width: 28px; border-radius: 6px; }
 .hero-controls button:hover { background: rgba(255, 255, 255, 0.75); }
 
 /* 上一张 / 下一张 箭头 */

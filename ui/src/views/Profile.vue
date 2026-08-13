@@ -131,7 +131,7 @@ onMounted(fetchStats)
 
 .profile-skeleton { display: flex; flex-direction: column; gap: 18px; }
 .sk-user, .sk-stat {
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -142,8 +142,8 @@ onMounted(fetchStats)
 /* 用户卡片 */
 .user-card {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  background: linear-gradient(120deg, #fff 0%, #fdf7f2 60%, #faf0e8 100%);
-  border: 1px solid #eceff3; border-radius: 16px;
+  background: linear-gradient(120deg, var(--al-bg) 0%, var(--al-bg-gradient-1) 60%, var(--al-bg-gradient-2) 100%);
+  border: 1px solid var(--al-border-panel); border-radius: 16px;
   padding: 22px 26px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(0, 0, 0, 0.05);
 }
@@ -166,7 +166,7 @@ onMounted(fetchStats)
 }
 .bangumi-chip {
   font-size: 11px; font-weight: 600;
-  background: rgba(30, 123, 107, 0.1); color: #1e7b6b;
+  background: rgba(30, 123, 107, 0.1); color: var(--al-accent-teal);
   padding: 2px 10px; border-radius: 999px;
   display: inline-flex; align-items: center; gap: 4px;
 }
@@ -177,7 +177,7 @@ onMounted(fetchStats)
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
 .stat-card {
   display: flex; align-items: center; gap: 12px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 14px;
   padding: 16px; text-decoration: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
@@ -191,13 +191,13 @@ onMounted(fetchStats)
 .stat-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .stat-value { font-size: 1.3rem; font-weight: 700; color: var(--anime-text-main); line-height: 1.2; }
 .stat-label { font-size: 12px; color: var(--anime-text-secondary); }
-.stat-arrow { color: #d1d5db; }
+.stat-arrow { color: var(--al-gray-arrow); }
 
 /* 快捷入口 */
 .quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .quick-card {
   display: flex; align-items: center; gap: 14px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 14px;
   padding: 16px; text-decoration: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
@@ -213,7 +213,7 @@ onMounted(fetchStats)
 .quick-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .quick-label { font-size: 14px; font-weight: 600; color: var(--anime-text-main); }
 .quick-desc { font-size: 12px; color: var(--anime-text-secondary); margin-top: 2px; }
-.quick-arrow { color: #d1d5db; }
+.quick-arrow { color: var(--al-gray-arrow); }
 
 @media (max-width: 900px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }

@@ -368,7 +368,7 @@ onBeforeUnmount(() => {
 .discover-tabs {
   display: flex;
   gap: 6px;
-  background: #f4f4f5;
+  background: var(--al-border-extra);
   border-radius: 12px;
   padding: 4px;
   width: fit-content;
@@ -391,7 +391,7 @@ onBeforeUnmount(() => {
 }
 .discover-tab:hover { color: var(--anime-accent-red); }
 .discover-tab.active {
-  background: #fff;
+  background: var(--al-bg);
   color: var(--anime-accent-red);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
@@ -409,8 +409,8 @@ onBeforeUnmount(() => {
 /* ========================= TOOLBAR ========================= */
 .toolbar {
   flex-shrink: 0;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 14px;
   padding: 12px 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -424,12 +424,12 @@ onBeforeUnmount(() => {
 .toolbar-row + .toolbar-row {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed #f0f0f0;
+  border-top: 1px dashed var(--al-border-neutral);
 }
 .toolbar-meta {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
   font-size: 0.78rem;
   color: var(--anime-text-secondary);
 }
@@ -463,18 +463,18 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f9fafb;
-  border: 1.5px solid #e5e7eb;
+  background: var(--al-bg-soft);
+  border: 1.5px solid var(--al-border-input);
   border-radius: 999px;
   padding: 0 16px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .search-box:focus-within {
   border-color: var(--anime-accent-red);
-  background: #fff;
+  background: var(--al-bg);
   box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12);
 }
-.search-box i { color: #9ca3af; font-size: 1rem; flex-shrink: 0; }
+.search-box i { color: var(--al-text-placeholder); font-size: 1rem; flex-shrink: 0; }
 .search-box input {
   flex: 1;
   border: none;
@@ -485,8 +485,8 @@ onBeforeUnmount(() => {
   padding: 10px 0;
   font-family: inherit;
 }
-.search-box input::placeholder { color: #9ca3af; }
-.search-clear { border: none; background: none; color: #9ca3af; cursor: pointer; padding: 2px; font-size: 0.9rem; }
+.search-box input::placeholder { color: var(--al-text-placeholder); }
+.search-clear { border: none; background: none; color: var(--al-text-placeholder); cursor: pointer; padding: 2px; font-size: 0.9rem; }
 .search-clear:hover { color: var(--anime-accent-red); }
 
 .btn-search {
@@ -495,7 +495,7 @@ onBeforeUnmount(() => {
   gap: 5px;
   border: none;
   background: var(--anime-accent-red);
-  color: #fff;
+  color: var(--al-text-on-accent);
   font-weight: 600;
   padding: 0 22px;
   border-radius: 999px;
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
 }
-.btn-search:hover:not(:disabled) { background: #a65628; }
+.btn-search:hover:not(:disabled) { background: var(--al-accent-strong); }
 .btn-search:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ---- season selects ---- */
@@ -515,12 +515,12 @@ onBeforeUnmount(() => {
 .ss-field { display: flex; align-items: center; gap: 6px; }
 .ss-field label { font-size: 0.95rem; color: var(--anime-text-secondary); }
 .ss-field select {
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--al-border-input);
   border-radius: 10px;
   padding: 9px 32px 9px 12px;
   font-size: 0.9rem;
   color: var(--anime-text-main);
-  background: #fff;
+  background: var(--al-bg);
   cursor: pointer;
   outline: none;
   font-family: inherit;
@@ -544,9 +544,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c3b7ab;
+  color: var(--al-gray-muted);
   font-size: 2rem;
-  background: linear-gradient(135deg, #f4eee7, #e8e0d6);
+  background: linear-gradient(135deg, var(--al-bg-beige), var(--al-bg-beige-13));
 }
 
 .rc-hover {
@@ -577,8 +577,8 @@ onBeforeUnmount(() => {
   padding: 60px 20px;
   color: var(--anime-text-secondary);
   text-align: center;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 14px;
 }
 .empty-block.error { color: var(--anime-accent-red); }
@@ -591,7 +591,7 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 14px 0 4px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
 }
-.load-done { color: #b3b3b3; font-size: 0.74rem; }
+.load-done { color: var(--al-gray-faint); font-size: 0.74rem; }
 
 /* ========================= PAGER (database) ========================= */
 .pager {
@@ -604,7 +604,7 @@ onBeforeUnmount(() => {
 }
 .pager button {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border: 1px solid #e5e7eb; background: #fff;
+  width: 36px; height: 36px; border: 1px solid var(--al-border-input); background: var(--al-bg);
   border-radius: 10px; cursor: pointer; font-size: 1rem; color: var(--anime-text-main);
   transition: all 0.2s;
 }
@@ -616,7 +616,7 @@ onBeforeUnmount(() => {
 .sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
 .sk-card {
   aspect-ratio: 2 / 3; border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }

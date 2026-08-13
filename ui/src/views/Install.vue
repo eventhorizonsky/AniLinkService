@@ -133,7 +133,7 @@ const steps = [
 
 <template>
   <v-app>
-    <v-main class="bg-grey-lighten-5 install-main">
+    <v-main class="bg-background install-main">
       <v-container fluid class="fill-height d-flex justify-center install-container">
 
         <!-- 安装成功 -->
@@ -146,7 +146,7 @@ const steps = [
             <h2 class="text-h4 mt-4 mb-2">恭喜！安装完成</h2>
             <p class="text-body-1 text-grey mb-6">AniLinkService 已成功安装</p>
             <v-divider class="my-4" />
-            <div class="text-left bg-grey-lighten-4 rounded-lg pa-4">
+            <div class="text-left bg-surface rounded-lg pa-4">
               <p class="mb-2"><strong>站点名称：</strong>{{ form.siteName }}</p>
               <p><strong>管理员账号：</strong>{{ form.adminUsername }}</p>
             </div>

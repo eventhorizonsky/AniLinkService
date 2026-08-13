@@ -3,25 +3,40 @@
     <div class="anime-detail-layout">
       <div class="anime-left-column">
         <div class="anime-skeleton-card">
-          <v-skeleton-loader type="image, heading, paragraph@2" />
+          <div class="sk-img"></div>
+          <div class="sk-line" style="width: 72%"></div>
+          <div class="sk-line" style="width: 94%"></div>
+          <div class="sk-line" style="width: 60%"></div>
         </div>
 
         <div class="anime-skeleton-card">
-          <v-skeleton-loader type="heading, list-item-two-line@6" />
+          <div class="sk-line" style="width: 40%"></div>
+          <div class="sk-line" style="width: 92%"></div>
+          <div class="sk-line" style="width: 88%"></div>
+          <div class="sk-line" style="width: 90%"></div>
+          <div class="sk-line" style="width: 84%"></div>
+          <div class="sk-line" style="width: 86%"></div>
         </div>
 
         <div class="anime-skeleton-card">
-          <v-skeleton-loader type="heading, list-item-two-line@3" />
+          <div class="sk-line" style="width: 40%"></div>
+          <div class="sk-line" style="width: 92%"></div>
+          <div class="sk-line" style="width: 88%"></div>
         </div>
       </div>
 
       <div class="anime-sidebar">
         <div class="anime-skeleton-card">
-          <v-skeleton-loader type="heading, list-item@5" />
+          <div class="sk-line" style="width: 50%"></div>
+          <div class="sk-line" style="width: 90%"></div>
+          <div class="sk-line" style="width: 84%"></div>
+          <div class="sk-line" style="width: 88%"></div>
+          <div class="sk-line" style="width: 80%"></div>
         </div>
 
         <div class="anime-skeleton-card">
-          <v-skeleton-loader type="heading, image" />
+          <div class="sk-line" style="width: 40%"></div>
+          <div class="sk-img" style="height: 140px"></div>
         </div>
       </div>
     </div>
@@ -257,19 +272,6 @@
         <button class="resource-cancel-btn" @click="closeResourceDialog">取消</button>
       </div>
     </div>
-
-    <v-snackbar
-      v-model="snackbarShow"
-      :color="snackbarColor"
-      location="bottom right"
-      :timeout="3500"
-      rounded="pill"
-    >
-      {{ snackbarMsg }}
-      <template #actions>
-        <v-btn icon="mdi-close" size="small" variant="text" @click="snackbarShow = false" />
-      </template>
-    </v-snackbar>
   </div>
 </template>
 
@@ -333,15 +335,6 @@ const resumeLoading = ref(false);
 
 // bgmMode 下 animeId 来自 API 响应，否则来自路由参数
 const resolvedAnimeId = ref(null);
-
-const snackbarShow = ref(false);
-const snackbarMsg = ref('');
-const snackbarColor = ref('success');
-const showSnack = (msg, color = 'success') => {
-  snackbarMsg.value = msg;
-  snackbarColor.value = color;
-  snackbarShow.value = true;
-};
 
 // Fetch Data
 const fetchAnimeData = async () => {
@@ -783,14 +776,14 @@ const fetchBangumiCollection = async () => {
       return;
     }
 
-    showSnack(response.data?.msg || '读取 Bangumi 收藏状态失败', 'error');
+    showAppMessage(response.data?.msg || '读取 Bangumi 收藏状态失败', 'error');
   } catch (error) {
     if (error.response?.data?.code === 404) {
       bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
       bgmCollectionExists.value = false;
       return;
     }
-    showSnack(error.response?.data?.msg || '读取 Bangumi 收藏状态失败', 'error');
+    showAppMessage(error.response?.data?.msg || '读取 Bangumi 收藏状态失败', 'error');
   } finally {
     bgmCollectionLoading.value = false;
   }
@@ -810,15 +803,15 @@ const submitBangumiCollection = async () => {
     };
     const response = await axios.post(`/api/bangumi/subjects/${bangumiSubjectId.value}/collection`, payload);
     if (response.data?.code === 200) {
-      showSnack('已同步到 Bangumi', 'success');
+      showAppMessage('已同步到 Bangumi', 'success');
       bgmCollectionEditMode.value = false;
       bgmCollectionExists.value = true;
       await fetchBangumiCollection();
       return;
     }
-    showSnack(response.data?.msg || '提交 Bangumi 评分失败', 'error');
+    showAppMessage(response.data?.msg || '提交 Bangumi 评分失败', 'error');
   } catch (error) {
-    showSnack(error.response?.data?.msg || '提交 Bangumi 评分失败', 'error');
+    showAppMessage(error.response?.data?.msg || '提交 Bangumi 评分失败', 'error');
   } finally {
     bgmCollectionSaving.value = false;
   }
@@ -919,7 +912,7 @@ const playEpisode = (ep) => {
 .page-wrapper {
   max-width: 1200px;
   margin: 0 auto;
-  background: white;
+  background: var(--al-bg);
   border-radius: 32px;
   box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.2);
   padding: 32px;
@@ -930,12 +923,12 @@ const playEpisode = (ep) => {
 .error {
   text-align: center;
   font-size: 1.2rem;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
   padding: 60px;
 }
 
 .page {
-  background: white;
+  background: var(--al-bg);
   border-radius: 32px;
   overflow: hidden;
   padding: 32px;
@@ -946,11 +939,31 @@ const playEpisode = (ep) => {
 }
 
 .anime-skeleton-card {
-  background: #fff;
-  border: 1px solid #efe7de;
+  background: var(--al-bg);
+  border: 1px solid var(--al-bg-beige-6);
   border-radius: 16px;
   padding: 14px;
   margin-bottom: 16px;
+}
+
+.sk-img,
+.sk-line {
+  background: linear-gradient(90deg, var(--al-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--al-bg-beige) 75%);
+  background-size: 200% 100%;
+  animation: anime-sk-shim 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+.sk-img {
+  height: 200px;
+  margin-bottom: 12px;
+}
+.sk-line {
+  height: 15px;
+  margin: 10px 0;
+}
+@keyframes anime-sk-shim {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* Detail Layout */
@@ -982,7 +995,7 @@ const playEpisode = (ep) => {
 
 .resource-dialog {
   width: min(560px, 100%);
-  background: #ffffff;
+  background: var(--al-bg);
   border-radius: 16px;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
   padding: 20px;
@@ -991,12 +1004,12 @@ const playEpisode = (ep) => {
 .resource-dialog-title {
   margin: 0;
   font-size: 1.2rem;
-  color: #2e241e;
+  color: var(--al-text-strong);
 }
 
 .resource-dialog-subtitle {
   margin: 8px 0 14px;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
 }
 
 .resource-list {
@@ -1007,8 +1020,8 @@ const playEpisode = (ep) => {
 }
 
 .resource-item {
-  border: 1px solid #e9e2dc;
-  background: #fffaf6;
+  border: 1px solid var(--al-border-soft);
+  background: var(--al-bg-watch);
   border-radius: 10px;
   padding: 12px 14px;
   text-align: left;
@@ -1021,33 +1034,33 @@ const playEpisode = (ep) => {
 }
 
 .resource-item:hover {
-  border-color: #c45d2b;
-  background: #fff1e8;
+  border-color: var(--al-accent);
+  background: var(--al-bg-active-warm);
 }
 
 .resource-name {
-  color: #2e241e;
+  color: var(--al-text-strong);
   font-weight: 600;
 }
 
 .resource-meta {
-  color: #8b7e74;
+  color: var(--al-text-muted);
   font-size: 0.85rem;
 }
 
 .resource-cancel-btn {
   margin-top: 14px;
   width: 100%;
-  border: 1px solid #dfd2c8;
-  background: #ffffff;
-  color: #5f5148;
+  border: 1px solid var(--al-border-soft-4);
+  background: var(--al-bg);
+  color: var(--al-text-brown-21);
   border-radius: 10px;
   height: 40px;
   cursor: pointer;
 }
 
 .resource-cancel-btn:hover {
-  background: #f9f4ef;
+  background: var(--al-bg-panel);
 }
 
 /* Section Tabs */
@@ -1055,7 +1068,7 @@ const playEpisode = (ep) => {
   display: flex;
   gap: 4px;
   margin-bottom: 20px;
-  border-bottom: 2px solid #e5d8cc;
+  border-bottom: 2px solid var(--al-border);
   padding-bottom: 0;
 }
 
@@ -1065,7 +1078,7 @@ const playEpisode = (ep) => {
   padding: 8px 20px;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
@@ -1074,26 +1087,26 @@ const playEpisode = (ep) => {
 }
 
 .detail-section-tab:hover {
-  color: #c45d2b;
+  color: var(--al-accent);
 }
 
 .detail-section-tab.active {
-  color: #c45d2b;
-  border-bottom-color: #c45d2b;
+  color: var(--al-accent);
+  border-bottom-color: var(--al-accent);
   background: none;
 }
 
 .detail-comments-section {
-  background: #fff;
+  background: var(--al-bg);
   border-radius: 16px;
-  border: 1px solid #e5d8cc;
+  border: 1px solid var(--al-border);
   padding: 16px 20px;
 }
 
 .bangumi-collection-card,
 .bangumi-bind-hint-card {
-  background: #fffaf6;
-  border: 1px solid #ead8cb;
+  background: var(--al-bg-watch);
+  border: 1px solid var(--al-border-warm-2);
   border-radius: 18px;
   padding: 18px 20px;
   margin: 0 0 20px;
@@ -1114,21 +1127,21 @@ const playEpisode = (ep) => {
 
 .bangumi-collection-header h3 {
   margin: 0 0 6px;
-  color: #2e241e;
+  color: var(--al-text-strong);
   font-size: 1.02rem;
 }
 
 .bangumi-collection-header p,
 .bangumi-bind-hint-card {
   margin: 0;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
   font-size: 0.92rem;
   line-height: 1.6;
 }
 
 .bangumi-collection-header a,
 .bangumi-bind-hint-card a {
-  color: #c45d2b;
+  color: var(--al-accent);
   text-decoration: none;
 }
 
@@ -1149,19 +1162,19 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-edit-btn {
-  background: #fff;
-  color: #6b5f55;
-  border: 1px solid #dfd2c8;
+  background: var(--al-bg);
+  color: var(--al-text-secondary);
+  border: 1px solid var(--al-border-soft-4);
 }
 
 .bangumi-refresh-btn {
-  background: #f4ebe4;
-  color: #5f5148;
+  background: var(--al-bg-beige-2);
+  color: var(--al-text-brown-21);
 }
 
 .bangumi-save-btn {
-  background: #c45d2b;
-  color: #fff;
+  background: var(--al-accent);
+  color: var(--al-text-on-accent);
 }
 
 .bangumi-refresh-btn:disabled,
@@ -1172,7 +1185,7 @@ const playEpisode = (ep) => {
 
 .bangumi-collection-error {
   margin: 0 0 12px;
-  color: #c23b22;
+  color: var(--al-danger-coral-2);
   font-size: 0.9rem;
 }
 
@@ -1191,7 +1204,7 @@ const playEpisode = (ep) => {
 
 .bangumi-collection-form span,
 .bangumi-comment-field span {
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -1199,20 +1212,20 @@ const playEpisode = (ep) => {
 .bangumi-collection-form select,
 .bangumi-comment-field textarea {
   width: 100%;
-  border: 1px solid #d9c8bb;
+  border: 1px solid var(--al-border-soft-5);
   border-radius: 12px;
-  background: #fff;
+  background: var(--al-bg);
   padding: 10px 12px;
   font-size: 0.92rem;
-  color: #2e241e;
+  color: var(--al-text-strong);
 }
 
 .bangumi-static-field {
-  border: 1px solid #e2d5ca;
+  border: 1px solid var(--al-border-soft-3);
   border-radius: 12px;
-  background: #f9f4ef;
+  background: var(--al-bg-panel);
   padding: 10px 12px;
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   min-height: 42px;
   display: flex;
   align-items: center;
@@ -1220,12 +1233,12 @@ const playEpisode = (ep) => {
 
 .bangumi-comment-display {
   width: 100%;
-  border: 1px solid #e2d5ca;
+  border: 1px solid var(--al-border-soft-3);
   border-radius: 12px;
-  background: #f9f4ef;
+  background: var(--al-bg-panel);
   padding: 10px 12px;
   font-size: 0.92rem;
-  color: #5f5148;
+  color: var(--al-text-brown-21);
   line-height: 1.65;
   min-height: 100px;
   white-space: pre-wrap;
@@ -1236,7 +1249,7 @@ const playEpisode = (ep) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   font-size: 0.88rem;
   margin: 0 0 12px;
 }
@@ -1244,8 +1257,8 @@ const playEpisode = (ep) => {
 .bangumi-loading-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid #e2d5ca;
-  border-top-color: #c45d2b;
+  border: 2px solid var(--al-border-soft-3);
+  border-top-color: var(--al-accent);
   border-radius: 50%;
   animation: bangumi-spin 0.9s linear infinite;
 }
@@ -1256,9 +1269,9 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-stars-wrap {
-  border: 1px solid #e2d5ca;
+  border: 1px solid var(--al-border-soft-3);
   border-radius: 12px;
-  background: #f9f4ef;
+  background: var(--al-bg-panel);
   padding: 8px 10px;
   display: flex;
   align-items: center;
@@ -1267,13 +1280,13 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-stars-wrap.editable {
-  background: #fff;
+  background: var(--al-bg);
 }
 
 .bangumi-star-btn {
   border: none;
   background: transparent;
-  color: #d7c8b8;
+  color: var(--al-gray-text);
   font-size: 1rem;
   line-height: 1;
   padding: 0;
@@ -1281,7 +1294,7 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-star-btn.active {
-  color: #e8954a;
+  color: var(--al-star-3);
 }
 
 .bangumi-star-btn:disabled {
@@ -1290,7 +1303,7 @@ const playEpisode = (ep) => {
 
 .bangumi-rate-value {
   margin-left: 8px;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
   font-size: 0.88rem;
   font-weight: 600;
 }
@@ -1308,10 +1321,10 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-cancel-btn {
-  border: 1px solid #dfd2c8;
+  border: 1px solid var(--al-border-soft-4);
   border-radius: 12px;
-  background: #fff;
-  color: #5f5148;
+  background: var(--al-bg);
+  color: var(--al-text-brown-21);
   cursor: pointer;
   height: 40px;
   padding: 0 16px;
@@ -1327,14 +1340,14 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-not-collected-label {
-  color: #8b7e74;
+  color: var(--al-text-muted);
   font-size: 1rem;
 }
 
 .bangumi-start-btn {
-  border: 1.5px solid #c45d2b;
+  border: 1.5px solid var(--al-accent);
   background: none;
-  color: #c45d2b;
+  color: var(--al-accent);
   border-radius: 20px;
   padding: 7px 28px;
   font-size: 0.92rem;
@@ -1344,8 +1357,8 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-start-btn:hover {
-  background: #c45d2b;
-  color: #fff;
+  background: var(--al-accent);
+  color: var(--al-text-on-accent);
 }
 
 .bangumi-not-collected {
@@ -1357,14 +1370,14 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-not-collected-label {
-  color: #8b7e74;
+  color: var(--al-text-muted);
   font-size: 1rem;
 }
 
 .bangumi-start-btn {
-  border: 1.5px solid #c45d2b;
+  border: 1.5px solid var(--al-accent);
   background: none;
-  color: #c45d2b;
+  color: var(--al-accent);
   border-radius: 20px;
   padding: 7px 28px;
   font-size: 0.92rem;
@@ -1374,23 +1387,23 @@ const playEpisode = (ep) => {
 }
 
 .bangumi-start-btn:hover {
-  background: #c45d2b;
-  color: #fff;
+  background: var(--al-accent);
+  color: var(--al-text-on-accent);
 }
 
 .bangumi-inline-hint {
-  color: #8b7e74;
+  color: var(--al-text-muted);
   font-size: 0.86rem;
 }
 
 .comments-source-hint {
   margin: 0 0 12px;
   font-size: 0.88rem;
-  color: #8b7e74;
+  color: var(--al-text-muted);
 }
 
 .comments-source-hint a {
-  color: #c45d2b;
+  color: var(--al-accent);
   text-decoration: none;
 }
 

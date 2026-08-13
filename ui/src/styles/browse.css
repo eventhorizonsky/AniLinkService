@@ -2,433 +2,432 @@
    Browse 页面共享样式
    Home / Schedule 等浏览页共用的卡片网格、区块标题、星期标签、
    空态与骨架屏。使用 .br- 前缀避免与其他页面样式冲突。
-   颜色沿用 anime.css 的全局变量。
+   颜色统一引用 styles/theme.css 中的主题令牌。
    ============================================================ */
 
 /* ---- 区块标题 ---- */
-.br-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 26px 0 14px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.br-section-header h3 {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  color: var(--anime-text-main);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-}
-.br-section-header h3 i {
-  color: var(--anime-accent-red);
-  font-size: 17px;
-}
-.br-section-header .br-view-all {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--anime-text-secondary);
-  text-decoration: none;
-  transition: color 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-.br-section-header .br-view-all:hover {
-  color: var(--anime-accent-red);
-}
+  .br-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 26px 0 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .br-section-header h3 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--anime-text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+  }
+  .br-section-header h3 i {
+    color: var(--anime-accent-red);
+    font-size: 17px;
+  }
+  .br-section-header .br-view-all {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--anime-text-secondary);
+    text-decoration: none;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .br-section-header .br-view-all:hover {
+    color: var(--anime-accent-red);
+  }
 
-/* ---- 卡片网格 ---- */
-.br-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 18px;
-}
-.br-card {
-  display: block;
-  background: #fff;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  border: 1px solid var(--anime-border-light);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s, border-color 0.3s;
-  cursor: pointer;
-  position: relative;
-  text-decoration: none;
-  color: inherit;
-}
-.br-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
-  border-color: rgba(196, 93, 43, 0.2);
-}
-.br-card-image {
-  position: relative;
-  aspect-ratio: 2 / 3;
-  background: var(--anime-bg-beige);
-  overflow: hidden;
-}
-.br-card-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-  transition: transform 0.5s ease;
-  display: block;
-}
-.br-card:hover .br-card-image img {
-  transform: scale(1.04);
-}
+  /* ---- 卡片网格 ---- */
+  .br-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 18px;
+  }
+  .br-card {
+    display: block;
+    background: var(--al-bg);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--anime-border-light);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s, border-color 0.3s;
+    cursor: pointer;
+    position: relative;
+    text-decoration: none;
+    color: inherit;
+  }
+  .br-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
+    border-color: rgba(196, 93, 43, 0.2);
+  }
+  .br-card-image {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    background: var(--anime-bg-beige);
+    overflow: hidden;
+  }
+  .br-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    transition: transform 0.5s ease;
+    display: block;
+  }
+  .br-card:hover .br-card-image img {
+    transform: scale(1.04);
+  }
 
-.br-badge-new {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: var(--anime-accent-red);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 3px 12px;
-  border-radius: 999px;
-  letter-spacing: 0.4px;
-  box-shadow: 0 2px 12px rgba(196, 93, 43, 0.35);
-}
-.br-badge-new--sparkle {
-  background: #b3815b;
-}
-.br-badge-ep {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 12px;
-  border-radius: 999px;
-  letter-spacing: 0.3px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.br-badge-score {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  color: #fbbf24;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.br-badge-score i {
-  font-size: 10px;
-}
-.br-badge-dot {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #22c55e;
-  border: 2px solid #fff;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
-}
+  .br-badge-new {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: var(--anime-accent-red);
+    color: var(--al-text-on-accent);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 999px;
+    letter-spacing: 0.4px;
+    box-shadow: 0 2px 12px rgba(196, 93, 43, 0.35);
+  }
+  .br-badge-new--sparkle {
+    background: var(--al-accent-brown-dark);
+  }
+  .br-badge-ep {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 12px;
+    border-radius: 999px;
+    letter-spacing: 0.3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .br-badge-score {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    color: var(--al-star);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .br-badge-score i {
+    font-size: 10px;
+  }
+  .br-badge-dot {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--al-success-bright);
+    border: 2px solid #fff;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  }
 
-.br-card-body {
-  padding: 12px 14px 14px;
-}
-.br-card-body h4 {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--anime-text-main);
-  margin: 0 0 6px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  min-height: 2.8em;
-}
-.br-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--anime-text-secondary);
-}
-.br-card-meta .genre {
-  background: var(--anime-primary-light);
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-weight: 500;
-  color: var(--anime-text-secondary);
-  font-size: 10px;
-}
-.br-card-meta .genre-active {
-  background: rgba(196, 93, 43, 0.12);
-  color: var(--anime-accent-red);
-}
-.br-card-meta .genre-done {
-  background: rgba(34, 197, 94, 0.1);
-  color: #16a34a;
-}
-.br-card-meta .rating {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--anime-text-secondary);
-  font-weight: 600;
-}
-.br-card-meta .rating i {
-  color: #fbbf24;
-  font-size: 12px;
-}
+  .br-card-body {
+    padding: 12px 14px 14px;
+  }
+  .br-card-body h4 {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--anime-text-main);
+    margin: 0 0 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.8em;
+  }
+  .br-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--anime-text-secondary);
+  }
+  .br-card-meta .genre {
+    background: var(--anime-primary-light);
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-weight: 500;
+    color: var(--anime-text-secondary);
+    font-size: 10px;
+  }
+  .br-card-meta .genre-active {
+    background: rgba(196, 93, 43, 0.12);
+    color: var(--anime-accent-red);
+  }
+  .br-card-meta .genre-done {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--al-success);
+  }
+  .br-card-meta .rating {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--anime-text-secondary);
+    font-weight: 600;
+  }
+  .br-card-meta .rating i {
+    color: var(--al-star);
+    font-size: 12px;
+  }
 
-/* 追番横向滚动（滚轮横向 + 隐藏滚动条） */
-.br-follow-scroll {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px 2px 10px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  scroll-behavior: smooth;
-}
-.br-follow-scroll::-webkit-scrollbar {
-  display: none;
-}
-.br-follow-card {
-  flex: 0 0 150px;
-}
+  /* 追番横向滚动（滚轮横向 + 隐藏滚动条） */
+  .br-follow-scroll {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 2px 10px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-behavior: smooth;
+  }
+  .br-follow-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .br-follow-card {
+    flex: 0 0 150px;
+  }
 
-/* ---- 星期标签 ---- */
-.br-day-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-.br-day-tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  border: none;
-  background: var(--anime-bg-beige);
-  color: var(--anime-text-secondary);
-  padding: 6px 0;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 48px;
-  flex: 1;
-  font-family: inherit;
-}
-.br-day-tab:hover {
-  background: #ede3d8;
-  color: var(--anime-text-main);
-}
-.br-day-tab.active {
-  background: var(--anime-primary-dark);
-  color: #fff;
-}
-.br-day-tab.today:not(.active) .br-day-label {
-  color: var(--anime-accent-red);
-  font-weight: 700;
-}
-.br-day-label {
-  font-size: 13px;
-  font-weight: 600;
-}
-.br-day-badge {
-  font-size: 11px;
-  font-weight: 700;
-  opacity: 0.7;
-}
-.br-day-tab.active .br-day-badge {
-  opacity: 1;
-}
+  /* ---- 星期标签 ---- */
+  .br-day-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .br-day-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    border: none;
+    background: var(--anime-bg-beige);
+    color: var(--anime-text-secondary);
+    padding: 6px 0;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 48px;
+    flex: 1;
+    font-family: inherit;
+  }
+  .br-day-tab:hover {
+    background: var(--al-bg-beige-7);
+    color: var(--anime-text-main);
+  }
+  .br-day-tab.active {
+    background: var(--anime-primary-dark);
+    color: var(--al-text-on-accent);
+  }
+  .br-day-tab.today:not(.active) .br-day-label {
+    color: var(--anime-accent-red);
+    font-weight: 700;
+  }
+  .br-day-label {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .br-day-badge {
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.7;
+  }
+  .br-day-tab.active .br-day-badge {
+    opacity: 1;
+  }
 
-/* ---- 空态 / 骨架 ---- */
-.br-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 26px 14px;
-  color: var(--anime-text-secondary);
-  font-size: 13px;
-}
-.br-empty i {
-  font-size: 1.05rem;
-  opacity: 0.6;
-}
-.br-empty.error {
-  color: var(--anime-accent-red);
-}
-.br-link {
-  border: none;
-  background: transparent;
-  color: var(--anime-accent-red);
-  font-weight: 600;
-  cursor: pointer;
-  font-size: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.br-sk-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 18px;
-}
-.br-sk-card {
-  aspect-ratio: 2 / 3;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
-  background-size: 200% 100%;
-  animation: br-shim 1.4s ease-in-out infinite;
-}
-@keyframes br-shim {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
+  /* ---- 空态 / 骨架 ---- */
+  .br-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 26px 14px;
+    color: var(--anime-text-secondary);
+    font-size: 13px;
+  }
+  .br-empty i {
+    font-size: 1.05rem;
+    opacity: 0.6;
+  }
+  .br-empty.error {
+    color: var(--anime-accent-red);
+  }
+  .br-link {
+    border: none;
+    background: transparent;
+    color: var(--anime-accent-red);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .br-sk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 18px;
+  }
+  .br-sk-card {
+    aspect-ratio: 2 / 3;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
+    background-size: 200% 100%;
+    animation: br-shim 1.4s ease-in-out infinite;
+  }
+  @keyframes br-shim {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 
-/* ---- 通用页面头部 ---- */
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 6px 0 20px;
-  flex-wrap: wrap;
-}
-.page-head h2 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--anime-text-main);
-  margin: 0;
-}
-.page-head h2 i {
-  color: var(--anime-accent-red);
-  font-size: 20px;
-}
-.page-head .sub {
-  font-size: 13px;
-  color: var(--anime-text-secondary);
-  font-weight: 400;
-}
-.page-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+  /* ---- 通用页面头部 ---- */
+  .page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 6px 0 20px;
+    flex-wrap: wrap;
+  }
+  .page-head h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--anime-text-main);
+    margin: 0;
+  }
+  .page-head h2 i {
+    color: var(--anime-accent-red);
+    font-size: 20px;
+  }
+  .page-head .sub {
+    font-size: 13px;
+    color: var(--anime-text-secondary);
+    font-weight: 400;
+  }
+  .page-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
 
-/* ---- 通用按钮 ---- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: none;
-  border-radius: 10px;
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
-  white-space: nowrap;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn-primary {
-  background: var(--anime-accent-red);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
-}
-.btn-primary:hover:not(:disabled) {
-  background: #a65628;
-}
-.btn-ghost {
-  background: #fff;
-  color: var(--anime-text-secondary);
-  border: 1px solid #e5e7eb;
-}
-.btn-ghost:hover:not(:disabled) {
-  color: var(--anime-accent-red);
-  border-color: var(--anime-accent-red);
-}
-.btn-danger {
-  background: #fff;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-}
-.btn-danger:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #f87171;
-}
+  /* ---- 通用按钮 ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--anime-accent-red);
+    color: var(--al-text-on-accent);
+    box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--al-accent-strong);
+  }
+  .btn-ghost {
+    background: var(--al-bg);
+    color: var(--anime-text-secondary);
+    border: 1px solid var(--al-border-input);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--anime-accent-red);
+    border-color: var(--anime-accent-red);
+  }
+  .btn-danger {
+    background: var(--al-bg);
+    color: var(--al-danger);
+    border: 1px solid var(--al-border-danger);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: var(--al-danger-soft);
+    border-color: var(--al-border-danger-hover);
+  }
 
-/* ---- 分页 ---- */
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 22px;
-}
-.pager button {
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  color: #374151;
-  min-width: 36px;
-  height: 36px;
-  padding: 0 10px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-  font-family: inherit;
-}
-.pager button:hover:not(:disabled) {
-  border-color: var(--anime-accent-red);
-  color: var(--anime-accent-red);
-}
-.pager button.active {
-  background: var(--anime-accent-red);
-  border-color: var(--anime-accent-red);
-  color: #fff;
-}
-.pager button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.pager .info {
-  font-size: 13px;
-  color: var(--anime-text-secondary);
-  padding: 0 8px;
-}
-
+  /* ---- 分页 ---- */
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 22px;
+  }
+  .pager button {
+    border: 1px solid var(--al-border-input);
+    background: var(--al-bg);
+    color: var(--al-text-pager);
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .pager button:hover:not(:disabled) {
+    border-color: var(--anime-accent-red);
+    color: var(--anime-accent-red);
+  }
+  .pager button.active {
+    background: var(--anime-accent-red);
+    border-color: var(--anime-accent-red);
+    color: var(--al-text-on-accent);
+  }
+  .pager button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .pager .info {
+    font-size: 13px;
+    color: var(--anime-text-secondary);
+    padding: 0 8px;
+  }
 /* ---- 响应式 ---- */
 @media (max-width: 1200px) {
   .br-grid,

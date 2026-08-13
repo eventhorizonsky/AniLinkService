@@ -642,9 +642,9 @@ onMounted(async () => {
   max-height: 65vh;
   overflow: auto;
   padding: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 8px;
-  background: #fafafa;
+  background: rgb(var(--v-theme-surface-variant));
 }
 
 .fetched-content-box pre {

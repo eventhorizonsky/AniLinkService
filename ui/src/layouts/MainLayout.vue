@@ -80,6 +80,16 @@
         </div>
 
         <div class="topbar-actions">
+          <!-- 主题切换 -->
+          <button
+            class="theme-toggle"
+            :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
+            aria-label="切换主题"
+            @click="toggleTheme"
+          >
+            <i class="mdi" :class="isDark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"></i>
+          </button>
+
           <!-- 消息按钮和下拉 -->
           <div v-if="isLoggedIn" class="message-wrapper">
             <button @click="handleMessageBtnClick" class="message-btn" :title="`消息${unreadCount > 0 ? ' (' + unreadCount + ')' : ''}`">
@@ -288,9 +298,11 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
+import { useTheme } from '../composables/useTheme'
 
 const API_BASE = '/api'
 const DEFAULT_SITE_NAME = 'AniLink'
+const { isDark, toggleTheme } = useTheme()
 const router = useRouter()
 const route = useRoute()
 const searchQuery = ref('')
@@ -900,19 +912,6 @@ const goToAdmin = () => {
 </script>
 
 <style scoped>
-:root {
-  --primary-dark: #2e241e;
-  --primary-light: #f9f5f0;
-  --accent-brown: #b99a7e;
-  --accent-red: #c45d2b;
-  --accent-teal: #1e7b6b;
-  --text-main: #2e2a26;
-  --text-secondary: #6b5f55;
-  --bg-cream: #faf8f5;
-  --bg-beige: #f4eee7;
-  --border-light: #e5d8cc;
-}
-
 * {
   margin: 0;
   padding: 0;
@@ -936,7 +935,7 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--al-bg);
   position: relative;
 }
 
@@ -945,7 +944,7 @@ body {
   flex: 0 0 230px;
   width: 230px;
   height: 100%;
-  background: linear-gradient(180deg, rgba(255, 253, 251, 0.92) 0%, rgba(253, 248, 243, 0.9) 100%);
+  background: linear-gradient(180deg, var(--al-sidebar-bg-1) 0%, var(--al-sidebar-bg-2) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid rgba(196, 93, 43, 0.14);
@@ -963,7 +962,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 0 6px 28px 6px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--al-border-neutral);
   margin-bottom: 20px;
 }
 .sidebar-brand .brand-icon {
@@ -980,7 +979,7 @@ body {
 }
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   .brand-text h1 {
-    background: linear-gradient(135deg, var(--anime-accent-red), #e0a050);
+    background: linear-gradient(135deg, var(--anime-accent-red), var(--al-accent-gold));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -1006,7 +1005,7 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: #b3a494;
+  color: var(--al-text-faint);
   padding: 14px 12px 8px;
 }
 
@@ -1018,7 +1017,7 @@ body {
   border-radius: 14px;
   font-size: 14px;
   font-weight: 500;
-  color: #7a6e61;
+  color: var(--al-text-brown-13);
   text-decoration: none;
   transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
@@ -1027,11 +1026,11 @@ body {
   width: 20px;
   font-size: 16px;
   text-align: center;
-  color: #b3a494;
+  color: var(--al-text-faint);
   transition: 0.3s;
 }
 .sidebar-nav a.nav-link:hover {
-  background: #f6efe7;
+  background: var(--al-bg-beige-3);
   color: var(--anime-text-main);
 }
 .sidebar-nav a.nav-link:hover i {
@@ -1041,7 +1040,7 @@ body {
 /* ★ 选中项 — 棕色胶囊 */
 .sidebar-nav a.nav-link.nav-active {
   background: rgba(196, 93, 43, 0.13);
-  color: #8a3d12;
+  color: var(--al-accent-deep);
   font-weight: 600;
   border-radius: 14px;
   box-shadow: 0 2px 12px rgba(196, 93, 43, 0.15);
@@ -1123,30 +1122,30 @@ body {
   left: 18px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9ca3af;
+  color: var(--al-text-placeholder);
   font-size: 15px;
   pointer-events: none;
 }
 .search-wrap input {
   width: 100%;
   padding: 12px 18px 12px 48px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--al-border-input);
   border-radius: 999px;
   font-size: 14px;
   font-weight: 400;
-  background: #f9fafb;
-  color: #1f2937;
+  background: var(--al-bg-soft);
+  color: var(--al-text-input);
   transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   outline: none;
   font-family: inherit;
 }
 .search-wrap input::placeholder {
-  color: #9ca3af;
+  color: var(--al-text-placeholder);
   font-weight: 300;
 }
 .search-wrap input:focus {
   border-color: var(--anime-accent-red);
-  background: #fff;
+  background: var(--al-bg);
   box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.15);
 }
 .search-wrap .shortcut {
@@ -1156,8 +1155,8 @@ body {
   transform: translateY(-50%);
   font-size: 11px;
   font-weight: 500;
-  color: #9ca3af;
-  background: #f3f4f6;
+  color: var(--al-text-placeholder);
+  background: var(--al-border-subtle);
   padding: 2px 10px;
   border-radius: 8px;
   letter-spacing: 0.3px;
@@ -1170,15 +1169,16 @@ body {
   flex-shrink: 0;
 }
 
-/* 圆角图标按钮（消息 / 菜单） */
+/* 圆角图标按钮（消息 / 菜单 / 主题） */
 .message-btn,
-.menu-toggle {
+.menu-toggle,
+.theme-toggle {
   width: 42px;
   height: 42px;
   border: none;
   border-radius: 999px;
-  background: var(--anime-bg-cream);
-  color: var(--anime-text-secondary);
+  background: var(--al-bg-cream);
+  color: var(--al-text-secondary);
   font-size: 17px;
   cursor: pointer;
   transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1189,9 +1189,10 @@ body {
   border: 1px solid transparent;
 }
 .message-btn:hover,
-.menu-toggle:hover {
+.menu-toggle:hover,
+.theme-toggle:hover {
   background: rgba(196, 93, 43, 0.08);
-  color: var(--anime-accent-red);
+  color: var(--al-accent);
   border-color: rgba(196, 93, 43, 0.2);
 }
 .menu-toggle {
@@ -1234,7 +1235,7 @@ body {
   right: 9px;
   width: 8px;
   height: 8px;
-  background: #ef4444;
+  background: var(--al-danger-bright);
   border-radius: 50%;
   border: 2px solid #fff;
 }
@@ -1257,7 +1258,7 @@ body {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  background: white;
+  background: var(--al-bg);
   border-radius: 12px;
   border: 1px solid var(--anime-border-light);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
@@ -1282,8 +1283,8 @@ body {
 }
 
 .unread-count-badge {
-  background: #e74c3c;
-  color: white;
+  background: var(--al-danger-deep);
+  color: var(--al-text-on-accent);
   font-size: 0.75rem;
   font-weight: 700;
   padding: 2px 8px;
@@ -1300,7 +1301,7 @@ body {
 
 .mark-all-read-btn {
   border: 1px solid var(--anime-border-light);
-  background: #fff;
+  background: var(--al-bg);
   color: var(--anime-accent-red);
   border-radius: 999px;
   font-size: 0.75rem;
@@ -1342,7 +1343,7 @@ body {
 
 .message-item {
   padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--al-border-neutral);
   cursor: pointer;
   transition: background 0.2s ease;
   display: flex;
@@ -1374,7 +1375,7 @@ body {
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #e74c3c;
+  background: var(--al-danger-deep);
   border-radius: 50%;
 }
 
@@ -1430,7 +1431,7 @@ body {
 .message-dropdown-footer {
   padding: 12px 16px;
   border-top: 1px solid var(--anime-border-light);
-  background: #fff;
+  background: var(--al-bg);
 }
 
 .view-all-messages-btn {
@@ -1456,9 +1457,9 @@ body {
   position: absolute;
   top: 100%;
   right: 0;
-  background: #fff;
+  background: var(--al-bg);
   border-radius: 14px;
-  border: 1px solid #eceff3;
+  border: 1px solid var(--al-border-panel);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
   min-width: 190px;
   margin-top: 8px;
@@ -1481,7 +1482,7 @@ body {
 
 .dropdown-header {
   padding: 10px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--al-border-neutral);
   margin-bottom: 4px;
 }
 
@@ -1515,20 +1516,20 @@ body {
 }
 
 .dropdown-item.logout {
-  color: #dc2626;
+  color: var(--al-danger);
   margin-top: 2px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
   border-radius: 0;
   padding-top: 10px;
 }
 
 .dropdown-item.logout:hover {
-  background: #fef2f2;
+  background: var(--al-danger-soft);
 }
 
 .dropdown-divider {
   height: 1px;
-  background: #f0f0f0;
+  background: var(--al-border-neutral);
   margin: 4px 0;
 }
 
@@ -1554,14 +1555,14 @@ body {
 }
 
 .login-modal {
-  background: #fff;
+  background: var(--al-bg);
   border-radius: 18px;
   width: 90%;
   max-width: 400px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16);
   animation: slideUp 0.3s ease;
   overflow: hidden;
-  border: 1px solid #eceff3;
+  border: 1px solid var(--al-border-panel);
 }
 
 @keyframes slideUp {
@@ -1580,8 +1581,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 22px 24px 18px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fff;
+  border-bottom: 1px solid var(--al-border-neutral);
+  background: var(--al-bg);
 }
 
 .login-header h2 {
@@ -1609,7 +1610,7 @@ body {
 
 .close-btn:hover {
   color: var(--anime-accent-red);
-  background: #f6f6f6;
+  background: var(--al-border-hover);
   transform: rotate(90deg);
 }
 
@@ -1618,24 +1619,24 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #fff;
+  background: var(--al-bg);
 }
 
 .login-input {
   padding: 11px 14px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--al-border-input);
   border-radius: 10px;
   font-size: 0.95rem;
   color: var(--anime-text-main);
   font-family: inherit;
   transition: 0.2s;
-  background: #f9fafb;
+  background: var(--al-bg-soft);
 }
 
 .login-input:focus {
   outline: none;
   border-color: var(--anime-accent-red);
-  background: #fff;
+  background: var(--al-bg);
   box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12);
 }
 
@@ -1653,9 +1654,9 @@ body {
   width: 110px;
   height: 42px;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--al-border-input);
   cursor: pointer;
-  background: #fff;
+  background: var(--al-bg);
 }
 
 .send-code-btn {
@@ -1665,17 +1666,17 @@ body {
 
 .login-footer {
   padding: 16px 24px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
-  background: #fff;
+  background: var(--al-bg);
 }
 
 .btn-cancel {
   padding: 9px 20px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid var(--al-border-input);
+  background: var(--al-bg);
   color: var(--anime-text-secondary);
   border-radius: 10px;
   font-weight: 600;
@@ -1685,7 +1686,7 @@ body {
 }
 
 .btn-cancel:hover {
-  background: #f9fafb;
+  background: var(--al-bg-soft);
   color: var(--anime-text-main);
   border-color: var(--anime-accent-brown);
 }
@@ -1694,7 +1695,7 @@ body {
   padding: 10px 24px;
   border: none;
   background: var(--anime-accent-red);
-  color: white;
+  color: var(--al-text-on-accent);
   border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
@@ -1704,7 +1705,7 @@ body {
 }
 
 .btn-login:hover:not(:disabled) {
-  background: #a65628;
+  background: var(--al-accent-strong);
   transform: translateY(-2px);
   box-shadow: 0 4px 16px rgba(196, 93, 43, 0.4);
 }
@@ -1776,6 +1777,7 @@ body {
   }
   .message-btn,
   .menu-toggle,
+  .theme-toggle,
   .avatar {
     width: 36px;
     height: 36px;

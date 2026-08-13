@@ -180,7 +180,7 @@ onMounted(fetchData)
 
 .sk-row {
   height: 96px; border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -189,7 +189,7 @@ onMounted(fetchData)
 
 .filter-pills { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
 .pill {
-  border: 1px solid #e5e7eb; background: #fff;
+  border: 1px solid var(--al-border-input); background: var(--al-bg);
   color: var(--anime-text-secondary);
   padding: 7px 16px; border-radius: 999px;
   font-size: 13px; font-weight: 500; cursor: pointer;
@@ -208,7 +208,7 @@ onMounted(fetchData)
 .message-list { display: flex; flex-direction: column; gap: 10px; }
 .message-card {
   display: flex; align-items: flex-start; gap: 12px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 14px;
   padding: 14px 16px; cursor: pointer; position: relative;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.25s, border-color 0.25s;
@@ -217,23 +217,23 @@ onMounted(fetchData)
 .message-card.unread { background: rgba(196, 93, 43, 0.04); border-color: rgba(196, 93, 43, 0.15); }
 
 .msg-indicator { flex-shrink: 0; padding-top: 5px; }
-.unread-dot { display: inline-block; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
+.unread-dot { display: inline-block; width: 8px; height: 8px; background: var(--al-danger-bright); border-radius: 50%; }
 
 .msg-main { flex: 1; min-width: 0; }
 .msg-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
 .msg-title { font-size: 0.95rem; font-weight: 600; color: var(--anime-text-main); }
 .msg-type { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
 .type-update { background: rgba(196, 93, 43, 0.12); color: var(--anime-accent-red); }
-.type-system { background: #f0f0f0; color: var(--anime-text-secondary); }
+.type-system { background: var(--al-border-neutral); color: var(--anime-text-secondary); }
 .msg-content { margin: 0 0 6px; font-size: 0.88rem; color: var(--anime-text-secondary); line-height: 1.55; }
 .msg-time { font-size: 12px; color: var(--anime-text-secondary); opacity: 0.75; display: inline-flex; align-items: center; gap: 4px; }
 
 .msg-delete {
   flex-shrink: 0; border: none; background: none;
-  color: #b3b3b3; font-size: 18px; cursor: pointer;
+  color: var(--al-gray-faint); font-size: 18px; cursor: pointer;
   padding: 4px; border-radius: 8px; transition: all 0.2s;
   opacity: 0;
 }
 .message-card:hover .msg-delete { opacity: 1; }
-.msg-delete:hover { color: #dc2626; background: #fef2f2; }
+.msg-delete:hover { color: var(--al-danger); background: var(--al-danger-soft); }
 </style>

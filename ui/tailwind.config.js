@@ -4,6 +4,11 @@ export default {
     "./index.html",
     "./src/**/*.{vue,js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
+  corePlugins: {
+    // 前台保留自有 reset，避免 Tailwind preflight 改变既有外观
+    preflight: false,
+  },
   theme: {
     extend: {
       colors: {
@@ -18,8 +23,8 @@ export default {
           700: '#0369a1',
           800: '#075985',
           900: '#0c4a6e',
-        }
-      }
+        },
+      },
     },
   },
   plugins: [],

@@ -153,7 +153,7 @@ onMounted(fetchData)
 
 .sk-row {
   height: 96px; border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -171,8 +171,8 @@ onMounted(fetchData)
   display: flex;
   align-items: stretch;
   gap: 14px;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 16px;
   padding: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -270,7 +270,7 @@ onMounted(fetchData)
 .dm-anime { font-weight: 600; color: var(--anime-text-main); cursor: pointer; transition: color 0.2s; }
 .dm-anime:hover { color: var(--anime-accent-red); }
 .dm-ep { opacity: 0.85; }
-.dm-mode { background: #f0f0f0; color: var(--anime-text-secondary); padding: 1px 8px; border-radius: 999px; font-size: 11px; }
+.dm-mode { background: var(--al-border-neutral); color: var(--anime-text-secondary); padding: 1px 8px; border-radius: 999px; font-size: 11px; }
 .dm-time {
   margin-top: auto;
   padding-top: 8px;

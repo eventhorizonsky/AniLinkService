@@ -151,22 +151,22 @@ onMounted(fetchStatus)
 
 .bind-skeleton {
   height: 240px; border-radius: 16px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
 
 .bind-card {
-  background: #fff; border: 1px solid #eceff3; border-radius: 16px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(0, 0, 0, 0.05);
   overflow: hidden; max-width: 640px;
 }
 .bind-card-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 18px 22px; border-bottom: 1px solid #f0f0f0; flex-wrap: wrap;
+  padding: 18px 22px; border-bottom: 1px solid var(--al-border-neutral); flex-wrap: wrap;
 }
 .provider { display: flex; align-items: center; gap: 12px; }
-.provider-logo { width: 40px; height: 40px; border-radius: 10px; background: #f0f0f0; object-fit: contain; padding: 4px; }
+.provider-logo { width: 40px; height: 40px; border-radius: 10px; background: var(--al-border-neutral); object-fit: contain; padding: 4px; }
 .provider h3 { margin: 0; font-size: 16px; color: var(--anime-text-main); }
 .provider-desc { font-size: 12px; color: var(--anime-text-secondary); }
 
@@ -178,7 +178,7 @@ onMounted(fetchStatus)
 
 .bind-card-body { padding: 22px; }
 .bound-info { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.bgm-avatar { width: 72px; height: 72px; border-radius: 16px; object-fit: cover; background: #f0f0f0; border: 1px solid #eceff3; }
+.bgm-avatar { width: 72px; height: 72px; border-radius: 16px; object-fit: cover; background: var(--al-border-neutral); border: 1px solid var(--al-border-panel); }
 .bgm-info { flex: 1; min-width: 200px; }
 .bgm-nickname { font-size: 1.1rem; font-weight: 700; color: var(--anime-text-main); }
 .bgm-username { font-size: 13px; color: var(--anime-text-secondary); margin-top: 2px; }
@@ -189,7 +189,7 @@ onMounted(fetchStatus)
 .unbound-tip { margin: 0 0 16px; font-size: 13px; color: var(--anime-text-secondary); line-height: 1.6; }
 .token-row { display: flex; gap: 10px; }
 .token-row input {
-  flex: 1; border: 1.5px solid #e5e7eb; border-radius: 10px;
+  flex: 1; border: 1.5px solid var(--al-border-input); border-radius: 10px;
   padding: 10px 14px; font-size: 13px; outline: none; font-family: inherit;
 }
 .token-row input:focus { border-color: var(--anime-accent-red); box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12); }
