@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
-import { API_BASE } from '../../../utils/constants'
+import { getMetadataProgress, getMatchProgress } from '../../../api/media'
 
 const metadataProgress = ref(null)
 const matchProgress = ref(null)
@@ -17,9 +16,9 @@ const getMatchProcessedCount = () => {
 // 获取全局元数据进度
 const fetchMetadataProgress = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/media-files/queue/metadata-progress`)
-    if (res.data?.code === 200) {
-      metadataProgress.value = res.data.data
+    const res = await getMetadataProgress()
+    if (res?.code === 200) {
+      metadataProgress.value = res.data
       lastUpdate.value = new Date()
     }
   } catch (error) {
@@ -30,9 +29,9 @@ const fetchMetadataProgress = async () => {
 // 获取全局弹幕匹配进度
 const fetchMatchProgress = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/media-files/queue/match-progress`)
-    if (res.data?.code === 200) {
-      matchProgress.value = res.data.data
+    const res = await getMatchProgress()
+    if (res?.code === 200) {
+      matchProgress.value = res.data
     }
   } catch (error) {
     console.error('获取匹配进度失败:', error)

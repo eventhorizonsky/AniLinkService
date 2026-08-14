@@ -296,13 +296,14 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
 import { useIsMobile } from '../composables/useIsMobile'
 import { formatRelativeTime } from '../utils/format'
-import { API_BASE, DEFAULT_SITE_NAME, hasRoleLevel, isSuperAdmin } from '../utils/constants'
+import { DEFAULT_SITE_NAME, hasRoleLevel, isSuperAdmin } from '../utils/constants'
+import { login, register, getCaptcha, sendRegisterEmailCode, getCurrentUser } from '../api/auth'
+import { getUnreadCount, getMessages, markMessageRead, markAllMessagesRead } from '../api/messages'
 
 const { isDark, toggleTheme } = useTheme()
 const { token, userInfo, isLoggedIn, setToken, setUserInfo, clearAuth } = useAuth()
@@ -374,10 +375,10 @@ const fetchUnreadCount = async () => {
   }
 
   try {
-    const res = await axios.get(`${API_BASE}/messages/unread-count`)
+    const res = await getUnreadCount()
     // 后端 success 统一返回 code=200，兼容历史 code=0 的情况
-    if (res.data?.code === 200 || res.data?.code === 0) {
-      unreadCount.value = Number(res.data.data?.unreadCount || 0)
+    if (res?.code === 200 || res?.code === 0) {
+      unreadCount.value = Number(res.data?.unreadCount || 0)
       return
     }
     unreadCount.value = 0
@@ -396,14 +397,12 @@ const fetchRecentMessages = async () => {
 
   loadingMessages.value = true
   try {
-    const res = await axios.get(`${API_BASE}/messages`, {
-      params: {
-        page: 1,
-        pageSize: 5
-      }
+    const res = await getMessages({
+      page: 1,
+      pageSize: 5
     })
-    if (res.data?.code === 200) {
-      recentMessages.value = res.data.data.content || []
+    if (res?.code === 200) {
+      recentMessages.value = res.data.content || []
     }
   } catch (error) {
     console.error('获取最近消息失败:', error)
@@ -419,14 +418,14 @@ const handleMarkAllAsRead = async () => {
 
   markingAllRead.value = true
   try {
-    const res = await axios.put(`${API_BASE}/messages/mark-all-read`)
-    if (res.data?.code === 200 || res.data?.code === 0) {
+    const res = await markAllMessagesRead()
+    if (res?.code === 200 || res?.code === 0) {
       await fetchUnreadCount()
       await fetchRecentMessages()
       showAppMessage('已全部标记为已读', 'success')
       return
     }
-    showAppMessage(res.data?.msg || '一键已读失败', 'error')
+    showAppMessage(res?.msg || '一键已读失败', 'error')
   } catch (error) {
     console.error('全部标记已读失败:', error)
     showAppMessage('一键已读失败，请稍后重试', 'error')
@@ -442,7 +441,7 @@ const handleMessageClick = async (message) => {
   // 标记为已读
   if (!message.isRead) {
     try {
-      await axios.put(`${API_BASE}/messages/${message.id}/read`)
+      await markMessageRead(message.id)
       await fetchUnreadCount()
       await fetchRecentMessages()
     } catch (error) {
@@ -510,9 +509,9 @@ const stopUnreadCountPolling = () => {
 // 获取当前用户信息
 const fetchUserInfo = async () => {
   try {
-    const res = await axios.post(`${API_BASE}/auth/currentUser`)
-    if (res.data?.code === 200 && res.data?.data) {
-      const userData = res.data.data
+    const res = await getCurrentUser()
+    if (res?.code === 200 && res?.data) {
+      const userData = res.data
       setUserInfo(userData)
       startUnreadCountPolling()
     }
@@ -683,20 +682,20 @@ const handleLogin = async () => {
 
   loginLoading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/auth/login`, {
+    const res = await login({
       account: loginForm.value.account,
       password: loginForm.value.password
     })
 
-    if (res.data?.code === 200 && res.data?.data) {
-      const { tokenValue } = res.data.data
+    if (res?.code === 200 && res?.data) {
+      const { tokenValue } = res.data
       setToken(tokenValue)
       showLoginDialog.value = false
       loginForm.value = { account: '', password: '' }
       fetchUserInfo()
       return
     } else {
-      showAppMessage(res.data?.msg || '登录失败', 'error')
+      showAppMessage(res?.msg || '登录失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '登录失败，请重试', 'error')
@@ -707,10 +706,10 @@ const handleLogin = async () => {
 
 const refreshCaptcha = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/auth/captcha`)
-    if (res.data?.code === 200 && res.data?.data) {
-      captchaId.value = res.data.data.captchaId
-      captchaImage.value = res.data.data.imageBase64
+    const res = await getCaptcha()
+    if (res?.code === 200 && res?.data) {
+      captchaId.value = res.data.captchaId
+      captchaImage.value = res.data.imageBase64
       registerForm.value.captchaCode = ''
     }
   } catch (error) {
@@ -767,17 +766,17 @@ const sendEmailCode = async () => {
 
   sendCodeLoading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/auth/send-register-email-code`, {
+    const res = await sendRegisterEmailCode({
       email: registerForm.value.email,
       captchaId: captchaId.value,
       captchaCode: registerForm.value.captchaCode
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('验证码已发送，请检查邮箱', 'success')
       startSendCodeCountdown(60)
     } else {
-      showAppMessage(res.data?.msg || '发送失败', 'error')
+      showAppMessage(res?.msg || '发送失败', 'error')
       await refreshCaptcha()
     }
   } catch (error) {
@@ -804,14 +803,14 @@ const handleRegister = async () => {
 
   registerLoading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/auth/register`, {
+    const res = await register({
       username: registerForm.value.username,
       email: registerForm.value.email,
       password: registerForm.value.password,
       emailCode: registerForm.value.emailCode
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('注册成功，请登录', 'success')
       registerForm.value = {
         username: '',
@@ -825,7 +824,7 @@ const handleRegister = async () => {
       userMenuOpen.value = false
       showLoginDialog.value = true
     } else {
-      showAppMessage(res.data?.msg || '注册失败', 'error')
+      showAppMessage(res?.msg || '注册失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '注册失败，请稍后重试', 'error')

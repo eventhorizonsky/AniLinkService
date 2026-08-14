@@ -1,12 +1,11 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { formatAnimeType } from '../../../utils/animeType'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
-import { API_BASE } from '../../../utils/constants'
 import { formatDuration, formatFileSize } from '../../../utils/format'
 import { getMatchStatusMeta } from '../../../utils/mediaMatchStatus'
+import { getAnimeList, getAnimeEpisodes } from '../../../api/anime'
 
 const animes = ref([])
 const loading = ref(false)
@@ -59,10 +58,10 @@ const fetchAnimes = async (pageNum = 1) => {
       params.keyword = search.value.trim()
     }
     
-    const res = await axios.get(`${API_BASE}/animes`, { params })
-    if (res.data?.code === 200 && res.data.data) {
-      animes.value = res.data.data.content || []
-      pagination.value.totalItems = res.data.data.totalElements || 0
+    const res = await getAnimeList(params)
+    if (res?.code === 200 && res.data) {
+      animes.value = res.data.content || []
+      pagination.value.totalItems = res.data.totalElements || 0
       pagination.value.page = pageNum
     }
   } catch (error) {
@@ -80,9 +79,9 @@ const fetchEpisodes = async (animeId, page = episodesPagination.value.page) => {
       page,
       pageSize: episodesPagination.value.itemsPerPage
     }
-    const res = await axios.get(`${API_BASE}/animes/${animeId}/episodes`, { params })
-    if (res.data?.code === 200 && res.data.data) {
-      const data = res.data.data
+    const res = await getAnimeEpisodes(animeId, params)
+    if (res?.code === 200 && res.data) {
+      const data = res.data
       episodes.value = (data.content || []).map(ep => ({
         ...ep,
         resolution: ep.width && ep.height ? `${ep.width}x${ep.height}` : '未知',

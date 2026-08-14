@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
+import { getMcpConfig, regenerateMcpConfig } from '../../api/system'
 
 const loading = ref(false)
 const regenerating = ref(false)
@@ -13,11 +12,11 @@ const confirmRegen = ref(false)
 const fetchConfig = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/mcp/config`)
-    if (res.data?.code === 200 && res.data?.data) {
-      config.value = res.data.data
+    const res = await getMcpConfig()
+    if (res?.code === 200 && res?.data) {
+      config.value = res.data
     } else {
-      showAppMessage(res.data?.msg || '加载失败')
+      showAppMessage(res?.msg || '加载失败')
     }
   } catch (e) {
     console.error(e)
@@ -41,12 +40,12 @@ const doRegenerate = async () => {
   confirmRegen.value = false
   regenerating.value = true
   try {
-    const res = await axios.post(`${API_BASE}/mcp/config/regenerate`)
-    if (res.data?.code === 200 && res.data?.data) {
-      config.value = res.data.data
-      showAppMessage(res.data?.msg || '已重置 API Key')
+    const res = await regenerateMcpConfig()
+    if (res?.code === 200 && res?.data) {
+      config.value = res.data
+      showAppMessage(res?.msg || '已重置 API Key')
     } else {
-      showAppMessage(res.data?.msg || '重置失败')
+      showAppMessage(res?.msg || '重置失败')
     }
   } catch (e) {
     showAppMessage(e.response?.data?.msg || '重置失败')

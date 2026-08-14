@@ -1,9 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
-import { API_BASE } from '../../../utils/constants'
 import { formatFileSize } from '../../../utils/format'
+import { getSubtitleList, setSubtitleOffset, deleteSubtitle, getSubtitleDownloadUrl } from '../../../api/subtitle'
 
 const subtitles = ref([])
 const loading = ref(false)
@@ -43,11 +42,11 @@ const fetchSubtitles = async (pageNum = pagination.value.page) => {
       params.sourceType = sourceType.value
     }
 
-    const res = await axios.get(`${API_BASE}/subtitles`, { params })
-    if (res.data?.code === 200 && res.data?.data) {
-      subtitles.value = res.data.data.content || []
-      pagination.value.page = (res.data.data.currentPage || 0) + 1
-      pagination.value.totalItems = res.data.data.totalElements || 0
+    const res = await getSubtitleList(params)
+    if (res?.code === 200 && res?.data) {
+      subtitles.value = res.data.content || []
+      pagination.value.page = (res.data.currentPage || 0) + 1
+      pagination.value.totalItems = res.data.totalElements || 0
     }
   } catch (error) {
     showAppMessage('获取字幕列表失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -82,7 +81,7 @@ const onTableOptionsChange = (options) => {
 }
 
 const handleDownload = (subtitle) => {
-  window.open(`${API_BASE}/subtitles/${subtitle.id}/download`, '_blank')
+  window.open(getSubtitleDownloadUrl(subtitle.id), '_blank')
 }
 
 const openOffsetDialog = (subtitle) => {
@@ -96,15 +95,13 @@ const submitOffset = async () => {
     return
   }
   try {
-    const res = await axios.put(`${API_BASE}/subtitles/${selectedSubtitle.value.id}/offset`, null, {
-      params: { offset: offsetValue.value }
-    })
-    if (res.data?.code === 200) {
+    const res = await setSubtitleOffset(selectedSubtitle.value.id, offsetValue.value)
+    if (res?.code === 200) {
       showAppMessage('偏移量更新成功', 'success')
       offsetDialog.value = false
       await fetchSubtitles(pagination.value.page)
     } else {
-      showAppMessage(res.data?.msg || '偏移量更新失败', 'error')
+      showAppMessage(res?.msg || '偏移量更新失败', 'error')
     }
   } catch (error) {
     showAppMessage('偏移量更新失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -122,12 +119,12 @@ const handleDelete = async (subtitle) => {
   }
 
   try {
-    const res = await axios.delete(`${API_BASE}/subtitles/${subtitle.id}`)
-    if (res.data?.code === 200) {
+    const res = await deleteSubtitle(subtitle.id)
+    if (res?.code === 200) {
       showAppMessage('删除成功', 'success')
       await fetchSubtitles(pagination.value.page)
     } else {
-      showAppMessage(res.data?.msg || '删除失败', 'error')
+      showAppMessage(res?.msg || '删除失败', 'error')
     }
   } catch (error) {
     showAppMessage('删除失败: ' + (error.response?.data?.msg || error.message), 'error')

@@ -132,7 +132,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { bangumiSmilePath } from '../../utils/bangumi-smiles.js'
-import { API_BASE } from '../../utils/constants'
+import { getEpisodeComments } from '../../api/anime'
 
 const props = defineProps({
   animeId: {
@@ -200,13 +200,7 @@ const fetchComments = async () => {
 
   loading.value = true
   try {
-    const res = await fetch(
-      `${API_BASE}/bangumi/episodes/comments?animeId=${encodeURIComponent(props.animeId)}&episodeNumber=${encodeURIComponent(epNum)}`
-    )
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`)
-    }
-    const json = await res.json()
+    const json = await getEpisodeComments(props.animeId, epNum)
     if (json.code !== 200) {
       throw new Error('bad response')
     }

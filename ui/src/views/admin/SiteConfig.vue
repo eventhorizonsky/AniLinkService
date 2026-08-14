@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
+import { getUserRoles } from '../../api/system'
+import { getSiteConfig, saveSiteConfig, sendTestEmail as apiSendTestEmail } from '../../api/site'
 
 const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 
@@ -46,9 +46,9 @@ form.value.smtpPasswordConfigured = false
 
 const fetchRoleOptions = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/users/roles`)
-    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
-      roleOptions.value = res.data.data
+    const res = await getUserRoles()
+    if (res?.code === 200 && Array.isArray(res.data)) {
+      roleOptions.value = res.data
       return
     }
     roleOptions.value = []
@@ -61,32 +61,32 @@ const fetchRoleOptions = async () => {
 const fetchConfig = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/site/config`)
-    if (res.data?.data) {
+    const res = await getSiteConfig()
+    if (res?.data) {
       form.value = {
-        siteName: res.data.data.siteName || '',
-        siteDescription: res.data.data.siteDescription || '',
-        siteUrl: res.data.data.siteUrl || '',
-        dandanAppId: res.data.data.dandanAppId || '',
+        siteName: res.data.siteName || '',
+        siteDescription: res.data.siteDescription || '',
+        siteUrl: res.data.siteUrl || '',
+        dandanAppId: res.data.dandanAppId || '',
         dandanAppSecret: '',
-        dandanBaseUrl: res.data.data.dandanBaseUrl || DEFAULT_DANDAN_BASE_URL,
-        dandanAppSecretConfigured: !!res.data.data.dandanAppSecretConfigured,
-        authRegisterEnabled: !!res.data.data.authRegisterEnabled,
-        remoteAccessEnabled: !!res.data.data.remoteAccessEnabled,
-        remoteAccessTokenRequired: !!res.data.data.remoteAccessTokenRequired,
-        remoteAccessRequiredRole: res.data.data.remoteAccessRequiredRole || 'user',
-        smtpHost: res.data.data.smtpHost || '',
-        smtpPort: res.data.data.smtpPort || 465,
-        smtpUsername: res.data.data.smtpUsername || '',
+        dandanBaseUrl: res.data.dandanBaseUrl || DEFAULT_DANDAN_BASE_URL,
+        dandanAppSecretConfigured: !!res.data.dandanAppSecretConfigured,
+        authRegisterEnabled: !!res.data.authRegisterEnabled,
+        remoteAccessEnabled: !!res.data.remoteAccessEnabled,
+        remoteAccessTokenRequired: !!res.data.remoteAccessTokenRequired,
+        remoteAccessRequiredRole: res.data.remoteAccessRequiredRole || 'user',
+        smtpHost: res.data.smtpHost || '',
+        smtpPort: res.data.smtpPort || 465,
+        smtpUsername: res.data.smtpUsername || '',
         smtpPassword: '',
-        smtpFromEmail: res.data.data.smtpFromEmail || '',
-        smtpFromName: res.data.data.smtpFromName || '',
-        smtpSslEnabled: res.data.data.smtpSslEnabled !== false,
-        smtpStarttlsEnabled: !!res.data.data.smtpStarttlsEnabled,
-        smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured,
-        thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled,
-        bangumiMirrorBaseUrl: res.data.data.bangumiMirrorBaseUrl || '',
-        bangumiNextMirrorBaseUrl: res.data.data.bangumiNextMirrorBaseUrl || ''
+        smtpFromEmail: res.data.smtpFromEmail || '',
+        smtpFromName: res.data.smtpFromName || '',
+        smtpSslEnabled: res.data.smtpSslEnabled !== false,
+        smtpStarttlsEnabled: !!res.data.smtpStarttlsEnabled,
+        smtpPasswordConfigured: !!res.data.smtpPasswordConfigured,
+        thumbnailPlaybackEnabled: !!res.data.thumbnailPlaybackEnabled,
+        bangumiMirrorBaseUrl: res.data.bangumiMirrorBaseUrl || '',
+        bangumiNextMirrorBaseUrl: res.data.bangumiNextMirrorBaseUrl || ''
       }
     }
   } catch (error) {
@@ -106,7 +106,7 @@ const saveConfig = async () => {
   saving.value = true
 
   try {
-    const res = await axios.put(`${API_BASE}/site/config`, {
+    const res = await saveSiteConfig({
       siteName: form.value.siteName,
       siteDescription: form.value.siteDescription,
       siteUrl: form.value.siteUrl,
@@ -130,7 +130,7 @@ const saveConfig = async () => {
         bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('保存成功', 'success')
       const localConfig = JSON.parse(localStorage.getItem('siteConfig') || '{}')
       localStorage.setItem('siteConfig', JSON.stringify({
@@ -144,7 +144,7 @@ const saveConfig = async () => {
         remoteAccessRequiredRole: form.value.remoteAccessRequiredRole
       }))
     } else {
-      showAppMessage(res.data?.msg || '保存失败', 'error')
+      showAppMessage(res?.msg || '保存失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '保存失败，请稍后重试', 'error')
@@ -167,14 +167,14 @@ const sendTestEmail = async () => {
   sendingTestEmail.value = true
 
   try {
-    const res = await axios.post(`${API_BASE}/site/test-email`, {
+    const res = await apiSendTestEmail({
       toEmail: testEmail.value
     })
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('测试邮件已发送，请检查邮箱', 'success')
       showTestEmailDialog.value = false
     } else {
-      showAppMessage(res.data?.msg || '测试邮件发送失败', 'error')
+      showAppMessage(res?.msg || '测试邮件发送失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '测试邮件发送失败，请稍后重试', 'error')

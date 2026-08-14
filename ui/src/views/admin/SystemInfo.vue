@@ -1,8 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
+import { getSystemDashboard, getSystemInfo, triggerLibraryRematch } from '../../api/system'
 
 const loading = ref(false)
 const rematching = ref(false)
@@ -13,9 +12,9 @@ const updatedAt = ref('')
 const fetchDashboard = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/system/dashboard`)
-    if (res.data?.code === 200 && res.data?.data) {
-      stats.value = res.data.data
+    const res = await getSystemDashboard()
+    if (res?.code === 200 && res?.data) {
+      stats.value = res.data
     }
   } catch (error) {
     console.error('获取看板数据失败:', error)
@@ -27,9 +26,9 @@ const fetchDashboard = async () => {
 
 const fetchSystemInfo = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/system/info`)
-    if (res.data?.data) {
-      systemInfo.value = res.data.data
+    const res = await getSystemInfo()
+    if (res?.data) {
+      systemInfo.value = res.data
     }
   } catch (error) {
     console.error('获取系统信息失败:', error)
@@ -63,13 +62,13 @@ const triggerRematch = async () => {
 
   rematching.value = true
   try {
-    const res = await axios.post(`${API_BASE}/admin/scheduled-tasks/library-rematch/trigger`)
-    if (res.data?.code === 200) {
-      showAppMessage(res.data?.msg || '已触发重新识别任务', 'success')
+    const res = await triggerLibraryRematch()
+    if (res?.code === 200) {
+      showAppMessage(res?.msg || '已触发重新识别任务', 'success')
       // 稍后刷新，等待任务更新统计
       setTimeout(() => fetchDashboard(), 3000)
     } else {
-      showAppMessage(res.data?.msg || '触发失败', 'error')
+      showAppMessage(res?.msg || '触发失败', 'error')
     }
   } catch (error) {
     console.error('触发重新识别失败:', error)

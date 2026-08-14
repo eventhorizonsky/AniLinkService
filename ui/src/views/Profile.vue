@@ -1,8 +1,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
-import { API_BASE } from '../utils/constants'
+import { getCurrentUser } from '../api/auth'
+import { getFollows } from '../api/follows'
+import { getPlayHistory } from '../api/playHistory'
+import { getMyDanmakuRecords } from '../api/danmaku'
+import { getUnreadCount } from '../api/messages'
 import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
@@ -38,19 +41,19 @@ const fmt = (v) => (v == null ? '--' : Number(v).toLocaleString('zh-CN'))
 
 const fetchStats = async () => {
   const [u, f, h, d, m] = await Promise.allSettled([
-    axios.post(`${API_BASE}/auth/currentUser`),
-    axios.get(`${API_BASE}/follows`, { params: { page: 1, pageSize: 1 } }),
-    axios.get(`${API_BASE}/play-history`, { params: { page: 1, pageSize: 1 } }),
-    axios.get(`${API_BASE}/v2/danmaku-records/mine`, { params: { page: 1, pageSize: 1 } }),
-    axios.get(`${API_BASE}/messages/unread-count`)
+    getCurrentUser(),
+    getFollows({ page: 1, pageSize: 1 }),
+    getPlayHistory({ page: 1, pageSize: 1 }),
+    getMyDanmakuRecords({ page: 1, pageSize: 1 }),
+    getUnreadCount()
   ])
-  if (u.status === 'fulfilled' && u.value.data?.code === 200 && u.value.data.data) {
-    setUserInfo(u.value.data.data)
+  if (u.status === 'fulfilled' && u.value?.code === 200 && u.value.data) {
+    setUserInfo(u.value.data)
   }
-  if (f.status === 'fulfilled') stats.value.follows = Number(f.value.data?.data?.totalElements ?? f.value.data?.data?.length ?? 0)
-  if (h.status === 'fulfilled') stats.value.history = Number(h.value.data?.data?.totalElements ?? 0)
-  if (d.status === 'fulfilled') stats.value.danmaku = Number(d.value.data?.data?.totalElements ?? 0)
-  if (m.status === 'fulfilled') stats.value.unread = Number(m.value.data?.data?.unreadCount ?? 0)
+  if (f.status === 'fulfilled') stats.value.follows = Number(f.value?.data?.totalElements ?? f.value?.data?.length ?? 0)
+  if (h.status === 'fulfilled') stats.value.history = Number(h.value?.data?.totalElements ?? 0)
+  if (d.status === 'fulfilled') stats.value.danmaku = Number(d.value?.data?.totalElements ?? 0)
+  if (m.status === 'fulfilled') stats.value.unread = Number(m.value?.data?.unreadCount ?? 0)
   loading.value = false
 }
 

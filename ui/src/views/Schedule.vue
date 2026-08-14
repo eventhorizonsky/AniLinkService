@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { API_BASE, DEFAULT_POSTER, WEEKDAY_LABELS } from '../utils/constants'
+import { getScheduleRawJson } from '../api/anime'
+import { DEFAULT_POSTER, WEEKDAY_LABELS } from '../utils/constants'
 import { formatScore } from '../utils/format'
 import AnimeCard from '../components/AnimeCard.vue'
 
@@ -19,8 +20,7 @@ const weekTabs = Object.entries(WEEKDAY_LABELS)
 const fetchSchedule = async () => {
   scheduleLoading.value = true; scheduleError.value = ''
   try {
-    const res = await fetch(`${API_BASE}/animes/shin/raw-json`)
-    const result = await res.json()
+    const result = await getScheduleRawJson()
     if (result.code !== 200 || !result.data || !Array.isArray(result.data.bangumiList))
       throw new Error('新番接口返回结构不正确')
     const nd = (d) => { if (d === 7) return 0; return Number.isInteger(d) ? d : -1 }

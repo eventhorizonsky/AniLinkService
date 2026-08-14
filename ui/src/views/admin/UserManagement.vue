@@ -1,8 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
+import { getUserRoles, getUsers, updateUser } from '../../api/system'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -39,9 +38,9 @@ const roleItems = computed(() => roleOptions.value.map(role => ({
 
 const fetchRoleOptions = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/users/roles`)
-    if (res.data?.code === 200) {
-      roleOptions.value = res.data.data || []
+    const res = await getUserRoles()
+    if (res?.code === 200) {
+      roleOptions.value = res.data || []
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '获取角色列表失败', 'error')
@@ -51,16 +50,14 @@ const fetchRoleOptions = async () => {
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/users`, {
-      params: {
-        page: page.value - 1,
-        pageSize: pageSize.value,
-        keyword: keyword.value?.trim() || undefined
-      }
+    const res = await getUsers({
+      page: page.value - 1,
+      pageSize: pageSize.value,
+      keyword: keyword.value?.trim() || undefined
     })
 
-    if (res.data?.code === 200 && res.data?.data) {
-      const data = res.data.data
+    if (res?.code === 200 && res?.data) {
+      const data = res.data
       users.value = data.content || []
       totalElements.value = Number(data.totalElements || 0)
       totalPages.value = Number(data.totalPages || 0)
@@ -124,13 +121,13 @@ const submitEdit = async () => {
       roleCodeList: editForm.value.roleCodeList
     }
 
-    const res = await axios.put(`${API_BASE}/users/${editForm.value.id}`, payload)
-    if (res.data?.code === 200) {
+    const res = await updateUser(editForm.value.id, payload)
+    if (res?.code === 200) {
       showAppMessage('用户更新成功', 'success')
       editDialog.value = false
       await fetchUsers()
     } else {
-      showAppMessage(res.data?.msg || '用户更新失败', 'error')
+      showAppMessage(res?.msg || '用户更新失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '用户更新失败', 'error')

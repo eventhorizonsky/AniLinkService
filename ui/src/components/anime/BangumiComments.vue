@@ -69,7 +69,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
-import { API_BASE } from '../../utils/constants';
+import { getSubjectComments } from '../../api/anime';
 
 const props = defineProps({
   subjectId: {
@@ -96,14 +96,7 @@ const fetchComments = async (reset = false) => {
   loading.value = true;
   try {
     const currentOffset = reset ? 0 : offset.value;
-    const res = await fetch(
-      `${API_BASE}/bangumi/subjects/${props.subjectId}/comments?limit=${PAGE_SIZE}&offset=${currentOffset}`
-    );
-    if (!res.ok) {
-      emit('unavailable');
-      return;
-    }
-    const json = await res.json();
+    const json = await getSubjectComments(props.subjectId, { limit: PAGE_SIZE, offset: currentOffset });
     if (json.code !== 200 || !json.data) {
       emit('unavailable');
       return;

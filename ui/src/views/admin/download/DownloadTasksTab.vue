@@ -1,11 +1,10 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
-import axios from 'axios'
 import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
 import DownloadTaskTable from '../../../components/admin/download/DownloadTaskTable.vue'
-import { API_BASE } from '../../../utils/constants'
 import { formatSpeed } from '../../../utils/format'
 import { ACTIVE_TASK_STATUSES } from '../../../utils/taskStatus'
+import { getDownloadTasks, cancelDownloadTask, deleteDownloadTask } from '../../../api/download'
 
 const emit = defineEmits(['stats-loaded'])
 
@@ -52,8 +51,8 @@ const fetchTasks = async () => {
     const params = { page: page.value, size: size.value }
     if (filterStatus.value !== 'all') params.status = filterStatus.value
     if (filterKeyword.value.trim()) params.keyword = filterKeyword.value.trim()
-    const res = await axios.get(`${API_BASE}/resource-search/download-tasks`, { params })
-    const data = res.data?.data || {}
+    const res = await getDownloadTasks(params)
+    const data = res?.data || {}
     tasks.value = data.items || []
     total.value = data.total || 0
     emit('stats-loaded', data.stats || null)
@@ -218,7 +217,7 @@ const handleBatchCancel = async (ids) => {
   if (!confirmed) return
   for (const id of ids) {
     try {
-      await axios.post(`${API_BASE}/resource-search/download-tasks/${id}/cancel`)
+      await cancelDownloadTask(id)
     } catch (error) {
       console.error('批量取消失败:', error)
     }
@@ -238,7 +237,7 @@ const handleBatchDelete = async (ids) => {
   let failed = 0
   for (const id of ids) {
     try {
-      await axios.delete(`${API_BASE}/resource-search/download-tasks/${id}`)
+      await deleteDownloadTask(id)
     } catch (error) {
       failed += 1
       console.error('批量删除失败:', error)

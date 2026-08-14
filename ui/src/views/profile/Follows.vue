@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import PaginationBar from '../../components/PaginationBar.vue'
 import { showAppMessage } from '../../utils/ui-feedback'
 import {
@@ -10,7 +9,9 @@ import {
   FOLLOW_STATUS_COLORS as STATUS_COLORS,
 } from '../../utils/followStatus'
 import { usePagination } from '../../composables/usePagination'
-import { API_BASE } from '../../utils/constants'
+import { getFollows, getActiveFollows, getFollowsByStatus, setFollowStatus, removeFollow, bindFollow, matchFollow } from '../../api/follows'
+import { searchDandanAnimes } from '../../api/anime'
+import { pullBangumiCollections } from '../../api/bangumi'
 
 const router = useRouter()
 
@@ -60,19 +61,20 @@ const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
     const params = { page: page.value, pageSize: pageSize.value, keyword: keyword.value.trim() }
-    const url = statusFilter.value === 'active' ? `${API_BASE}/follows/active`
-              : statusFilter.value ? `${API_BASE}/follows/status/${statusFilter.value}`
-              : `${API_BASE}/follows`
-    const res = await axios.get(url, { params })
-    if (res.data?.code !== 200) throw new Error(res.data?.msg || '加载追番失败')
+    const res = statusFilter.value === 'active'
+      ? await getActiveFollows(params)
+      : statusFilter.value
+        ? await getFollowsByStatus(statusFilter.value, params)
+        : await getFollows(params)
+    if (res?.code !== 200) throw new Error(res?.msg || '加载追番失败')
 
     let items
-    if (Array.isArray(res.data.data)) {
-      items = [...res.data.data]
+    if (Array.isArray(res.data)) {
+      items = [...res.data]
       total.value = items.length
     } else {
-      items = [...(res.data.data?.content || [])]
-      total.value = Number(res.data.data?.totalElements || 0)
+      items = [...(res.data?.content || [])]
+      total.value = Number(res.data?.totalElements || 0)
     }
     // 活跃视图保持接口的更新时间倒序（新更新的在前），不按状态重排
     if (statusFilter.value !== 'active') {
@@ -116,9 +118,9 @@ const setStatus = async (follow, status) => {
   if (!follow.animeId || follow.status === status) return
   updatingId.value = follow.animeId
   try {
-    const res = await axios.put(`${API_BASE}/follows/${follow.animeId}/status`, null, { params: { status } })
-    if (res.data?.code === 200) await fetchData()
-    else showAppMessage(res.data?.msg || '更新状态失败', 'error')
+    const res = await setFollowStatus(follow.animeId, status)
+    if (res?.code === 200) await fetchData()
+    else showAppMessage(res?.msg || '更新状态失败', 'error')
   } catch (e) {
     showAppMessage(e.response?.data?.msg || '更新状态失败', 'error')
   } finally { updatingId.value = null }
@@ -129,9 +131,9 @@ const unfollow = async (follow) => {
   const ok = await showConfirm('取消追番', `确定要取消追番《${follow.animeTitle}》吗？`, '取消追番')
   if (!ok) return
   try {
-    const res = await axios.delete(`${API_BASE}/follows/${follow.animeId}`)
-    if (res.data?.code === 200) await fetchData()
-    else showAppMessage(res.data?.msg || '取消追番失败', 'error')
+    const res = await removeFollow(follow.animeId)
+    if (res?.code === 200) await fetchData()
+    else showAppMessage(res?.msg || '取消追番失败', 'error')
   } catch (e) { showAppMessage('取消追番失败', 'error') }
 }
 
@@ -144,8 +146,8 @@ const searchBindAnime = async () => {
   if (!bindDialog.value.keyword.trim()) return
   bindDialog.value.searching = true
   try {
-    const res = await axios.get(`${API_BASE}/animes/search-dandan`, { params: { keyword: bindDialog.value.keyword } })
-    const raw = res.data?.data
+    const res = await searchDandanAnimes(bindDialog.value.keyword)
+    const raw = res?.data
     const listRaw = raw?.animes || raw?.data?.animes || []
     bindDialog.value.results = Array.isArray(listRaw) ? listRaw : []
   } catch (e) { bindDialog.value.results = [] }
@@ -155,7 +157,7 @@ const searchBindAnime = async () => {
 const bindAnime = async (follow, anime) => {
   try {
     const title = anime.animeTitle || anime.title
-    await axios.put(`${API_BASE}/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
+    await bindFollow(follow.id, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
     showAppMessage(`已绑定「${title}」`, 'success')
     bindDialog.value.show = false
     await fetchData()
@@ -166,8 +168,7 @@ const autoMatch = async (follow) => {
   menuId.value = null
   matchDialog.value = { show: true, follow }
   try {
-    const res = await axios.post(`${API_BASE}/follows/${follow.id}/match`)
-    const body = res.data
+    const body = await matchFollow(follow.id)
     if (body?.code === 200 && body.data?.matched) {
       matchDialog.value.show = false
       showAppMessage(`已匹配并绑定「${body.data.animeTitle || follow.animeTitle}」`, 'success')
@@ -192,12 +193,12 @@ const pullBangumi = async () => {
   if (!ok) return
   pulling.value = true
   try {
-    const res = await axios.post(`${API_BASE}/bangumi/sync/pull-collections`)
-    if (res.data?.code === 200 && res.data?.data) {
-      const d = res.data.data
+    const res = await pullBangumiCollections()
+    if (res?.code === 200 && res?.data) {
+      const d = res.data
       showAppMessage(`同步完成：共 ${d.total} 条，新增 ${d.created}，更新 ${d.updated}，跳过 ${d.skipped}`, 'success')
       await fetchData()
-    } else showAppMessage(res.data?.msg || '拉取失败', 'error')
+    } else showAppMessage(res?.msg || '拉取失败', 'error')
   } catch (e) { showAppMessage('拉取 Bangumi 追番失败', 'error') }
   finally { pulling.value = false }
 }

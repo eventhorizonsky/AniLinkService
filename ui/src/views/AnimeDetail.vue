@@ -262,9 +262,11 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import axios from 'axios';
 import { showAppMessage } from '../utils/ui-feedback';
-import { API_BASE } from '../utils/constants';
+import { getAnimeRawJson, getAnimeRawJsonBySubject, getAnimeEpisodes } from '../api/anime';
+import { getPlayResume } from '../api/playHistory';
+import { getCurrentUser } from '../api/auth';
+import { getSubjectCollection, saveSubjectCollection } from '../api/bangumi';
 import { useAuth } from '../composables/useAuth';
 import { useAnimeDerived } from '../composables/useAnimeDerived';
 import { useFollow } from '../composables/useFollow';
@@ -343,15 +345,10 @@ const fetchAnimeData = async () => {
 
     // 根据模式决定调用哪个 API
     let targetAnimeId = resolvedAnimeId.value || route.params.animeId;
-    let url;
-    if (props.bgmMode && route.params.subjectId) {
-      url = `${API_BASE}/animes/bangumi/${route.params.subjectId}/raw-json`;
-    } else {
-      url = `${API_BASE}/animes/${targetAnimeId}/raw-json`;
-    }
+    const result = props.bgmMode && route.params.subjectId
+      ? await getAnimeRawJsonBySubject(route.params.subjectId)
+      : await getAnimeRawJson(targetAnimeId);
 
-    const response = await fetch(url);
-    const result = await response.json();
     if (result.code === 200 && result.data && result.data.bangumi) {
       animeData.value = result.data.bangumi;
       // bgmMode 下从响应中提取 animeId 用于后续接口调用
@@ -366,8 +363,7 @@ const fetchAnimeData = async () => {
     }
 
     try {
-      const episodesResponse = await fetch(`${API_BASE}/animes/${targetAnimeId}/episodes?page=1&pageSize=9999`);
-      const episodesResult = await episodesResponse.json();
+      const episodesResult = await getAnimeEpisodes(targetAnimeId, { page: 1, pageSize: 9999 });
       if (episodesResult.code === 200 && episodesResult.data && Array.isArray(episodesResult.data.content)) {
         existingEpisodes.value = episodesResult.data.content;
       } else {
@@ -394,9 +390,9 @@ const fetchAnimeResume = async () => {
   }
   resumeLoading.value = true;
   try {
-    const response = await axios.get(`${API_BASE}/play-history/anime/${resolvedAnimeId.value}/resume`);
-    if (response.data?.code === 200) {
-      animeResume.value = response.data.data ?? null;
+    const body = await getPlayResume(resolvedAnimeId.value);
+    if (body?.code === 200) {
+      animeResume.value = body.data ?? null;
     } else {
       animeResume.value = null;
     }
@@ -555,10 +551,10 @@ const refreshCurrentUserInfo = async () => {
   }
 
   try {
-    const response = await axios.post(`${API_BASE}/auth/currentUser`);
-    if (response.data?.code === 200 && response.data?.data) {
-      currentUserInfo.value = response.data.data;
-      setUserInfo(response.data.data);
+    const body = await getCurrentUser();
+    if (body?.code === 200 && body?.data) {
+      currentUserInfo.value = body.data;
+      setUserInfo(body.data);
       return;
     }
   } catch {
@@ -575,24 +571,24 @@ const fetchBangumiCollection = async () => {
 
   bgmCollectionLoading.value = true;
   try {
-    const response = await axios.get(`${API_BASE}/bangumi/subjects/${bangumiSubjectId.value}/collection`);
-    if (response.data?.code === 200 && response.data?.data) {
+    const response = await getSubjectCollection(bangumiSubjectId.value);
+    if (response?.code === 200 && response?.data) {
       bgmCollectionForm.value = {
-        type: Number(response.data.data.type || 3),
-        rate: Number(response.data.data.rate || 0),
-        comment: response.data.data.comment || ''
+        type: Number(response.data.type || 3),
+        rate: Number(response.data.rate || 0),
+        comment: response.data.comment || ''
       };
       bgmCollectionExists.value = true;
       return;
     }
 
-    if (response.data?.code === 404) {
+    if (response?.code === 404) {
       bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
       bgmCollectionExists.value = false;
       return;
     }
 
-    showAppMessage(response.data?.msg || '读取 Bangumi 收藏状态失败', 'error');
+    showAppMessage(response?.msg || '读取 Bangumi 收藏状态失败', 'error');
   } catch (error) {
     if (error.response?.data?.code === 404) {
       bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
@@ -617,15 +613,15 @@ const submitBangumiCollection = async () => {
       rate: Number(bgmCollectionForm.value.rate || 0),
       comment: bgmCollectionForm.value.comment || ''
     };
-    const response = await axios.post(`${API_BASE}/bangumi/subjects/${bangumiSubjectId.value}/collection`, payload);
-    if (response.data?.code === 200) {
+    const response = await saveSubjectCollection(bangumiSubjectId.value, payload);
+    if (response?.code === 200) {
       showAppMessage('已同步到 Bangumi', 'success');
       bgmCollectionEditMode.value = false;
       bgmCollectionExists.value = true;
       await fetchBangumiCollection();
       return;
     }
-    showAppMessage(response.data?.msg || '提交 Bangumi 评分失败', 'error');
+    showAppMessage(response?.msg || '提交 Bangumi 评分失败', 'error');
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '提交 Bangumi 评分失败', 'error');
   } finally {

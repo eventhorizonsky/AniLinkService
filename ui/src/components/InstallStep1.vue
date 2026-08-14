@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
-import { API_BASE } from '../utils/constants'
+import { getInitSystemInfo } from '../api/site'
 
 const systemInfo = ref(null)
 const loading = ref(true)
@@ -11,11 +10,11 @@ const fetchSystemInfo = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/init/system-info`)
-    if (res.data?.code === 200) {
-      systemInfo.value = res.data.data
+    const res = await getInitSystemInfo()
+    if (res?.code === 200) {
+      systemInfo.value = res.data
     } else {
-      errorMessage.value = res.data?.msg || '获取系统信息失败'
+      errorMessage.value = res?.msg || '获取系统信息失败'
     }
   } catch (error) {
     errorMessage.value = error.response?.data?.msg || '获取系统信息失败，请稍后重试'

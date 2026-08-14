@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
-import { API_BASE } from '../../../utils/constants'
+import { getTrackerList, getTrackerStatus, refreshTrackerList as apiRefreshTrackerList, testResourceConnection } from '../../../api/download'
+import { getSiteConfig, saveSiteConfig } from '../../../api/site'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -19,8 +19,8 @@ const combinedData = ref(null)
 const viewCombinedTrackers = async () => {
   combinedLoading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/tracker-list/combined`)
-    combinedData.value = res.data?.data || null
+    const res = await getTrackerList()
+    combinedData.value = res?.data || null
     combinedDialog.value = true
   } catch (error) {
     console.error('获取最终 Tracker 列表失败:', error)
@@ -49,8 +49,8 @@ const form = ref({
 const fetchConfig = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/site/config`)
-    const data = res.data?.data || {}
+    const res = await getSiteConfig()
+    const data = res?.data || {}
     form.value = {
       resourceNodeBaseUrl: data.resourceNodeBaseUrl || '',
       resourceDownloadTempDir: data.resourceDownloadTempDir || './data/media-data/download-temp',
@@ -76,8 +76,8 @@ const fetchConfig = async () => {
 
 const fetchTrackerListStatus = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/tracker-list/status`)
-    trackerListStatus.value = res.data?.data || null
+    const res = await getTrackerStatus()
+    trackerListStatus.value = res?.data || null
   } catch (error) {
     console.error('获取 Tracker 列表订阅状态失败:', error)
     trackerListStatus.value = null
@@ -87,8 +87,8 @@ const fetchTrackerListStatus = async () => {
 const refreshTrackerList = async () => {
   trackerListLoading.value = true
   try {
-    const res = await axios.post(`${API_BASE}/resource-search/tracker-list/refresh`)
-    trackerListStatus.value = res.data?.data || null
+    const res = await apiRefreshTrackerList()
+    trackerListStatus.value = res?.data || null
     if (trackerListStatus.value?.trackerCount > 0) {
       showAppMessage(`Tracker 列表刷新成功，共 ${trackerListStatus.value.trackerCount} 个`, 'success')
     } else if (trackerListStatus.value?.lastError) {
@@ -155,14 +155,14 @@ const saveConfig = async () => {
       rssProxyHost: form.value.rssProxyHost || '',
       rssProxyPort: Math.max(0, Number(form.value.rssProxyPort || 0))
     }
-    const res = await axios.put(`${API_BASE}/site/config`, payload)
-    if (res.data?.code === 200) {
+    const res = await saveSiteConfig(payload)
+    if (res?.code === 200) {
       showAppMessage('下载器配置保存成功', 'success')
       if (form.value.resourceTrackerListUrl) {
         refreshTrackerList()
       }
     } else {
-      showAppMessage(res.data?.msg || '保存失败', 'error')
+      showAppMessage(res?.msg || '保存失败', 'error')
     }
   } catch (error) {
     console.error('保存下载器配置失败:', error)
@@ -180,12 +180,12 @@ const testConnection = async () => {
   testingConnection.value = true
   connectionResult.value = null
   try {
-    const res = await axios.post(`${API_BASE}/resource-search/test-connection`)
-    connectionResult.value = res.data?.data || null
-    if (res.data?.code === 200 && res.data?.data?.ok) {
-      showAppMessage(`连接成功，延迟 ${res.data.data.latencyMs}ms`, 'success')
+    const res = await testResourceConnection()
+    connectionResult.value = res?.data || null
+    if (res?.code === 200 && res?.data?.ok) {
+      showAppMessage(`连接成功，延迟 ${res.data.latencyMs}ms`, 'success')
     } else {
-      showAppMessage(res.data?.data?.message || '连接失败', 'error')
+      showAppMessage(res?.data?.message || '连接失败', 'error')
     }
   } catch (error) {
     console.error('测试连接失败:', error)

@@ -1,8 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
-import { API_BASE } from '../../../utils/constants'
+import { updateMediaFile, getRematchCandidates } from '../../../api/media'
+import { searchEpisodes } from '../../../api/anime'
 
 const props = defineProps({
   modelValue: {
@@ -124,13 +124,13 @@ const applyCandidate = async (candidate) => {
       episodeId: candidate.episodeId,
       episodeTitle: candidate.episodeTitle
     }
-    const res = await axios.put(`${API_BASE}/media-files/${props.mediaFile.id}`, payload)
-    if (res.data?.code === 200) {
+    const res = await updateMediaFile(props.mediaFile.id, payload)
+    if (res?.code === 200) {
       showAppMessage('已应用匹配结果', 'success')
-      emit('applied', res.data?.data || payload)
+      emit('applied', res?.data || payload)
       innerVisible.value = false
     } else {
-      showAppMessage(res.data?.msg || '应用匹配失败', 'error')
+      showAppMessage(res?.msg || '应用匹配失败', 'error')
     }
   } catch (error) {
     showAppMessage('应用匹配失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -146,14 +146,14 @@ const runAutoMatch = async () => {
   autoError.value = ''
   autoCandidates.value = []
   try {
-    const res = await axios.get(`${API_BASE}/media-files/${props.mediaFile.id}/rematch-candidates`)
-    if (res.data?.code === 200) {
-      autoCandidates.value = collectEpisodeCandidates(res.data.data)
+    const res = await getRematchCandidates(props.mediaFile.id)
+    if (res?.code === 200) {
+      autoCandidates.value = collectEpisodeCandidates(res.data)
       if (autoCandidates.value.length === 0) {
         autoError.value = '自动匹配未找到候选结果，可继续手动搜索。'
       }
     } else {
-      autoError.value = res.data?.msg || '自动匹配失败'
+      autoError.value = res?.msg || '自动匹配失败'
     }
   } catch (error) {
     autoError.value = error.response?.data?.msg || error.message || '自动匹配失败'
@@ -171,19 +171,17 @@ const searchCandidates = async () => {
   candidateLoading.value = true
   searchedCandidates.value = []
   try {
-    const res = await axios.get(`${API_BASE}/v2/search/episodes`, {
-      params: {
-        anime: manualForm.value.anime.trim(),
-        episode: manualForm.value.episode?.trim() || undefined
-      }
+    const res = await searchEpisodes({
+      anime: manualForm.value.anime.trim(),
+      episode: manualForm.value.episode?.trim() || undefined
     })
-    if (res.data?.code === 200) {
-      searchedCandidates.value = collectEpisodeCandidates(res.data.data)
+    if (res?.code === 200) {
+      searchedCandidates.value = collectEpisodeCandidates(res.data)
       if (searchedCandidates.value.length === 0) {
         showAppMessage('没有找到候选结果，请尝试更具体的标题', 'warning')
       }
     } else {
-      showAppMessage(res.data?.msg || '搜索失败', 'error')
+      showAppMessage(res?.msg || '搜索失败', 'error')
     }
   } catch (error) {
     showAppMessage('搜索失败: ' + (error.response?.data?.msg || error.message), 'error')

@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getTrendingHot, getTrendingNewAnime } from '../api/anime'
+import { getActiveFollows } from '../api/follows'
 import { followStatusLabel } from '../utils/followStatus'
-import { API_BASE, DEFAULT_POSTER } from '../utils/constants'
+import { DEFAULT_POSTER } from '../utils/constants'
 import { formatScore } from '../utils/format'
 import { useAuth } from '../composables/useAuth'
 import AnimeCard from '../components/AnimeCard.vue'
@@ -120,10 +121,10 @@ const fetchFollowList = async () => {
   if (!isLoggedIn.value) return
   followLoading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/follows/active`)
-    if (res.data?.code === 200) {
+    const res = await getActiveFollows()
+    if (res?.code === 200) {
       // 首页只展示已绑定本地番剧的追番，animeId 为空（未匹配）的不展示
-      followList.value = (Array.isArray(res.data.data) ? res.data.data : []).filter((item) => item.animeId)
+      followList.value = (Array.isArray(res.data) ? res.data : []).filter((item) => item.animeId)
     }
   } catch (e) { console.error('Fetch follow list failed:', e) }
   finally { followLoading.value = false }
@@ -133,8 +134,8 @@ const fetchTrending = async () => {
   trendingLoading.value = true; trendingError.value = ''
   try {
     const [hotRes, newRes] = await Promise.allSettled([
-      axios.get(`${API_BASE}/v2/trending/all/hot/week`),
-      axios.get(`${API_BASE}/v2/trending/new-anime/hot/current-season`)
+      getTrendingHot(),
+      getTrendingNewAnime()
     ])
     if (hotRes.status === 'fulfilled' && hotRes.value?.data)
       trendingHot.value = extractList(hotRes.value.data).slice(0, 10)

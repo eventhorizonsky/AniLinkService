@@ -1,8 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
+import { getCacheStats, getCacheTypes, clearCacheExpired, clearCacheByType, clearAllCache } from '../../api/system'
 
 const loading = ref(false)
 const stats = ref(null)
@@ -29,14 +28,14 @@ const fetchStats = async () => {
   loading.value = true
   try {
     const [statsRes, typesRes] = await Promise.all([
-      axios.get(`${API_BASE}/cache/stats`),
-      axios.get(`${API_BASE}/cache/types`)
+      getCacheStats(),
+      getCacheTypes()
     ])
-    if (statsRes.data?.data) {
-      stats.value = statsRes.data.data
+    if (statsRes?.data) {
+      stats.value = statsRes.data
     }
-    if (typesRes.data?.data) {
-      cacheTypes.value = typesRes.data.data
+    if (typesRes?.data) {
+      cacheTypes.value = typesRes.data
     }
   } catch (error) {
     console.error('获取缓存统计失败:', error)
@@ -57,13 +56,13 @@ const expiredPercent = computed(() => {
 const doClearExpired = async () => {
   clearing.value = true
   try {
-    const res = await axios.delete(`${API_BASE}/cache/expired`)
-    if (res.data?.code === 200) {
-      const result = res.data.data
+    const res = await clearCacheExpired()
+    if (res?.code === 200) {
+      const result = res.data
       showAppMessage(`清理过期缓存完成，删除 ${result.deletedCount} 条`, 'success')
       await fetchStats()
     } else {
-      showAppMessage(res.data?.msg || '清理失败', 'error')
+      showAppMessage(res?.msg || '清理失败', 'error')
     }
   } catch (error) {
     console.error('清理过期缓存失败:', error)
@@ -80,14 +79,14 @@ const doClearByType = async () => {
   }
   clearing.value = true
   try {
-    const res = await axios.delete(`${API_BASE}/cache/type/${clearTypeSelected.value}`)
-    if (res.data?.code === 200) {
-      const result = res.data.data
+    const res = await clearCacheByType(clearTypeSelected.value)
+    if (res?.code === 200) {
+      const result = res.data
       showAppMessage(`按类型清理完成，删除 ${result.deletedCount} 条`, 'success')
       clearTypeSelected.value = ''
       await fetchStats()
     } else {
-      showAppMessage(res.data?.msg || '清理失败', 'error')
+      showAppMessage(res?.msg || '清理失败', 'error')
     }
   } catch (error) {
     console.error('按类型清理缓存失败:', error)
@@ -101,13 +100,13 @@ const doClearAll = async () => {
   showClearAllDialog.value = false
   clearing.value = true
   try {
-    const res = await axios.delete(`${API_BASE}/cache/all`)
-    if (res.data?.code === 200) {
-      const result = res.data.data
+    const res = await clearAllCache()
+    if (res?.code === 200) {
+      const result = res.data
       showAppMessage(`清空全部缓存完成，删除 ${result.deletedCount} 条`, 'success')
       await fetchStats()
     } else {
-      showAppMessage(res.data?.msg || '清空失败', 'error')
+      showAppMessage(res?.msg || '清空失败', 'error')
     }
   } catch (error) {
     console.error('清空全部缓存失败:', error)

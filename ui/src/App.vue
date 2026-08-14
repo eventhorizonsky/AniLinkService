@@ -49,9 +49,8 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { UiFeedbackEvents } from './utils/ui-feedback'
-import { API_BASE } from './utils/constants'
+import { getSiteConfig } from './api/site'
 
 const router = useRouter()
 const checkingInstall = ref(true)
@@ -74,13 +73,13 @@ const confirmDialog = ref({
 
 const checkInstallStatus = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/site/config`)
-    const isInstalled = res.data?.data?.installed === true
+    const res = await getSiteConfig()
+    const isInstalled = res?.data?.installed === true
 
     if (isInstalled) {
       localStorage.setItem('installed', 'true')
       try {
-        localStorage.setItem('siteConfig', JSON.stringify(res.data.data))
+        localStorage.setItem('siteConfig', JSON.stringify(res.data))
       } catch (e) {
         console.error('保存配置失败:', e)
       }

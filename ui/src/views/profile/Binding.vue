@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
+import { getBangumiAccountStatus, bindBangumiAccount, unbindBangumiAccount } from '../../api/bangumi'
 
 const loading = ref(false)
 const binding = ref(false)
@@ -34,10 +33,10 @@ const stateTone = computed(() => {
 const fetchStatus = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/bangumi/account/status`)
-    if (res.data?.code === 200 && res.data?.data) {
-      status.value = res.data.data
-    } else showAppMessage(res.data?.msg || '获取绑定状态失败', 'error')
+    const res = await getBangumiAccountStatus()
+    if (res?.code === 200 && res?.data) {
+      status.value = res.data
+    } else showAppMessage(res?.msg || '获取绑定状态失败', 'error')
   } catch (e) { showAppMessage(e.response?.data?.msg || '获取绑定状态失败', 'error') }
   finally { loading.value = false }
 }
@@ -47,12 +46,12 @@ const bindToken = async () => {
   if (!token) { showAppMessage('请输入 Bangumi Access Token', 'warning'); return }
   binding.value = true
   try {
-    const res = await axios.post(`${API_BASE}/bangumi/account/bind`, { accessToken: token })
-    if (res.data?.code === 200 && res.data?.data) {
-      status.value = res.data.data
+    const res = await bindBangumiAccount({ accessToken: token })
+    if (res?.code === 200 && res?.data) {
+      status.value = res.data
       tokenInput.value = ''
       showAppMessage('Bangumi 账号绑定成功', 'success')
-    } else showAppMessage(res.data?.msg || '绑定失败', 'error')
+    } else showAppMessage(res?.msg || '绑定失败', 'error')
   } catch (e) { showAppMessage(e.response?.data?.msg || '绑定失败', 'error') }
   finally { binding.value = false }
 }
@@ -65,15 +64,15 @@ const unbind = async () => {
   if (!confirmed) return
   unbinding.value = true
   try {
-    const res = await axios.delete(`${API_BASE}/bangumi/account/bind`)
-    if (res.data?.code === 200) {
+    const res = await unbindBangumiAccount()
+    if (res?.code === 200) {
       status.value = {
         bound: false, tokenValid: false, tokenExpired: false,
         bangumiUserId: null, bangumiUsername: '', bangumiNickname: '',
         profile: null, statusMessage: '未绑定 Bangumi 账号'
       }
       showAppMessage('已解除 Bangumi 绑定', 'success')
-    } else showAppMessage(res.data?.msg || '解除绑定失败', 'error')
+    } else showAppMessage(res?.msg || '解除绑定失败', 'error')
   } catch (e) { showAppMessage('解除绑定失败', 'error') }
   finally { unbinding.value = false }
 }

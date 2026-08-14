@@ -1,9 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import { getAnimeList, getSeasonList, getSeasonAnime, searchDandanAnimes } from '../api/anime'
 import { formatAnimeType } from '../utils/animeType'
-import { API_BASE } from '../utils/constants'
 import { useIsMobile } from '../composables/useIsMobile'
 import AnimeCard from '../components/AnimeCard.vue'
 
@@ -34,9 +33,9 @@ const fetchLibrary = async (append = false) => {
   try {
     const params = { page: libPage.value, pageSize: libPageSize }
     if (libKeyword.value.trim()) params.keyword = libKeyword.value.trim()
-    const res = await axios.get(`${API_BASE}/animes`, { params })
-    if (res.data?.code !== 200) throw new Error(res.data?.msg || '请求失败')
-    const data = res.data?.data
+    const res = await getAnimeList(params)
+    if (res?.code !== 200) throw new Error(res?.msg || '请求失败')
+    const data = res?.data
     const items = Array.isArray(data?.content) ? data.content : []
     if (append) libList.value.push(...items)
     else libList.value = items
@@ -86,8 +85,8 @@ const dbMonths = computed(() => {
 
 const fetchSeasons = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/v2/bangumi/season/anime`)
-    const data = res.data
+    const res = await getSeasonList()
+    const data = res
     if (Array.isArray(data?.seasons)) dbSeasons.value = data.seasons
     else if (Array.isArray(data)) dbSeasons.value = data
     if (dbSeasons.value.length) {
@@ -103,8 +102,8 @@ const fetchSeasonAnime = async () => {
   if (dbYear.value == null || dbMonth.value == null) return
   dbLoading.value = true; dbError.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/v2/bangumi/season/anime/${dbYear.value}/${dbMonth.value}`)
-    const data = res.data
+    const res = await getSeasonAnime(dbYear.value, dbMonth.value)
+    const data = res
     if (Array.isArray(data?.bangumiList)) dbList.value = data.bangumiList
     else if (Array.isArray(data)) dbList.value = data
     else dbList.value = []
@@ -131,8 +130,8 @@ const dbSearch = async () => {
   dbSearching.value = true
   dbSearched.value = true
   try {
-    const res = await axios.get(`${API_BASE}/animes/search-dandan`, { params: { keyword: kw } })
-    const raw = res.data?.data
+    const res = await searchDandanAnimes(kw)
+    const raw = res?.data
     const listRaw = raw?.animes || raw?.data?.animes || []
     dbSearchResults.value = Array.isArray(listRaw) ? listRaw : []
   } catch (e) {

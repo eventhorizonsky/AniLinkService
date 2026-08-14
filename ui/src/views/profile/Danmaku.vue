@@ -1,10 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getMyDanmakuRecords } from '../../api/danmaku'
 import PaginationBar from '../../components/PaginationBar.vue'
 import { usePagination } from '../../composables/usePagination'
-import { DEFAULT_POSTER, API_BASE } from '../../utils/constants'
+import { DEFAULT_POSTER } from '../../utils/constants'
 import { DANMAKU_MODE_LABELS } from '../../utils/danmakuMode'
 import { formatDateTime } from '../../utils/format'
 
@@ -23,13 +23,11 @@ const danmakuHex = (record) => {
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/v2/danmaku-records/mine`, {
-      params: { page: page.value, pageSize: pageSize.value }
-    })
-    if (res.data?.code === 200) {
-      list.value = res.data.data?.content || []
-      total.value = Number(res.data.data?.totalElements || 0)
-    } else error.value = res.data?.msg || '加载弹幕记录失败'
+    const res = await getMyDanmakuRecords({ page: page.value, pageSize: pageSize.value })
+    if (res?.code === 200) {
+      list.value = res.data?.content || []
+      total.value = Number(res.data?.totalElements || 0)
+    } else error.value = res?.msg || '加载弹幕记录失败'
   } catch (e) { console.error('加载弹幕记录失败:', e); error.value = '加载弹幕记录失败' }
   finally { loading.value = false }
 }

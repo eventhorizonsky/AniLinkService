@@ -1,9 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-import { API_BASE } from '../../utils/constants'
 import { formatDateTime, formatDanmakuColor as danmakuColorHex } from '../../utils/format'
+import { getAdminDanmakuRecords } from '../../api/danmaku'
 import { danmakuModeLabel } from '../../utils/danmakuMode'
 
 const loading = ref(false)
@@ -20,20 +19,18 @@ const totalPages = ref(0)
 const fetchRecords = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/admin/danmaku-records`, {
-      params: {
-        page: page.value,
-        pageSize: pageSize.value,
-        userId: filterUserId.value || undefined,
-        episodeId: filterEpisodeId.value || undefined,
-        animeId: filterAnimeId.value || undefined,
-        keyword: filterKeyword.value?.trim() || undefined,
-      }
+    const res = await getAdminDanmakuRecords({
+      page: page.value,
+      pageSize: pageSize.value,
+      userId: filterUserId.value || undefined,
+      episodeId: filterEpisodeId.value || undefined,
+      animeId: filterAnimeId.value || undefined,
+      keyword: filterKeyword.value?.trim() || undefined,
     })
-    if (res.data?.code === 200 && res.data?.data) {
-      records.value = res.data.data.content || []
-      totalElements.value = Number(res.data.data.totalElements || 0)
-      totalPages.value = Number(res.data.data.totalPages || 0)
+    if (res?.code === 200 && res?.data) {
+      records.value = res.data.content || []
+      totalElements.value = Number(res.data.totalElements || 0)
+      totalPages.value = Number(res.data.totalPages || 0)
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '获取弹幕记录失败', 'error')

@@ -1,9 +1,8 @@
 <script setup>
 import { ref, watch } from 'vue'
-import axios from 'axios'
 import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
-import { API_BASE } from '../../../utils/constants'
 import { formatFileSize } from '../../../utils/format'
+import { getSubtitles, uploadSubtitle, deleteSubtitle, setSubtitleOffset, rescanSubtitles, getSubtitleDownloadUrl } from '../../../api/subtitle'
 
 const props = defineProps({
   mediaFileId: {
@@ -40,9 +39,9 @@ const fetchSubtitles = async () => {
   
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/media-files/${props.mediaFileId}/subtitles`)
-    if (res.data?.code === 200) {
-      subtitles.value = res.data.data || []
+    const res = await getSubtitles(props.mediaFileId)
+    if (res?.code === 200) {
+      subtitles.value = res.data || []
     }
   } catch (error) {
     console.error('获取字幕列表失败:', error)
@@ -69,16 +68,14 @@ const handleUpload = async () => {
   }
 
   try {
-    const res = await axios.post(`${API_BASE}/subtitles/upload`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    if (res.data?.code === 200) {
+    const res = await uploadSubtitle(formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    if (res?.code === 200) {
       showAppMessage('上传成功', 'success')
       uploadDialog.value = false
       resetUploadForm()
       fetchSubtitles()
     } else {
-      showAppMessage(res.data?.msg || '上传失败', 'error')
+      showAppMessage(res?.msg || '上传失败', 'error')
     }
   } catch (error) {
     showAppMessage('上传失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -95,12 +92,12 @@ const handleDelete = async (subtitle) => {
   if (!confirmed) return
 
   try {
-    const res = await axios.delete(`${API_BASE}/subtitles/${subtitle.id}`)
-    if (res.data?.code === 200) {
+    const res = await deleteSubtitle(subtitle.id)
+    if (res?.code === 200) {
       showAppMessage('删除成功', 'success')
       fetchSubtitles()
     } else {
-      showAppMessage(res.data?.msg || '删除失败', 'error')
+      showAppMessage(res?.msg || '删除失败', 'error')
     }
   } catch (error) {
     showAppMessage('删除失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -118,17 +115,13 @@ const handleSetOffset = async () => {
   if (!selectedSubtitle.value) return
 
   try {
-    const res = await axios.put(
-      `${API_BASE}/subtitles/${selectedSubtitle.value.id}/offset`,
-      null,
-      { params: { offset: offsetValue.value } }
-    )
-    if (res.data?.code === 200) {
+    const res = await setSubtitleOffset(selectedSubtitle.value.id, offsetValue.value)
+    if (res?.code === 200) {
       showAppMessage('设置成功', 'success')
       offsetDialog.value = false
       fetchSubtitles()
     } else {
-      showAppMessage(res.data?.msg || '设置失败', 'error')
+      showAppMessage(res?.msg || '设置失败', 'error')
     }
   } catch (error) {
     showAppMessage('设置失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -138,12 +131,12 @@ const handleSetOffset = async () => {
 // 重新扫描
 const handleRescan = async () => {
   try {
-    const res = await axios.post(`${API_BASE}/subtitles/rescan/${props.mediaFileId}`)
-    if (res.data?.code === 200) {
+    const res = await rescanSubtitles(props.mediaFileId)
+    if (res?.code === 200) {
       showAppMessage('重新扫描完成', 'success')
       fetchSubtitles()
     } else {
-      showAppMessage(res.data?.msg || '扫描失败', 'error')
+      showAppMessage(res?.msg || '扫描失败', 'error')
     }
   } catch (error) {
     showAppMessage('扫描失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -152,7 +145,7 @@ const handleRescan = async () => {
 
 // 下载字幕
 const handleDownload = (subtitle) => {
-  window.open(`${API_BASE}/subtitles/${subtitle.id}/download`, '_blank')
+  window.open(getSubtitleDownloadUrl(subtitle.id), '_blank')
 }
 
 const resetUploadForm = () => {

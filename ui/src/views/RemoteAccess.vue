@@ -1,9 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import axios from 'axios'
 import QRCode from 'qrcode'
 import { showAppMessage } from '../utils/ui-feedback'
-import { API_BASE } from '../utils/constants'
+import { getRemoteCredential, regenerateRemoteCredential } from '../api/remoteAccess'
 
 const loading = ref(false)
 const regenerating = ref(false)
@@ -74,16 +73,16 @@ const drawQrCode = async () => {
 const fetchCredential = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/remote-access/credential`)
-    if (res.data?.code === 200 && res.data?.data) {
+    const res = await getRemoteCredential()
+    if (res?.code === 200 && res?.data) {
       credential.value = {
         ...credential.value,
-        ...res.data.data
+        ...res.data
       }
       await drawQrCode()
       return
     }
-    showAppMessage(res.data?.msg || '获取远程访问信息失败', 'error')
+    showAppMessage(res?.msg || '获取远程访问信息失败', 'error')
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '获取远程访问信息失败', 'error')
   } finally {
@@ -94,14 +93,14 @@ const fetchCredential = async () => {
 const regenerateToken = async () => {
   regenerating.value = true
   try {
-    const res = await axios.post(`${API_BASE}/remote-access/credential/regenerate`)
-    if (res.data?.code === 200 && res.data?.data) {
-      credential.value.remoteAccessToken = res.data.data
+    const res = await regenerateRemoteCredential()
+    if (res?.code === 200 && res?.data) {
+      credential.value.remoteAccessToken = res.data
       await drawQrCode()
       showAppMessage('已重新生成远程访问密钥', 'success')
       return
     }
-    showAppMessage(res.data?.msg || '重置密钥失败', 'error')
+    showAppMessage(res?.msg || '重置密钥失败', 'error')
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '重置密钥失败，请稍后重试', 'error')
   } finally {

@@ -1,9 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
-import { API_BASE } from '../../../utils/constants'
 import { useIsMobile } from '../../../composables/useIsMobile'
+import { getResourceSubgroups, getResourceTypes, searchResources as apiSearchResources, downloadResource, batchDownloadResource } from '../../../api/download'
+import { getLibraries } from '../../../api/media'
 
 const { isMobile } = useIsMobile(768)
 
@@ -34,8 +34,8 @@ const openDetail = (row) => {
 
 const fetchSubgroups = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/subgroup`)
-    subgroups.value = res.data?.data || []
+    const res = await getResourceSubgroups()
+    subgroups.value = res?.data || []
   } catch (error) {
     console.error('加载字幕组失败:', error)
   }
@@ -43,8 +43,8 @@ const fetchSubgroups = async () => {
 
 const fetchTypes = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/type`)
-    types.value = res.data?.data || []
+    const res = await getResourceTypes()
+    types.value = res?.data || []
   } catch (error) {
     console.error('加载资源类型失败:', error)
   }
@@ -52,8 +52,8 @@ const fetchTypes = async () => {
 
 const fetchLibraries = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/media-library`)
-    const rawLibraries = res.data?.data || []
+    const res = await getLibraries()
+    const rawLibraries = res?.data || []
     libraries.value = rawLibraries.map((item) => ({ ...item, id: String(item.id) }))
 
     const selected = selectedLibraryId.value != null ? String(selectedLibraryId.value) : null
@@ -76,15 +76,13 @@ const searchResources = async (append = false) => {
   }
   searching.value = true
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/list`, {
-      params: {
-        keyword: keyword.value.trim(),
-        subgroup: subgroup.value,
-        type: type.value,
-        offset: append ? resources.value.length : 0
-      }
+    const res = await apiSearchResources({
+      keyword: keyword.value.trim(),
+      subgroup: subgroup.value,
+      type: type.value,
+      offset: append ? resources.value.length : 0
     })
-    const payload = res.data?.data || {}
+    const payload = res?.data || {}
     const items = payload.resources || []
     if (append) {
       resources.value = [...resources.value, ...items]
@@ -117,7 +115,7 @@ const createDownloadTask = async (row) => {
   downloadingTaskKeys.value = new Set(downloadingTaskKeys.value).add(key)
   creatingTask.value = true
   try {
-    const res = await axios.post(`${API_BASE}/resource-search/download`, {
+    const res = await downloadResource({
       title: row.title,
       magnet: row.magnet,
       pageUrl: row.pageUrl,
@@ -128,10 +126,10 @@ const createDownloadTask = async (row) => {
       libraryId: String(selectedLibraryId.value)
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('下载任务已创建', 'success')
     } else {
-      showAppMessage(res.data?.msg || '创建下载任务失败', 'error')
+      showAppMessage(res?.msg || '创建下载任务失败', 'error')
     }
   } catch (error) {
     console.error('创建下载任务失败:', error)
@@ -174,12 +172,12 @@ const batchDownload = async () => {
 
   creatingTask.value = true
   try {
-    const res = await axios.post(`${API_BASE}/resource-search/download/batch`, {
+    const res = await batchDownloadResource({
       libraryId: String(selectedLibraryId.value),
       items
     })
-    if (res.data?.code === 200) {
-      const data = res.data.data || {}
+    if (res?.code === 200) {
+      const data = res.data || {}
       const parts = []
       if (data.created > 0) parts.push(`成功 ${data.created} 个`)
       if (data.duplicated > 0) parts.push(`已存在 ${data.duplicated} 个`)
@@ -190,7 +188,7 @@ const batchDownload = async () => {
       }
       selection.value = []
     } else {
-      showAppMessage(res.data?.msg || '批量下载失败', 'error')
+      showAppMessage(res?.msg || '批量下载失败', 'error')
     }
   } catch (error) {
     console.error('批量下载失败:', error)

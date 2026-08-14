@@ -131,7 +131,6 @@
 <script setup>
 import { computed, ref, shallowRef, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
 import Artplayer from 'artplayer'
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
@@ -139,6 +138,12 @@ import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
 import { API_BASE, isSuperAdmin } from '../utils/constants'
 import { formatDanmakuColor } from '../utils/format'
+import { getAnimeRawJson, getAnimeEpisodes } from '../api/anime'
+import { savePlayProgress as postPlayProgress, getPlayResume } from '../api/playHistory'
+import { markEpisodeMessagesRead as apiMarkEpisodeMessagesRead } from '../api/messages'
+import { getSubtitles, setSubtitleOffset } from '../api/subtitle'
+import { getDanmakuComments, sendDanmakuComment } from '../api/danmaku'
+import { syncEpisodeWatched } from '../api/bangumi'
 import { useAnimeDerived } from '../composables/useAnimeDerived'
 import { useAuth } from '../composables/useAuth'
 import { useFollow } from '../composables/useFollow'
@@ -286,14 +291,6 @@ const saveDanmakuSettings = (option) => {
   }
 }
 
-const fetchJson = async (url, options) => {
-  const response = await fetch(url, options)
-  if (!response.ok) {
-    throw new Error(`请求失败(${response.status}): ${url}`)
-  }
-  return response.json()
-}
-
 /**
  * 获取番剧数据
  */
@@ -305,8 +302,8 @@ const fetchAnimeData = async () => {
     error.value = null
 
     const [animeResp, episodesResp] = await Promise.allSettled([
-      fetchJson(`${API_BASE}/animes/${animeId.value}/raw-json`),
-      fetchJson(`${API_BASE}/animes/${animeId.value}/episodes?page=1&pageSize=9999`),
+      getAnimeRawJson(animeId.value),
+      getAnimeEpisodes(animeId.value, { page: 1, pageSize: 9999 }),
     ])
 
     if (animeResp.status === 'fulfilled' && animeResp.value.code === 200 && animeResp.value.data?.bangumi) {
@@ -493,14 +490,7 @@ const fetchSubtitles = async (videoId) => {
     return []
   }
 
-  const response = await fetch(`${API_BASE}/media-files/${videoId}/subtitles?_ts=${Date.now()}`, {
-      cache: 'no-store',
-    })
-    if (!response.ok) {
-      throw new Error(`字幕接口返回状态: ${response.status}`)
-    }
-
-    const data = await response.json()
+  const data = await getSubtitles(videoId)
 
     // 处理后端ApiResponseVO格式返回
     if (data.code === 200 && Array.isArray(data.data)) {
@@ -552,7 +542,7 @@ const savePlayProgress = async () => {
     const isCompleted = currentTime / duration >= 0.8 // 播放超过80%认为已完成
     if (isCompleted) syncEpisodeWatchedToBangumi()    // 达到80%即时同步
 
-    await axios.post(`${API_BASE}/play-history/progress`, {
+    await postPlayProgress({
       videoId: videoId.value,
       videoName: `Episode ${episodeId.value || ''}`,
       animeId: animeId.value,
@@ -576,13 +566,13 @@ const loadPlayProgress = async () => {
   }
   
   try {
-    const response = await axios.get(`${API_BASE}/play-history/anime/${animeId.value}/resume`)
-    if (response.data.code === 200 && response.data.data) {
+    const body = await getPlayResume(animeId.value)
+    if (body.code === 200 && body.data) {
       // 仅在当前播放视频与历史视频一致时恢复秒数，避免跨分集误跳进度。
-      if (String(response.data.data.videoId || '') !== String(videoId.value || '')) {
+      if (String(body.data.videoId || '') !== String(videoId.value || '')) {
         return null
       }
-      return response.data.data.progressSeconds || 0
+      return body.data.progressSeconds || 0
     }
   } catch (error) {
     console.error('加载播放进度失败:', error)
@@ -638,11 +628,9 @@ const syncEpisodeWatchedToBangumi = async () => {
 
   _lastSyncedKey = key
   try {
-    await axios.post(`${API_BASE}/bangumi/sync/episode-watched`, null, {
-      params: {
-        animeId: animeId.value,
-        episodeNumber: String(currentEp.episodeNumber)
-      }
+    await syncEpisodeWatched({
+      animeId: animeId.value,
+      episodeNumber: String(currentEp.episodeNumber)
     })
   } catch (e) {
     // 静默失败 — 同步是最大努力，不应打扰用户
@@ -742,10 +730,7 @@ const isCurrentUserAdmin = () => isSuperAdmin(userInfo.value)
  */
 const persistSubtitleOffset = async (subtitleId, offsetMs) => {
   try {
-    await fetch(`${API_BASE}/subtitles/${subtitleId}/offset?offset=${offsetMs}`, {
-      method: 'PUT',
-      headers: { satoken: token.value },
-    })
+    await setSubtitleOffset(subtitleId, offsetMs)
   } catch (e) {
     console.warn('保存字幕偏移量失败:', e)
   }
@@ -964,12 +949,7 @@ const fetchDanmaku = async (episodeId) => {
       return []
     }
 
-    const response = await fetch(`${API_BASE}/v2/comment/${episodeId}?withRelated=true`)
-    if (!response.ok) {
-      throw new Error(`弹幕接口返回状态: ${response.status}`)
-    }
-
-    const data = await response.json()
+    const data = await getDanmakuComments(episodeId)
 
     // 处理后端自定义格式返回
     if (data.code === 200 && data.data) {
@@ -1037,7 +1017,7 @@ const sendDanmaku = async (danmu) => {
     episodeTitle: currentEpisodeResource.value?.episodeTitle || null,
   }
 
-  await axios.post(`${API_BASE}/v2/comment/${targetEpisodeId}/app`, requestBody)
+  await sendDanmakuComment(targetEpisodeId, requestBody)
 }
 
 const jumpToEpisodeById = (targetEpisodeId) => {
@@ -1612,7 +1592,7 @@ onMounted(async () => {
 const markEpisodeMessagesRead = async () => {
   if (!token.value || !episodeId.value) return
   try {
-    await axios.put(`${API_BASE}/messages/read-by-episode/${encodeURIComponent(episodeId.value)}`)
+    await apiMarkEpisodeMessagesRead(episodeId.value)
   } catch (e) {
     console.debug('标记剧集消息已读失败:', e)
   }

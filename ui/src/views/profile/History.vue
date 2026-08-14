@@ -1,11 +1,11 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getPlayHistory, removePlayHistory, clearPlayHistory } from '../../api/playHistory'
 import PaginationBar from '../../components/PaginationBar.vue'
 import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import { usePagination } from '../../composables/usePagination'
-import { DEFAULT_POSTER, API_BASE } from '../../utils/constants'
+import { DEFAULT_POSTER } from '../../utils/constants'
 import { formatMonthDayTime } from '../../utils/format'
 
 const router = useRouter()
@@ -19,13 +19,11 @@ const progressPercent = (item) => Math.min(100, Math.max(0, Number(item?.progres
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/play-history`, {
-      params: { page: page.value, pageSize: pageSize.value }
-    })
-    if (res.data?.code === 200) {
-      list.value = res.data.data?.content || []
-      total.value = Number(res.data.data?.totalElements || 0)
-    } else error.value = res.data?.msg || '加载播放历史失败'
+    const res = await getPlayHistory({ page: page.value, pageSize: pageSize.value })
+    if (res?.code === 200) {
+      list.value = res.data?.content || []
+      total.value = Number(res.data?.totalElements || 0)
+    } else error.value = res?.msg || '加载播放历史失败'
   } catch (e) { console.error('加载播放历史失败:', e); error.value = '加载播放历史失败' }
   finally { loading.value = false }
 }
@@ -51,11 +49,11 @@ const deleteItem = async (id) => {
   const ok = await askAppConfirm({ title: '删除播放历史', message: '确定删除这条播放历史吗？' })
   if (!ok) return
   try {
-    const res = await axios.delete(`${API_BASE}/play-history/${id}`)
-    if (res.data?.code === 200) {
+    const res = await removePlayHistory(id)
+    if (res?.code === 200) {
       if (list.value.length === 1 && page.value > 1) page.value -= 1
       await fetchData()
-    } else showAppMessage(res.data?.msg || '删除失败', 'error')
+    } else showAppMessage(res?.msg || '删除失败', 'error')
   } catch (e) { console.error('删除播放历史失败:', e); showAppMessage('删除播放历史失败', 'error') }
 }
 
@@ -63,11 +61,11 @@ const clearAll = async () => {
   const ok = await askAppConfirm({ title: '清空播放历史', message: '确定清空所有播放历史吗？该操作不可恢复。', color: 'error' })
   if (!ok) return
   try {
-    const res = await axios.delete(`${API_BASE}/play-history/clear`)
-    if (res.data?.code === 200) {
+    const res = await clearPlayHistory()
+    if (res?.code === 200) {
       page.value = 1
       await fetchData()
-    } else showAppMessage(res.data?.msg || '清空失败', 'error')
+    } else showAppMessage(res?.msg || '清空失败', 'error')
   } catch (e) { console.error('清空播放历史失败:', e); showAppMessage('清空播放历史失败', 'error') }
 }
 

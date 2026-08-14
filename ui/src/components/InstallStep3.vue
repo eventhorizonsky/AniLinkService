@@ -1,8 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../utils/ui-feedback'
-import { API_BASE } from '../utils/constants'
+import {
+  getInitLibraries,
+  getInitLibraryPaths,
+  createInitLibrary,
+  removeInitLibrary,
+  scanLibrary as apiScanLibrary,
+  scanAllLibraries
+} from '../api/media'
 
 const mediaLibraries = ref([])
 const loading = ref(false)
@@ -21,9 +27,9 @@ const newLibrary = ref({
 
 const fetchLibraries = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/init/media-library`)
-    if (res.data?.code === 200) {
-      mediaLibraries.value = res.data.data || []
+    const res = await getInitLibraries()
+    if (res?.code === 200) {
+      mediaLibraries.value = res.data || []
     }
   } catch (error) {
     console.error('获取媒体库失败:', error)
@@ -33,14 +39,9 @@ const fetchLibraries = async () => {
 const loadPaths = async (root, assign) => {
   loadingPaths.value = true
   try {
-    const res = await axios.get(`${API_BASE}/init/media-library/paths`, {
-      params: {
-        rootPath: root,
-        onlyDir: true
-      }
-    })
-    if (res.data?.code === 200) {
-      const items = res.data.data || []
+    const res = await getInitLibraryPaths(root)
+    if (res?.code === 200) {
+      const items = res.data || []
       const tree = items.map(item => ({
         id: item.path,
         title: item.name,
@@ -72,14 +73,14 @@ const addLibrary = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const res = await axios.post(`${API_BASE}/init/media-library`, newLibrary.value)
-    if (res.data?.code === 200) {
+    const res = await createInitLibrary(newLibrary.value)
+    if (res?.code === 200) {
       dialog.value = false
       newLibrary.value = { name: '', path: '' }
       showPathTree.value = false
       await fetchLibraries()
     } else {
-      errorMessage.value = res.data?.msg || '添加媒体库失败'
+      errorMessage.value = res?.msg || '添加媒体库失败'
     }
   } catch (error) {
     errorMessage.value = error.response?.data?.msg || '添加媒体库失败，请稍后重试'
@@ -97,8 +98,8 @@ const deleteLibrary = async (id) => {
   if (!confirmed) return
 
   try {
-    const res = await axios.delete(`${API_BASE}/init/media-library/${id}`)
-    if (res.data?.code === 200) {
+    const res = await removeInitLibrary(id)
+    if (res?.code === 200) {
       await fetchLibraries()
     }
   } catch (error) {
@@ -109,8 +110,8 @@ const deleteLibrary = async (id) => {
 const scanLibrary = async (id) => {
   scanning.value = true
   try {
-    const res = await axios.post(`${API_BASE}/media-library/scan/${id}`)
-    if (res.data?.code === 200) {
+    const res = await apiScanLibrary(id)
+    if (res?.code === 200) {
       showAppMessage('扫描已触发', 'success')
       await fetchLibraries()
     }
@@ -131,8 +132,8 @@ const scanAll = async () => {
 
   scanning.value = true
   try {
-    const res = await axios.post(`${API_BASE}/media-library/scan-all`)
-    if (res.data?.code === 200) {
+    const res = await scanAllLibraries()
+    if (res?.code === 200) {
       showAppMessage('扫描已触发', 'success')
       await fetchLibraries()
     }

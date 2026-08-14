@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import axios from 'axios'
-import { hasRoleLevel, API_BASE } from '../utils/constants'
+import { hasRoleLevel } from '../utils/constants'
 import { useAuth } from '../composables/useAuth'
+import { getSiteConfig } from '../api/site'
 
 const routes = [
   {
@@ -120,9 +120,9 @@ router.beforeEach(async (to, from, next) => {
   // 仅在本地状态缺失时从接口获取，避免每次导航都请求 siteConfig
   if (installed == null) {
     try {
-      const res = await axios.get(`${API_BASE}/site/config`)
-      const isInstalled = res.data?.data?.installed === true
-      siteConfig = res.data?.data || null
+      const res = await getSiteConfig()
+      const isInstalled = res?.data?.installed === true
+      siteConfig = res?.data || null
       installed = isInstalled ? 'true' : 'false'
       if (isInstalled) {
         localStorage.setItem('installed', 'true')

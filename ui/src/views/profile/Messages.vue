@@ -1,11 +1,10 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getMessages, getMessagesByType, markMessageRead, markAllMessagesRead, removeMessage as apiRemoveMessage } from '../../api/messages'
 import PaginationBar from '../../components/PaginationBar.vue'
 import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import { usePagination } from '../../composables/usePagination'
-import { API_BASE } from '../../utils/constants'
 import { formatMonthDayTime } from '../../utils/format'
 
 const router = useRouter()
@@ -27,12 +26,13 @@ const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
     const params = { page: page.value, pageSize: pageSize.value }
-    const url = filterType.value ? `${API_BASE}/messages/type/${filterType.value}` : `${API_BASE}/messages`
-    const res = await axios.get(url, { params })
-    if (res.data?.code === 200) {
-      list.value = res.data.data?.content || []
-      total.value = Number(res.data.data?.totalElements || 0)
-    } else error.value = res.data?.msg || '加载消息列表失败'
+    const res = filterType.value
+      ? await getMessagesByType(filterType.value, params)
+      : await getMessages(params)
+    if (res?.code === 200) {
+      list.value = res.data?.content || []
+      total.value = Number(res.data?.totalElements || 0)
+    } else error.value = res?.msg || '加载消息列表失败'
   } catch (e) { console.error('加载消息列表失败:', e); error.value = '加载消息列表失败' }
   finally { loading.value = false }
 }
@@ -51,7 +51,7 @@ const applyFilter = (value) => {
 
 const openMessage = async (msg) => {
   if (!msg.isRead) {
-    try { await axios.put(`${API_BASE}/messages/${msg.id}/read`) } catch (e) { /* ignore */ }
+    try { await markMessageRead(msg.id) } catch (e) { /* ignore */ }
     msg.isRead = true
   }
   if (msg.type === 'episode_update' && msg.videoId) {
@@ -71,11 +71,11 @@ const openMessage = async (msg) => {
 
 const markAllRead = async () => {
   try {
-    const res = await axios.put(`${API_BASE}/messages/mark-all-read`)
-    if (res.data?.code === 200 || res.data?.code === 0) {
+    const res = await markAllMessagesRead()
+    if (res?.code === 200 || res?.code === 0) {
       showAppMessage('已全部标记为已读', 'success')
       await fetchData()
-    } else showAppMessage(res.data?.msg || '一键已读失败', 'error')
+    } else showAppMessage(res?.msg || '一键已读失败', 'error')
   } catch (e) { showAppMessage('一键已读失败，请稍后重试', 'error') }
 }
 
@@ -83,11 +83,11 @@ const removeMessage = async (id) => {
   const ok = await askAppConfirm({ title: '删除消息', message: '确定要删除这条消息吗？' })
   if (!ok) return
   try {
-    const res = await axios.delete(`${API_BASE}/messages/${id}`)
-    if (res.data?.code === 200) {
+    const res = await apiRemoveMessage(id)
+    if (res?.code === 200) {
       if (list.value.length === 1 && page.value > 1) page.value -= 1
       await fetchData()
-    } else showAppMessage(res.data?.msg || '删除失败', 'error')
+    } else showAppMessage(res?.msg || '删除失败', 'error')
   } catch (e) { showAppMessage('删除失败', 'error') }
 }
 

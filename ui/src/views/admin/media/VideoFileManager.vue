@@ -1,12 +1,11 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
-import { API_BASE } from '../../../utils/constants'
 import { formatFileSize } from '../../../utils/format'
 import { getMatchStatusMeta } from '../../../utils/mediaMatchStatus'
+import { getLibraries, getMediaFiles, removeMediaFile, reprocessMediaFileMetadata } from '../../../api/media'
 
 const mediaFiles = ref([])
 const loading = ref(false)
@@ -42,9 +41,9 @@ const headers = [
 // 获取媒体库列表
 const fetchLibraries = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/media-library`)
-    if (res.data?.code === 200) {
-      mediaLibraries.value = res.data.data || []
+    const res = await getLibraries()
+    if (res?.code === 200) {
+      mediaLibraries.value = res.data || []
     }
   } catch (error) {
     console.error('获取媒体库失败:', error)
@@ -69,10 +68,10 @@ const fetchMediaFiles = async (pageNum = 1) => {
       params.matched = matchedFilter.value
     }
 
-    const res = await axios.get(`${API_BASE}/media-files`, { params })
-    if (res.data?.code === 200 && res.data?.data) {
-      mediaFiles.value = res.data.data.content || []
-      pagination.value.totalItems = res.data.data.totalElements || 0
+    const res = await getMediaFiles(params)
+    if (res?.code === 200 && res?.data) {
+      mediaFiles.value = res.data.content || []
+      pagination.value.totalItems = res.data.totalElements || 0
       pagination.value.page = pageNum
     }
   } catch (error) {
@@ -125,15 +124,13 @@ const deleteFile = async (fileId, deletePhysicalFile = false) => {
 
   loading.value = true
   try {
-    const res = await axios.delete(`${API_BASE}/media-files/${fileId}`, {
-      params: { deleteFile: deletePhysicalFile }
-    })
-    if (res.data?.code === 200) {
+    const res = await removeMediaFile(fileId, { deleteFile: deletePhysicalFile })
+    if (res?.code === 200) {
       showAppMessage('删除成功', 'success')
       pagination.value.page = 1
       await fetchMediaFiles(1)
     } else {
-      showAppMessage(res.data?.msg || '删除失败', 'error')
+      showAppMessage(res?.msg || '删除失败', 'error')
     }
   } catch (error) {
     showAppMessage('删除失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -160,15 +157,15 @@ const reprocessMetadata = async (libraryId) => {
 
   reprocessingLibraryId.value = libraryId
   try {
-    const res = await axios.post(`${API_BASE}/media-files/reprocess-metadata/${libraryId}`)
-    if (res.data?.code === 200) {
+    const res = await reprocessMediaFileMetadata(libraryId)
+    if (res?.code === 200) {
       showAppMessage('已提交重新获取任务', 'success')
       // 延迟刷新文件列表，等待后台任务状态更新
       setTimeout(() => {
         fetchMediaFiles(1)
       }, 5000)
     } else {
-      showAppMessage(res.data?.msg || '提交任务失败', 'error')
+      showAppMessage(res?.msg || '提交任务失败', 'error')
     }
   } catch (error) {
     showAppMessage('提交任务失败: ' + (error.response?.data?.msg || error.message), 'error')

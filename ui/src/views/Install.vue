@@ -1,11 +1,10 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import InstallStep1 from '../components/InstallStep1.vue'
 import InstallStep2 from '../components/InstallStep2.vue'
 import InstallStep3 from '../components/InstallStep3.vue'
-import { API_BASE } from '../utils/constants'
+import { initSiteConfig } from '../api/site'
 
 const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 const router = useRouter()
@@ -89,7 +88,7 @@ const submitInstallation = async () => {
   loading.value = true
 
   try {
-    const res = await axios.post(`${API_BASE}/init/site-config`, {
+    const res = await initSiteConfig({
       siteName: form.value.siteName,
       siteDescription: form.value.siteDescription,
       siteUrl: form.value.siteUrl,
@@ -100,7 +99,7 @@ const submitInstallation = async () => {
         dandanBaseUrl: form.value.dandanBaseUrl
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       success.value = true
       localStorage.setItem('installed', 'true')
       localStorage.setItem('siteConfig', JSON.stringify({
@@ -108,7 +107,7 @@ const submitInstallation = async () => {
         siteUrl: form.value.siteUrl
       }))
     } else {
-      errorMessage.value = res.data?.msg || '安装失败'
+      errorMessage.value = res?.msg || '安装失败'
     }
   } catch (error) {
     errorMessage.value = error.response?.data?.msg || '安装失败，请稍后重试'

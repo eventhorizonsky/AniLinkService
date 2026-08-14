@@ -1,11 +1,11 @@
 <script setup>
 import { ref, computed, onMounted, watch, defineAsyncComponent, provide } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
 import { useIsMobile } from '../composables/useIsMobile'
-import { API_BASE, isSuperAdmin as checkSuperAdmin } from '../utils/constants'
+import { isSuperAdmin as checkSuperAdmin } from '../utils/constants'
+import { getCurrentUser } from '../api/auth'
 
 const { isDark } = useTheme()
 const { userInfo, setUserInfo, clearAuth } = useAuth()
@@ -68,9 +68,9 @@ const visibleSystemSettingsItems = computed(() =>
 // 获取当前用户信息
 const fetchUserInfo = async () => {
   try {
-    const res = await axios.post(`${API_BASE}/auth/currentUser`)
-    if (res.data?.code === 200 && res.data?.data) {
-      const userData = res.data.data
+    const res = await getCurrentUser()
+    if (res?.code === 200 && res?.data) {
+      const userData = res.data
       setUserInfo(userData)
     }
   } catch (error) {

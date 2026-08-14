@@ -1,9 +1,13 @@
 import { ref } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
-import { API_BASE } from '../utils/constants'
 import { followStatusLabel } from '../utils/followStatus'
 import { useAuth } from './useAuth'
+import {
+  getFollowStatus,
+  setFollowStatus as apiSetFollowStatus,
+  createFollow,
+  removeFollow,
+} from '../api/follows'
 
 /**
  * 追番状态管理。
@@ -25,10 +29,10 @@ export function useFollow() {
     }
 
     try {
-      const response = await axios.get(`${API_BASE}/follows/${animeId}`)
-      if (response.data?.code === 200 && response.data.data) {
+      const body = await getFollowStatus(animeId)
+      if (body?.code === 200 && body.data) {
         isFollowing.value = true
-        followStatus.value = response.data.data.status || 'watching'
+        followStatus.value = body.data.status || 'watching'
       } else {
         isFollowing.value = false
         followStatus.value = 'wish'
@@ -53,9 +57,9 @@ export function useFollow() {
     followLoading.value = true
     try {
       if (isFollowing.value) {
-        await axios.put(`${API_BASE}/follows/${animeId}/status`, null, { params: { status } })
+        await apiSetFollowStatus(animeId, status)
       } else {
-        await axios.post(`${API_BASE}/follows`, {
+        await createFollow({
           animeId: Number(animeId),
           animeTitle: animeData.titles?.[0]?.title || '未知',
           imageUrl: animeData.imageUrl || '',
@@ -88,11 +92,11 @@ export function useFollow() {
     followLoading.value = true
     try {
       if (isFollowing.value) {
-        await axios.delete(`${API_BASE}/follows/${animeId}`)
+        await removeFollow(animeId)
         isFollowing.value = false
         showAppMessage('已取消追番', 'success')
       } else {
-        await axios.post(`${API_BASE}/follows`, {
+        await createFollow({
           animeId: Number(animeId),
           animeTitle: animeData?.titles?.[0]?.title || '未知',
           imageUrl: animeData?.imageUrl || ''
@@ -111,7 +115,7 @@ export function useFollow() {
   const upgradeFollowWishToWatching = async (animeId) => {
     if (!token.value || !isFollowing.value || followStatus.value !== 'wish' || !animeId) return
     try {
-      await axios.put(`${API_BASE}/follows/${animeId}/status`, null, { params: { status: 'watching' } })
+      await apiSetFollowStatus(animeId, 'watching')
       followStatus.value = 'watching'
     } catch (e) {
       console.debug('追番自动升级失败:', e)

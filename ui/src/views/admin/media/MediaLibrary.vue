@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
-import { API_BASE } from '../../../utils/constants'
+import { getLibraries, getLibraryPaths, createLibrary, removeLibrary, rematchLibrary as apiRematchLibrary, reprocessMediaFileMetadata, getMetadataProgress, getMatchProgress } from '../../../api/media'
 
 const mediaLibraries = ref([])
 const loading = ref(false)
@@ -38,16 +37,14 @@ const newLibrary = ref({
 // 获取元数据进度
 const fetchMetadataProgress = async (libraryId) => {
   try {
-    const res = await axios.get(`${API_BASE}/media-files/queue/metadata-progress`, {
-      params: { libraryId }
-    })
-    if (res.data?.code === 200) {
+    const res = await getMetadataProgress({ libraryId })
+    if (res?.code === 200) {
       // 确保库的进度对象初始化
       if (!progressData.value[libraryId]) {
         progressData.value[libraryId] = { metadata: null, match: null }
       }
       // 直接赋值(Vue 3 的响应式自动处理)
-      progressData.value[libraryId].metadata = res.data.data
+      progressData.value[libraryId].metadata = res.data
     }
   } catch (error) {
     console.error('获取元数据进度失败:', error)
@@ -57,16 +54,14 @@ const fetchMetadataProgress = async (libraryId) => {
 // 获取弹幕匹配进度
 const fetchMatchProgress = async (libraryId) => {
   try {
-    const res = await axios.get(`${API_BASE}/media-files/queue/match-progress`, {
-      params: { libraryId }
-    })
-    if (res.data?.code === 200) {
+    const res = await getMatchProgress({ libraryId })
+    if (res?.code === 200) {
       // 确保库的进度对象初始化
       if (!progressData.value[libraryId]) {
         progressData.value[libraryId] = { metadata: null, match: null }
       }
       // 直接赋值(Vue 3 的响应式自动处理)
-      progressData.value[libraryId].match = res.data.data
+      progressData.value[libraryId].match = res.data
     }
   } catch (error) {
     console.error('获取匹配进度失败:', error)
@@ -124,9 +119,9 @@ const toggleProgressDisplay = (libraryId) => {
 const fetchLibraries = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/media-library`)
-    if (res.data?.code === 200) {
-      mediaLibraries.value = res.data.data || []
+    const res = await getLibraries()
+    if (res?.code === 200) {
+      mediaLibraries.value = res.data || []
     }
   } catch (error) {
     console.error('获取媒体库失败:', error)
@@ -138,14 +133,9 @@ const fetchLibraries = async () => {
 const fetchPaths = async (path = rootPath.value) => {
   loadingPaths.value = true
   try {
-    const res = await axios.get(`${API_BASE}/media-library/paths`, {
-      params: {
-        rootPath: path,
-        onlyDir: true
-      }
-    })
-    if (res.data?.code === 200) {
-      const items = res.data.data || []
+    const res = await getLibraryPaths(path)
+    if (res?.code === 200) {
+      const items = res.data || []
       pathTree.value = items.map(item => ({
         id: item.path,
         title: item.name,
@@ -162,14 +152,9 @@ const fetchPaths = async (path = rootPath.value) => {
 const handleNodeSelect = async (item) => {
   loadingPaths.value = true
   try {
-    const res = await axios.get(`${API_BASE}/media-library/paths`, {
-      params: {
-        rootPath: item.id,
-        onlyDir: true
-      }
-    })
-    if (res.data?.code === 200) {
-      const items = res.data.data || []
+    const res = await getLibraryPaths(item.id)
+    if (res?.code === 200) {
+      const items = res.data || []
       if (items.length > 0) {
         item.children = items.map(child => ({
           id: child.path,
@@ -194,14 +179,14 @@ const addLibrary = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const res = await axios.post(`${API_BASE}/media-library`, newLibrary.value)
-    if (res.data?.code === 200) {
+    const res = await createLibrary(newLibrary.value)
+    if (res?.code === 200) {
       dialog.value = false
       newLibrary.value = { name: '', path: '' }
       showPathTree.value = false
       await fetchLibraries()
     } else {
-      errorMessage.value = res.data?.msg || '添加媒体库失败'
+      errorMessage.value = res?.msg || '添加媒体库失败'
     }
   } catch (error) {
     errorMessage.value = error.response?.data?.msg || '添加媒体库失败，请稍后重试'
@@ -219,8 +204,8 @@ const deleteLibrary = async (id) => {
   if (!confirmed) return
 
   try {
-    const res = await axios.delete(`${API_BASE}/media-library/${id}`)
-    if (res.data?.code === 200) {
+    const res = await removeLibrary(id)
+    if (res?.code === 200) {
       await fetchLibraries()
     }
   } catch (error) {
@@ -231,9 +216,9 @@ const deleteLibrary = async (id) => {
 const scanLibrary = async (id) => {
   scanning.value = true
   try {
-    const res = await axios.post(`${API_BASE}/media-files/reprocess-metadata/${id}`)
-    if (res.data?.code === 200) {
-      showAppMessage(res.data.msg || '重新获取元数据已触发', 'success')
+    const res = await reprocessMediaFileMetadata(id)
+    if (res?.code === 200) {
+      showAppMessage(res.msg || '重新获取元数据已触发', 'success')
       await fetchLibraries()
       // 启动进度轮询
       startProgressPolling(id)
@@ -248,9 +233,9 @@ const scanLibrary = async (id) => {
 const rematchLibrary = async (id) => {
   scanning.value = true
   try {
-    const res = await axios.post(`${API_BASE}/media-library/rematch/${id}`)
-    if (res.data?.code === 200) {
-      showAppMessage(res.data.msg || '弹幕重新匹配已触发', 'success')
+    const res = await apiRematchLibrary(id)
+    if (res?.code === 200) {
+      showAppMessage(res.msg || '弹幕重新匹配已触发', 'success')
       await fetchLibraries()
       // 启动进度轮询
       startProgressPolling(id)
@@ -274,7 +259,7 @@ const scanAll = async () => {
   try {
     // 逐个为所有库提交重新获取元数据的任务
     for (const lib of mediaLibraries.value) {
-      await axios.post(`${API_BASE}/media-files/reprocess-metadata/${lib.id}`)
+      await reprocessMediaFileMetadata(lib.id)
     }
     showAppMessage('所有媒体库的元数据重新获取已提交', 'success')
     await fetchLibraries()

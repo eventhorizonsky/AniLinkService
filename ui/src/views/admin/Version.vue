@@ -1,9 +1,8 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { API_BASE } from '../../utils/constants'
+import { getSystemVersion } from '../../api/system'
 
 const loading = ref(false)
 const versionInfo = ref(null)
@@ -13,9 +12,9 @@ const expanded = ref(null)
 const fetchVersionInfo = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/system/version`)
-    if (res.data?.data) {
-      versionInfo.value = res.data.data
+    const res = await getSystemVersion()
+    if (res?.data) {
+      versionInfo.value = res.data
     }
   } catch (error) {
     console.error('获取版本信息失败:', error)
