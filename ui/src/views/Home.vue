@@ -137,29 +137,52 @@ const fetchTrending = async () => {
       getTrendingHot(),
       getTrendingNewAnime()
     ])
-    if (hotRes.status === 'fulfilled' && hotRes.value?.data)
-      trendingHot.value = extractList(hotRes.value.data).slice(0, 10)
-    if (newRes.status === 'fulfilled' && newRes.value?.data)
-      trendingNewAnime.value = extractList(newRes.value.data).slice(0, 10)
+    if (hotRes.status === 'fulfilled' && hotRes.value)
+      trendingHot.value = normalizeTrending(hotRes.value).slice(0, 10)
+    if (newRes.status === 'fulfilled' && newRes.value)
+      trendingNewAnime.value = normalizeTrending(newRes.value).slice(0, 10)
   } catch (e) { trendingError.value = '榜单数据加载失败'; console.error(e) }
   finally { trendingLoading.value = false }
 }
 
+// Dandanplay 榜单响应：{ response_base, summary, bangumi_list: [{ bangumi_intro, rank, heat }] }
+// 提取条目列表，并归一化为页面模板所需的 flat 结构
 const extractList = (data) => {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object') {
     if (Array.isArray(data.bangumiList)) return data.bangumiList
-    for (const k of ['animeList', 'results', 'data', 'animes'])
+    if (Array.isArray(data.bangumi_list)) return data.bangumi_list
+    for (const k of ['animeList', 'anime_list', 'results', 'data', 'animes'])
       if (Array.isArray(data[k])) return data[k]
     if (data.animeId) return [data]
   }
   return []
 }
 
+const normalizeTrending = (body) =>
+  extractList(body).map((item) => {
+    const intro = item?.bangumi_intro || item || {}
+    return {
+      animeId: intro.anime_id ?? intro.bangumi_id ?? intro.animeId ?? intro.bangumiId,
+      animeTitle: intro.anime_title ?? intro.animeTitle,
+      imageUrl: intro.image_url ?? intro.imageUrl,
+      rating: intro.rating,
+      heat: item?.heat ?? intro.heat,
+      rank: item?.rank ?? intro.rank,
+      isFavorited: intro.is_favorited ?? intro.isFavorited
+    }
+  })
+
 // ===================== Lifecycle =====================
 watch(() => trendingHot.value.length, () => {
   currentSlide.value = 0
   resetAutoPlay()
+})
+
+// 登录/登出时刷新追番：避免停留在首页完成登录后追番一直不加载
+watch(isLoggedIn, (loggedIn) => {
+  if (loggedIn) fetchFollowList()
+  else followList.value = []
 })
 
 onMounted(() => {
