@@ -43,6 +43,10 @@
       </nav>
 
       <div class="sidebar-footer">
+        <button class="footer-link theme-footer-btn" @click="toggleTheme">
+          <i class="mdi" :class="isDark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"></i>
+          {{ isDark ? '浅色模式' : '深色模式' }}
+        </button>
         <router-link v-if="isAdmin" to="/admin" class="footer-link">
           <i class="mdi mdi-cog"></i> 后台管理
         </router-link>
@@ -1025,6 +1029,14 @@ body {
   background: var(--anime-bg-cream);
   color: var(--anime-text-main);
 }
+.sidebar-footer .theme-footer-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
 
 /* 移动端遮罩 */
 .sidebar-overlay {
@@ -1698,6 +1710,12 @@ body {
 @media (max-width: 600px) {
   .app-topbar {
     gap: 10px;
+  }
+  .theme-toggle {
+    display: none;
+  }
+  .sidebar-footer .theme-footer-btn {
+    display: flex;
   }
   .search-wrap {
     min-width: 0;
