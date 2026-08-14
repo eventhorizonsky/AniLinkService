@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.2.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.1.0...v1.2.0) (2026-08-14)
+
+
+### Features
+
+* 下载任务支持停滞检测、断点续传重试与暂存文件自动清理 ([d80c74c](https://github.com/eventhorizonsky/AniLinkService/commit/d80c74ced169f5e46a60ca5aa0eafd050fec6b24))
+* 优化下载任务表格标题和状态显示样式，增强移动端适配 ([c60d60c](https://github.com/eventhorizonsky/AniLinkService/commit/c60d60cbe6373de31da21c054c9905d56d83b4f5))
+* 支持 Tracker 列表订阅并优化新任务附加 Tracker 逻辑 ([94fae92](https://github.com/eventhorizonsky/AniLinkService/commit/94fae92ef377fbb0dd76efd8b5af184f8d17b48b))
+* 新增看板统计数据接口及相关视图对象，优化系统信息展示 ([46af8ce](https://github.com/eventhorizonsky/AniLinkService/commit/46af8ce10425df6cd2e209f7f2e2f0b171472926))
+* 添加 QEMU 和 Docker Buildx 设置，支持多平台构建 ([8e4bf94](https://github.com/eventhorizonsky/AniLinkService/commit/8e4bf949da39eff243304bb9049496afb8faef2d))
+* 添加任务状态绑定查看功能，优化状态判断逻辑 ([3b86ccb](https://github.com/eventhorizonsky/AniLinkService/commit/3b86ccb0a94b6f87c9cbc9ffbb0caafb2f436730))
+* 添加移动端适配，优化下载任务和资源搜索界面 ([69a3b2a](https://github.com/eventhorizonsky/AniLinkService/commit/69a3b2aeff88b2f88c2dd65c0b8f4e36d481be57))
+* 添加路由变化监听，滚动到页面顶部 ([3e50cbb](https://github.com/eventhorizonsky/AniLinkService/commit/3e50cbb343d20ec50f0d7f85944bcd9528d5831f))
+
+
+### Bug Fixes
+
+* 优化移动端侧边栏行为，点击非分组导航时自动收起 ([15bbaf9](https://github.com/eventhorizonsky/AniLinkService/commit/15bbaf900e07ee316e87492a9a19ee2919d95bb6))
+* 修复下载限速失效问题，站点配置更新后立即生效 ([ee91022](https://github.com/eventhorizonsky/AniLinkService/commit/ee91022735d9e94bbe027987078c5bdb627721d7))
+* 修复移动端发现页滚动无法自动加载的问题 ([ae94094](https://github.com/eventhorizonsky/AniLinkService/commit/ae94094be1e338793da793f9db95848921efde49))
+* 更换无效的媒体库图标 ([eae61f9](https://github.com/eventhorizonsky/AniLinkService/commit/eae61f9b18a18414d983fbf9fef4915d293b7327))
+* 更新 H2 数据库配置，修复数据库关闭问题 ([9f4c8f0](https://github.com/eventhorizonsky/AniLinkService/commit/9f4c8f06fdc27fa1bf8bddb27e5a90972ffd8d4c))
+* 更新路由参数监听，修复详情页面的路由跳转问题 ([be97de4](https://github.com/eventhorizonsky/AniLinkService/commit/be97de4cd09303d08a0b8bd3f039bfd700826451))
+* 添加搜索标题到用户管理、动漫库、字幕库和视频文件管理页面 ([e577cfb](https://github.com/eventhorizonsky/AniLinkService/commit/e577cfb14ab80d297501fa8364ffed96f17f3dd8))
+* 清理终态任务的速度文本，避免展示无意义信息 ([0517861](https://github.com/eventhorizonsky/AniLinkService/commit/051786182baf19e7e0840244c8f45ff62ee0ce10))
+* 移动端选中导航后收起侧边栏，优化用户体验 ([65471fd](https://github.com/eventhorizonsky/AniLinkService/commit/65471fd37023e9e99e44cd5c34e347f73377612e))
+* 调整发现页响应式样式，优化移动端滚动行为 ([4d0bd7d](https://github.com/eventhorizonsky/AniLinkService/commit/4d0bd7d7d5092f9a2cb8f8d06042b1fc692472b3))
+* 调整后台管理页面的移动端适配 ([ee757fd](https://github.com/eventhorizonsky/AniLinkService/commit/ee757fdc05a7107c74ef6bb8dc66a188d951d0f9))
+* 隐藏仪表板滚动条以优化用户界面 ([6d84069](https://github.com/eventhorizonsky/AniLinkService/commit/6d84069902c1d12b05d7164ecaf68b1b3df33c2a))
+
 ## [1.1.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.0.0...v1.1.0) (2026-08-08)
 
 
