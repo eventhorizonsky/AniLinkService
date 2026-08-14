@@ -74,7 +74,7 @@
 
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
-import { FOLLOW_STATUS as STATUS_MAP, FOLLOW_STATUS_OPTIONS as statusOptions } from '../../utils/followStatus';
+import { FOLLOW_STATUS_OPTIONS as statusOptions, followStatusLabel } from '../../utils/followStatus';
 import { sanitizeHtml } from '../../utils/sanitize';
 import { useAuth } from '../../composables/useAuth';
 
@@ -123,10 +123,6 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
-  isFavorited: {
-    type: Boolean,
-    required: true
-  },
   isFollowing: {
     type: Boolean,
     default: false
@@ -141,11 +137,11 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['update:isSummaryExpanded', 'toggleFavorite', 'toggleFollow', 'setFollowStatus']);
+const emit = defineEmits(['update:isSummaryExpanded', 'toggleFollow', 'setFollowStatus']);
 
 const menuOpen = ref(false);
 
-const statusLabel = (s) => STATUS_MAP[s]?.label || '想看';
+const statusLabel = (s) => followStatusLabel(s, '想看');
 
 const handleFollowClick = (e) => {
   e.stopPropagation();
@@ -177,14 +173,6 @@ const airingStatusText = computed(() => {
 
 const toggleSummary = () => {
   emit('update:isSummaryExpanded', !props.isSummaryExpanded);
-};
-
-const toggleFavorite = () => {
-  emit('toggleFavorite');
-};
-
-const toggleFollow = () => {
-  emit('toggleFollow');
 };
 
 // 点击外部关闭面板

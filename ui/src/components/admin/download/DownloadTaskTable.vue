@@ -1,6 +1,15 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { formatBytes, formatSpeed } from '../../../utils/format'
+import { useIsMobile } from '../../../composables/useIsMobile'
+import {
+  formatTaskStatus as formatStatus,
+  taskStatusColor as statusColor,
+  canCancelTask as canCancel,
+  canRetryTask as canRetry,
+  canDeleteTask as canDelete,
+  canViewTaskBinding as canViewBinding
+} from '../../../utils/taskStatus'
 
 const props = defineProps({
   title: {
@@ -67,49 +76,11 @@ const emit = defineEmits([
   'binding'
 ])
 
-const STATUS_META = {
-  PENDING: { label: '等待中', color: 'grey' },
-  RUNNING: { label: '下载中', color: 'primary' },
-  SEEDING: { label: '做种中', color: 'purple' },
-  MOVING: { label: '迁移中', color: 'info' },
-  SCANNING: { label: '扫描中', color: 'teal' },
-  COMPLETED: { label: '已完成', color: 'success' },
-  CANCELLED: { label: '已取消', color: 'warning' },
-  FAILED: { label: '失败', color: 'error' },
-  STALLED: { label: '停滞', color: 'orange' }
-}
-
-const ACTIVE_STATUSES = ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING']
-
 const activeFilter = ref('all')
 const keyword = ref('')
 const detailDialog = ref(false)
 const detailTask = ref(null)
-const isMobile = ref(false)
-
-const checkViewport = () => {
-  isMobile.value =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 768px)').matches
-}
-
-onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
-})
-
-const formatStatus = (status) => STATUS_META[status]?.label || status || '-'
-const statusColor = (status) => STATUS_META[status]?.color || 'grey'
-
-const canCancel = (status) => ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING'].includes(status)
-const canRetry = (status) => ['FAILED', 'CANCELLED', 'STALLED'].includes(status)
-const canDelete = (status) => ['COMPLETED', 'FAILED', 'CANCELLED', 'STALLED'].includes(status)
-const canViewBinding = (status) => ['COMPLETED', 'SEEDING'].includes(status)
+const { isMobile } = useIsMobile(768)
 
 const toNum = (v) => Number(v) || 0
 

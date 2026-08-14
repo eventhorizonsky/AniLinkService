@@ -2,9 +2,11 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { showAppMessage } from '../../utils/ui-feedback'
+import PaginationBar from '../../components/PaginationBar.vue'
+import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import { usePagination } from '../../composables/usePagination'
 import { API_BASE } from '../../utils/constants'
+import { formatMonthDayTime } from '../../utils/format'
 
 const router = useRouter()
 const list = ref([])
@@ -78,7 +80,7 @@ const markAllRead = async () => {
 }
 
 const removeMessage = async (id) => {
-  const ok = window.confirm('确定要删除这条消息吗？')
+  const ok = await askAppConfirm({ title: '删除消息', message: '确定要删除这条消息吗？' })
   if (!ok) return
   try {
     const res = await axios.delete(`${API_BASE}/messages/${id}`)
@@ -90,13 +92,6 @@ const removeMessage = async (id) => {
 }
 
 const typeLabel = (type) => typeFilters.find((t) => t.value === type)?.label || type || '通知'
-
-const formatTime = (v) => {
-  if (!v) return '--'
-  return new Date(v).toLocaleString('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-  })
-}
 
 onMounted(fetchData)
 </script>
@@ -148,7 +143,7 @@ onMounted(fetchData)
             <span class="msg-type" :class="msg.type === 'episode_update' ? 'type-update' : 'type-system'">{{ typeLabel(msg.type) }}</span>
           </div>
           <p class="msg-content">{{ msg.content }}</p>
-          <span class="msg-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(msg.createdAt) }}</span>
+          <span class="msg-time"><i class="mdi mdi-clock-outline"></i> {{ formatMonthDayTime(msg.createdAt) }}</span>
         </div>
         <button class="msg-delete" title="删除" @click.stop="removeMessage(msg.id)">
           <i class="mdi mdi-delete-outline"></i>
@@ -156,12 +151,7 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-      <span class="info">共 {{ total }} 条</span>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 条`" @change="changePage" />
   </div>
 </template>
 

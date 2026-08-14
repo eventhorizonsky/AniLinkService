@@ -109,8 +109,7 @@ const saveConfig = async () => {
     const res = await axios.put(`${API_BASE}/site/config`, {
       siteName: form.value.siteName,
       siteDescription: form.value.siteDescription,
-      siteUrl: form.value.siteUrl
-        ,
+      siteUrl: form.value.siteUrl,
         dandanAppId: form.value.dandanAppId,
         dandanAppSecret: form.value.dandanAppSecret || null,
         dandanBaseUrl: form.value.dandanBaseUrl,

@@ -61,14 +61,12 @@
           :total-episodes="totalEpisodes"
           :formatted-summary="formattedSummary"
           :is-summary-expanded="isSummaryExpanded"
-          :is-favorited="isFavorited"
           :is-following="isFollowing"
           :follow-status="followStatus"
           :follow-loading="followLoading"
           @update:is-summary-expanded="isSummaryExpanded = $event"
-          @toggleFavorite="toggleFavorite"
-          @toggleFollow="toggleFollow"
-          @set-follow-status="setFollowStatus"
+          @toggleFollow="() => toggleFollow(resolvedAnimeId.value, animeData.value)"
+          @set-follow-status="(s) => setFollowStatus(resolvedAnimeId.value, s, animeData.value)"
         />
 
         <AnimeLastWatchSection
@@ -235,10 +233,7 @@
         <TrailerCarousel :trailers="animeData.trailers" />
 
         <!-- 外部链接和版权 -->
-        <FooterLinks
-          :databases="animeData.onlineDatabases"
-          :copyright-text="copyrightText"
-        />
+        <FooterLinks :databases="animeData.onlineDatabases" />
       </div>
 
       <!-- 右侧边栏 -->
@@ -270,9 +265,17 @@ import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { showAppMessage } from '../utils/ui-feedback';
 import { API_BASE } from '../utils/constants';
-import { followStatusLabel } from '../utils/followStatus';
 import { useAuth } from '../composables/useAuth';
 import { useAnimeDerived } from '../composables/useAnimeDerived';
+import { useFollow } from '../composables/useFollow';
+import { useResourceSelection } from '../composables/useResourceSelection';
+import {
+  isFuture,
+  filterMainEpisodes,
+  filterSpecialEpisodes,
+  buildPlayableEpisodeKeys,
+  getEpisodeResources,
+} from '../utils/episodes';
 import { formatDateTime } from '../utils/format';
 import AnimeHeroSection from '../components/anime/AnimeHeroSection.vue';
 import EpisodeListSection from '../components/anime/EpisodeListSection.vue';
@@ -303,15 +306,16 @@ const existingEpisodes = ref([]);
 const loading = ref(true);
 const error = ref(null);
 const isSummaryExpanded = ref(false);
-const isFavorited = ref(false);
-const isFollowing = ref(false);
-const followStatus = ref('watching');
-const followLoading = ref(false);
 const route = useRoute();
 const router = useRouter();
-const showResourceDialog = ref(false);
-const selectedResources = ref([]);
-const selectedEpisodeTitle = ref('');
+const { token, isLoggedIn, userInfo, setUserInfo } = useAuth();
+const { isFollowing, followStatus, followLoading, checkFollowStatus, setFollowStatus, toggleFollow } = useFollow();
+const { showResourceDialog, selectedResources, selectedEpisodeTitle, closeResourceDialog, selectResource, playEpisode } =
+  useResourceSelection({
+    router,
+    getAnimeId: () => resolvedAnimeId.value,
+    getExistingEpisodes: () => existingEpisodes.value,
+  });
 const activeSection = ref('episodes'); // 'episodes' | 'comments'
 const commentsAvailable = ref(true);
 const currentUserInfo = ref(null);
@@ -383,8 +387,7 @@ const fetchAnimeData = async () => {
 };
 
 const fetchAnimeResume = async () => {
-  const token = localStorage.getItem('token');
-  if (!token) {
+  if (!token.value) {
     animeResume.value = null;
     resumeLoading.value = false;
     return;
@@ -401,97 +404,6 @@ const fetchAnimeResume = async () => {
     animeResume.value = null;
   } finally {
     resumeLoading.value = false;
-  }
-};
-
-// 检查是否已追番（获取完整状态）
-const checkFollowStatus = async (animeIdOverride) => {
-  const token = localStorage.getItem('token');
-  if (!token || !animeData.value) {
-    isFollowing.value = false;
-    followStatus.value = 'wish';
-    return;
-  }
-
-  const aid = animeIdOverride || resolvedAnimeId.value;
-  try {
-    const response = await axios.get(`${API_BASE}/follows/${aid}`);
-    if (response.data.code === 200 && response.data.data) {
-      isFollowing.value = true;
-      followStatus.value = response.data.data.status || 'watching';
-    } else {
-      isFollowing.value = false;
-      followStatus.value = 'wish';
-    }
-  } catch (error) {
-    console.error('Failed to check follow status:', error);
-    isFollowing.value = false;
-    followStatus.value = 'wish';
-  }
-};
-
-// 设置追番状态（支持5种状态）
-const setFollowStatus = async (status) => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    showAppMessage('请先登录', 'warning');
-    return;
-  }
-
-  if (!animeData.value) {
-    showAppMessage('请等待数据加载完成', 'warning');
-    return;
-  }
-
-  followLoading.value = true;
-  try {
-    if (isFollowing.value) {
-      // 已追番 → 更新状态
-      await axios.put(`${API_BASE}/follows/${resolvedAnimeId.value}/status`, null, { params: { status } });
-    } else {
-      // 未追番 → 创建追番并设置状态
-      await axios.post(`${API_BASE}/follows`, {
-        animeId: resolvedAnimeId.value,
-        animeTitle: animeData.value.titles?.[0]?.title || '未知',
-        imageUrl: animeData.value.imageUrl || '',
-        status: status
-      });
-    }
-    isFollowing.value = true;
-    followStatus.value = status;
-    showAppMessage(`已标记为「${followStatusLabel(status)}」`, 'success');
-  } catch (error) {
-    console.error('Failed to set follow status:', error);
-    showAppMessage('操作失败，请重试', 'error');
-  } finally {
-    followLoading.value = false;
-  }
-};
-
-// 切换追番状态（取消追番）
-const toggleFollow = async () => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    showAppMessage('请先登录', 'warning');
-    return;
-  }
-
-  if (!animeData.value) {
-    showAppMessage('请等待数据加载完成', 'warning');
-    return;
-  }
-
-  followLoading.value = true;
-  try {
-    await axios.delete(`${API_BASE}/follows/${resolvedAnimeId.value}`);
-    isFollowing.value = false;
-    followStatus.value = 'wish';
-    showAppMessage('已取消追番', 'success');
-  } catch (error) {
-    console.error('Failed to toggle follow:', error);
-    showAppMessage('操作失败，请重试', 'error');
-  } finally {
-    followLoading.value = false;
   }
 };
 
@@ -517,22 +429,8 @@ watch(
   }
 );
 
-// Utility Functions
-const isFuture = (ep) => new Date(ep.airDate) > new Date();
-
-// Episode type classification
-const getEpisodeType = (ep) => {
-  const num = ep.episodeNumber;
-  if (/^\d+$/.test(num)) return 'main';
-  if (num.startsWith('S')) return 'special';
-  if (num.startsWith('C')) return 'credit';
-  return 'other';
-};
-
 // Computed Properties
-const mainEpisodes = computed(() => 
-  animeData.value?.episodes.filter(ep => getEpisodeType(ep) === 'main') || []
-);
+const mainEpisodes = computed(() => filterMainEpisodes(animeData.value?.episodes));
 
 const {
   isOnAir,
@@ -544,18 +442,9 @@ const {
   titleInfo,
   airDayText,
   staffList,
-  copyrightText,
 } = useAnimeDerived(animeData);
 
-const playableEpisodeKeys = computed(() => {
-  const set = new Set();
-  existingEpisodes.value.forEach((ep) => {
-    if (ep.episodeId !== undefined && ep.episodeId !== null) {
-      set.add(String(ep.episodeId));
-    }
-  });
-  return set;
-});
+const playableEpisodeKeys = computed(() => buildPlayableEpisodeKeys(existingEpisodes.value));
 
 const bangumiSubjectId = computed(() => {
   const url = animeData.value?.bangumiUrl;
@@ -573,9 +462,6 @@ const bangumiSubjectUrl = computed(() => {
 });
 
 const showCommentsTab = computed(() => bangumiSubjectId.value !== null && commentsAvailable.value);
-const { isLoggedIn, setUserInfo } = useAuth();
-
-
 
 const showLastWatchSection = computed(() => {
   if (!isLoggedIn.value || loading.value || error.value) return false;
@@ -604,9 +490,7 @@ const nextPlayableEpisodeAfterHistory = computed(() => {
   for (let i = idx + 1; i < eps.length; i++) {
     const ep = eps[i];
     if (isFuture(ep)) continue;
-    const resources = existingEpisodes.value.filter(
-      (item) => String(item.episodeId) === String(ep.episodeId) && item.id !== undefined && item.id !== null
-    );
+    const resources = getEpisodeResources(existingEpisodes.value, ep.episodeId);
     if (resources.length) return ep;
   }
   return null;
@@ -660,21 +544,12 @@ watch(
 );
 
 // Event Handlers
-const toggleFavorite = () => {
-  isFavorited.value = !isFavorited.value;
-};
-
 const loadCurrentUserInfo = () => {
-  try {
-    const raw = localStorage.getItem('userInfo');
-    currentUserInfo.value = raw ? JSON.parse(raw) : null;
-  } catch {
-    currentUserInfo.value = null;
-  }
+  currentUserInfo.value = userInfo.value;
 };
 
 const refreshCurrentUserInfo = async () => {
-  if (!localStorage.getItem('token')) {
+  if (!token.value) {
     currentUserInfo.value = null;
     return;
   }
@@ -783,37 +658,6 @@ const collectionRateText = (rate) => {
   return `${score}/10`;
 };
 
-const getEpisodeResources = (episodeId) => {
-  if (episodeId === undefined || episodeId === null) {
-    return [];
-  }
-  const key = String(episodeId);
-  return existingEpisodes.value.filter((item) => String(item.episodeId) === key && item.id !== undefined && item.id !== null);
-};
-
-const goToPlayer = (resource) => {
-  showResourceDialog.value = false;
-  selectedResources.value = [];
-  router.push({
-    name: 'Player',
-    params: { videoId: String(resource.id) },
-    query: {
-      animeId: String(resolvedAnimeId.value),
-      episodeId: String(resource.episodeId ?? '')
-    }
-  });
-};
-
-const closeResourceDialog = () => {
-  showResourceDialog.value = false;
-  selectedResources.value = [];
-  selectedEpisodeTitle.value = '';
-};
-
-const selectResource = (resource) => {
-  goToPlayer(resource);
-};
-
 const continueFromHistory = () => {
   const h = animeResume.value;
   if (!h?.videoId) return;
@@ -830,21 +674,6 @@ const continueFromHistory = () => {
 const watchNextEpisode = () => {
   const ep = nextPlayableEpisodeAfterHistory.value;
   if (ep) playEpisode(ep);
-};
-
-const playEpisode = (ep) => {
-  if (isFuture(ep)) return;
-  const resources = getEpisodeResources(ep.episodeId);
-  if (resources.length === 0) return;
-
-  if (resources.length === 1) {
-    goToPlayer(resources[0]);
-    return;
-  }
-
-  selectedResources.value = resources;
-  selectedEpisodeTitle.value = ep.episodeTitle || `第${ep.episodeNumber}话`;
-  showResourceDialog.value = true;
 };
 </script>
 
@@ -1189,36 +1018,6 @@ const playEpisode = (ep) => {
   height: 40px;
   padding: 0 16px;
   font-weight: 600;
-}
-
-.bangumi-not-collected {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 28px 0 20px;
-}
-
-.bangumi-not-collected-label {
-  color: var(--al-text-muted);
-  font-size: 1rem;
-}
-
-.bangumi-start-btn {
-  border: 1.5px solid var(--al-accent);
-  background: none;
-  color: var(--al-accent);
-  border-radius: 20px;
-  padding: 7px 28px;
-  font-size: 0.92rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.bangumi-start-btn:hover {
-  background: var(--al-accent);
-  color: var(--al-text-on-accent);
 }
 
 .bangumi-not-collected {

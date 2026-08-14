@@ -28,6 +28,43 @@ export function formatDate(iso, fallback = '') {
 }
 
 /**
+ * 相对时间（刚刚/X分钟前/X小时前/X天前）。
+ * 此前在 MainLayout.vue 中局部实现。
+ */
+export function formatRelativeTime(value, fallback = '') {
+  if (!value) return fallback
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  const diffMs = Date.now() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return '刚刚'
+  if (diffMins < 60) return `${diffMins}分钟前`
+  if (diffHours < 24) return `${diffHours}小时前`
+  if (diffDays < 7) return `${diffDays}天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
+/**
+ * 月-日 时间：如 01/02 13:04（无年份）。
+ * 此前 History.vue / Messages.vue 各自复制了相同实现。
+ */
+export function formatMonthDayTime(value, fallback = '--') {
+  if (!value) return fallback
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+/**
  * 时长（毫秒）→ H:MM:SS 或 M:SS。
  */
 export function formatDuration(ms) {

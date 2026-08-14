@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
 import { API_BASE } from '../../utils/constants'
 import { formatDateTime, formatDanmakuColor as danmakuColorHex } from '../../utils/format'
+import { danmakuModeLabel } from '../../utils/danmakuMode'
 
 const loading = ref(false)
 const records = ref([])
@@ -15,11 +16,6 @@ const page = ref(1)
 const pageSize = ref(20)
 const totalElements = ref(0)
 const totalPages = ref(0)
-
-const danmakuModeLabel = (mode) => {
-  const map = { 1: '普通', 4: '底部', 5: '顶部' }
-  return map[mode] || `模式${mode}`
-}
 
 const fetchRecords = async () => {
   loading.value = true

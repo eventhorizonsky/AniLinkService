@@ -2,14 +2,13 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { FOLLOW_STATUS_LABEL as STATUS_LABEL_MAP } from '../utils/followStatus'
+import { followStatusLabel } from '../utils/followStatus'
 import { API_BASE, DEFAULT_POSTER } from '../utils/constants'
-import { formatScore as fmtScore } from '../utils/format'
+import { formatScore } from '../utils/format'
 import { useAuth } from '../composables/useAuth'
+import AnimeCard from '../components/AnimeCard.vue'
 
 const router = useRouter()
-
-const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
 
 // ===================== Follow List =====================
 const followList = ref([])
@@ -112,7 +111,7 @@ const fmtHeat = (v) => {
 const genreLabel = (a, kind) => {
   if (kind === 'hot') return '本周热播'
   if (kind === 'new') return '热门新番'
-  if (kind === 'follow') return statusLabel(a.status)
+  if (kind === 'follow') return followStatusLabel(a.status, '')
   return a.type || '动漫'
 }
 
@@ -200,7 +199,7 @@ onBeforeUnmount(() => {
           <span class="tag">{{ heroTag(i) }}</span>
           <h2>{{ slide.animeTitle }}</h2>
           <div class="meta">
-            <span><i class="mdi mdi-star" style="color:#fbbf24;"></i> {{ fmtScore(slide.rating) }}</span>
+            <span><i class="mdi mdi-star" style="color:#fbbf24;"></i> {{ formatScore(slide.rating) }}</span>
             <span v-if="slide.heat" class="meta-heat"><i class="mdi mdi-fire"></i> {{ fmtHeat(slide.heat) }} 热度</span>
             <span><i class="mdi mdi-play-circle-outline"></i> 立即观看</span>
           </div>
@@ -247,26 +246,25 @@ onBeforeUnmount(() => {
         <button class="br-link" @click="goToSearch">发现番剧</button>
       </div>
       <div v-else ref="followScrollRef" class="br-follow-scroll">
-        <div
+        <AnimeCard
           v-for="a in followList.slice(0, 10)"
           :key="a.id"
-          class="br-card br-follow-card"
+          :image-url="a.imageUrl || DEFAULT_POSTER"
+          :alt="a.animeTitle"
+          :title="a.animeTitle"
+          card-class="br-follow-card"
+          hover
           @click="goToDetail(a)"
         >
-          <div class="br-card-image">
-            <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
-            <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
+          <template #badges>
             <span v-if="a.unreadEpisodeCount > 0" class="br-follow-unread" title="未读新剧集">{{ a.unreadEpisodeCount }}</span>
-          </div>
-          <div class="br-card-body">
-            <h4>{{ a.animeTitle }}</h4>
-            <div class="br-card-meta">
-              <span class="genre" :class="a.status === 'watching' ? 'genre-active' : 'genre-done'">
-                {{ genreLabel(a, 'follow') }}
-              </span>
-            </div>
-          </div>
-        </div>
+          </template>
+          <template #meta>
+            <span class="genre" :class="a.status === 'watching' ? 'genre-active' : 'genre-done'">
+              {{ genreLabel(a, 'follow') }}
+            </span>
+          </template>
+        </AnimeCard>
       </div>
     </template>
 
@@ -281,20 +279,23 @@ onBeforeUnmount(() => {
     </div>
     <div v-else-if="!trendingHot.length" class="br-empty"><i class="mdi mdi-fire-off"></i> {{ trendingError || '暂无热门数据' }}</div>
     <div v-else class="br-grid">
-      <div v-for="a in trendingHot.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
-        <div class="br-card-image">
-          <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
+      <AnimeCard
+        v-for="a in trendingHot.slice(0, 10)"
+        :key="a.animeId"
+        :image-url="a.imageUrl || DEFAULT_POSTER"
+        :alt="a.animeTitle"
+        :title="a.animeTitle"
+        @click="goToDetail(a)"
+      >
+        <template #badges>
           <span class="br-badge-new">热播</span>
           <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
-        </div>
-        <div class="br-card-body">
-          <h4>{{ a.animeTitle }}</h4>
-          <div class="br-card-meta">
-            <span class="genre">{{ genreLabel(a, 'hot') }}</span>
-            <span class="rating"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #meta>
+          <span class="genre">{{ genreLabel(a, 'hot') }}</span>
+          <span class="rating"><i class="mdi mdi-star"></i> {{ formatScore(a.rating) }}</span>
+        </template>
+      </AnimeCard>
     </div>
 
     <!-- ===== 热门新番 ===== -->
@@ -308,20 +309,23 @@ onBeforeUnmount(() => {
     </div>
     <div v-else-if="!trendingNewAnime.length" class="br-empty"><i class="mdi mdi-rocket-launch-outline"></i> 暂无新作数据</div>
     <div v-else class="br-grid">
-      <div v-for="a in trendingNewAnime.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
-        <div class="br-card-image">
-          <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
+      <AnimeCard
+        v-for="a in trendingNewAnime.slice(0, 10)"
+        :key="a.animeId"
+        :image-url="a.imageUrl || DEFAULT_POSTER"
+        :alt="a.animeTitle"
+        :title="a.animeTitle"
+        @click="goToDetail(a)"
+      >
+        <template #badges>
           <span class="br-badge-new br-badge-new--sparkle">新作</span>
           <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
-        </div>
-        <div class="br-card-body">
-          <h4>{{ a.animeTitle }}</h4>
-          <div class="br-card-meta">
-            <span class="genre">{{ genreLabel(a, 'new') }}</span>
-            <span class="rating"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #meta>
+          <span class="genre">{{ genreLabel(a, 'new') }}</span>
+          <span class="rating"><i class="mdi mdi-star"></i> {{ formatScore(a.rating) }}</span>
+        </template>
+      </AnimeCard>
     </div>
 
   </div>

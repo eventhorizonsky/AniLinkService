@@ -370,16 +370,3 @@ onMounted(async () => {
     </v-dialog>
   </div>
 </template>
-
-<style scoped>
-@media (max-width: 1280px) {
-  .user-search-field {
-    flex: 1 0 100% !important;
-    min-width: 0 !important;
-  }
-  .user-search-actions {
-    flex: 1 1 auto !important;
-    min-width: 0;
-  }
-}
-</style>

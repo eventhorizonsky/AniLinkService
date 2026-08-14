@@ -7,7 +7,8 @@ import { API_BASE } from '../../utils/constants'
 
 const loading = ref(false)
 const versionInfo = ref(null)
-const expanded = ref([])
+// accordion 模式下 v-expansion-panels 的 v-model 是单个值，不能用数组初始化
+const expanded = ref(null)
 
 const fetchVersionInfo = async () => {
   loading.value = true

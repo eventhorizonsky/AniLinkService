@@ -6,6 +6,7 @@ import MediaRematchDialog from '../../../components/admin/media/MediaRematchDial
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
 import { API_BASE } from '../../../utils/constants'
 import { formatFileSize } from '../../../utils/format'
+import { getMatchStatusMeta } from '../../../utils/mediaMatchStatus'
 
 const mediaFiles = ref([])
 const loading = ref(false)
@@ -214,16 +215,6 @@ const resetFilters = () => {
   selectedLibraryId.value = null
   pagination.value.page = 1
   fetchMediaFiles(1)
-}
-
-const getMatchStatusMeta = (status) => {
-  if (status === 'MATCHED') {
-    return { color: 'success', text: '已匹配' }
-  }
-  if (status === 'NO_MATCH_FOUND') {
-    return { color: 'warning', text: '无匹配' }
-  }
-  return { color: 'grey', text: '未匹配' }
 }
 
 // 页码或每页大小变化

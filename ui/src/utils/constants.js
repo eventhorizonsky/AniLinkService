@@ -5,6 +5,8 @@ export const API_BASE = '/api'
 
 export const DEFAULT_POSTER = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
+export const DEFAULT_SITE_NAME = 'AniLink'
+
 // 星期标签（0=周日，7 也代表周日），用于放送日展示。
 export const WEEKDAY_LABELS = {
   0: '周日',

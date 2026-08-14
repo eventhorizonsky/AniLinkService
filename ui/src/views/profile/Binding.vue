@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
-import { showAppMessage } from '../../utils/ui-feedback'
+import { askAppConfirm, showAppMessage } from '../../utils/ui-feedback'
 import { API_BASE } from '../../utils/constants'
 
 const loading = ref(false)
@@ -58,8 +58,11 @@ const bindToken = async () => {
 }
 
 const unbind = async () => {
-  const ok = window.confirm('确定要解除 Bangumi 账号绑定吗？')
-  if (!ok) return
+  const confirmed = await askAppConfirm({
+    title: '解除 Bangumi 绑定',
+    message: '确定要解除 Bangumi 账号绑定吗？'
+  })
+  if (!confirmed) return
   unbinding.value = true
   try {
     const res = await axios.delete(`${API_BASE}/bangumi/account/bind`)

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
+import { useIsMobile } from '../composables/useIsMobile'
 import { API_BASE, isSuperAdmin as checkSuperAdmin } from '../utils/constants'
 
 const { isDark } = useTheme()
@@ -12,8 +13,8 @@ const { userInfo, setUserInfo, clearAuth } = useAuth()
 const router = useRouter()
 
 // 移动端默认收起侧边栏，桌面端默认展开
-const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 1280
-const drawer = ref(!isMobile())
+const { isMobile } = useIsMobile(1280, { useInnerWidth: true })
+const drawer = ref(!isMobile.value)
 const selectedItem = ref('system')
 
 const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
@@ -60,8 +61,6 @@ const componentMap = Object.fromEntries(
 
 const isSuperAdmin = computed(() => checkSuperAdmin(userInfo.value))
 
-const visibleMainMenuItems = computed(() => mainMenuItems)
-
 const visibleSystemSettingsItems = computed(() =>
   systemSettingsMenuItems.filter((item) => item.id !== 'mcp' || isSuperAdmin.value)
 )
@@ -97,12 +96,12 @@ const currentComponent = computed(() => {
   return componentMap[selectedItem.value] || mainMenuItems[0].component
 })
 
-const fallbackMenuId = computed(() => visibleMainMenuItems.value[0]?.id || 'system')
+const fallbackMenuId = computed(() => mainMenuItems[0]?.id || 'system')
 
 // 移动端选中导航后收起侧边栏（分组子项同样生效，分组头展开不触发）
 const handleSelectMenu = (id) => {
   selectedItem.value = id
-  if (isMobile()) drawer.value = false
+  if (isMobile.value) drawer.value = false
 }
 
 provide('navigateTo', handleSelectMenu)
@@ -139,7 +138,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
 
       <v-list density="compact" nav>
         <v-list-item
-          v-for="item in visibleMainMenuItems"
+          v-for="item in mainMenuItems"
           :key="item.id"
           :value="item.id"
           :active="selectedItem === item.id"

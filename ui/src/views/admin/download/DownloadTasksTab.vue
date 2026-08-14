@@ -5,6 +5,7 @@ import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
 import DownloadTaskTable from '../../../components/admin/download/DownloadTaskTable.vue'
 import { API_BASE } from '../../../utils/constants'
 import { formatSpeed } from '../../../utils/format'
+import { ACTIVE_TASK_STATUSES } from '../../../utils/taskStatus'
 
 const emit = defineEmits(['stats-loaded'])
 
@@ -73,8 +74,6 @@ const scheduleRefresh = () => {
   }, 400)
 }
 
-const ACTIVE_STATUSES = ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING']
-
 const statCards = computed(() => [
   { label: '活跃任务', value: props.stats?.active ?? '-', icon: 'mdi-progress-download', color: 'primary' },
   { label: '下载中', value: props.stats?.running ?? '-', icon: 'mdi-download', color: 'teal' },
@@ -89,7 +88,7 @@ const statCards = computed(() => [
 
 const matchesFilter = (task) => {
   if (filterStatus.value === 'all') return true
-  if (filterStatus.value === 'active') return ACTIVE_STATUSES.includes(task.status)
+  if (filterStatus.value === 'active') return ACTIVE_TASK_STATUSES.includes(task.status)
   return task.status === filterStatus.value
 }
 

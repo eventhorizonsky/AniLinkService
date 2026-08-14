@@ -20,10 +20,6 @@ defineProps({
   databases: {
     type: Array,
     required: true
-  },
-  copyrightText: {
-    type: String,
-    required: true
   }
 });
 </script>

@@ -53,6 +53,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { formatDate } from '../../utils/format';
+import { isFuture, filterMainEpisodes, filterSpecialEpisodes, episodeNumberDisplay, truncateText } from '../../utils/episodes';
 
 const props = defineProps({
   episodes: {
@@ -93,8 +94,6 @@ const todayStr = new Date().toISOString().slice(0, 10);
 
 const isToday = (ep) => formatDate(ep.airDate) === todayStr;
 
-const isFuture = (ep) => new Date(ep.airDate) > new Date();
-
 const isEpisodeExisting = (ep) => {
   if (!ep || ep.episodeId === undefined || ep.episodeId === null) {
     return false;
@@ -111,21 +110,9 @@ const isCurrentEpisode = (ep) => {
 
 const canPlay = (ep) => isEpisodeExisting(ep) && !isFuture(ep);
 
-const getEpisodeType = (ep) => {
-  const num = ep.episodeNumber;
-  if (/^\d+$/.test(num)) return 'main';
-  if (num.startsWith('S')) return 'special';
-  if (num.startsWith('C')) return 'credit';
-  return 'other';
-};
+const mainEpisodes = computed(() => filterMainEpisodes(props.episodes));
 
-const mainEpisodes = computed(() => 
-  props.episodes?.filter(ep => getEpisodeType(ep) === 'main') || []
-);
-
-const specialEpisodes = computed(() => 
-  props.episodes?.filter(ep => ['special', 'credit'].includes(getEpisodeType(ep))) || []
-);
+const specialEpisodes = computed(() => filterSpecialEpisodes(props.episodes));
 
 const allEpisodesSorted = computed(() => 
   [...(props.episodes || [])].sort((a, b) => new Date(a.airDate) - new Date(b.airDate))
@@ -136,22 +123,6 @@ const displayedEpisodes = computed(() => {
   if (activeTab.value === 'special') return specialEpisodes.value;
   return allEpisodesSorted.value;
 });
-
-const episodeNumberDisplay = (ep) => {
-  const type = getEpisodeType(ep);
-  if (type === 'main') return `第${ep.episodeNumber}话`;
-  if (type === 'special') return '特典';
-  if (type === 'credit') return '主题';
-  return ep.episodeNumber;
-};
-
-const truncateText = (text, maxLen) => {
-  const str = String(text || '');
-  if (str.length <= maxLen) {
-    return str;
-  }
-  return `${str.slice(0, maxLen)}...`;
-};
 
 const episodeTitleDisplay = (ep) => {
   return truncateText(ep?.episodeTitle || '', EPISODE_TITLE_MAX_LEN);

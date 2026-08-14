@@ -1,28 +1,13 @@
 <script setup>
-import { ref, onMounted, onUnmounted, inject } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
 import { API_BASE } from '../../../utils/constants'
+import { useIsMobile } from '../../../composables/useIsMobile'
 
 const navigateTo = inject('navigateTo', null)
 
-const isMobile = ref(false)
-
-const checkViewport = () => {
-  isMobile.value =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 768px)').matches
-}
-
-onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
-})
+const { isMobile } = useIsMobile(768)
 
 // RSS proxy status
 const rssProxyConfigured = ref(false)

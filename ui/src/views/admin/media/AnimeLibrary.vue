@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { formatAnimeType } from '../../../utils/animeType'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
 import { API_BASE } from '../../../utils/constants'
 import { formatDuration, formatFileSize } from '../../../utils/format'
+import { getMatchStatusMeta } from '../../../utils/mediaMatchStatus'
 
 const animes = ref([])
 const loading = ref(false)
@@ -63,7 +64,6 @@ const fetchAnimes = async (pageNum = 1) => {
       animes.value = res.data.data.content || []
       pagination.value.totalItems = res.data.data.totalElements || 0
       pagination.value.page = pageNum
-      console.log('获取动漫列表成功:', pagination.value)
     }
   } catch (error) {
     console.error('获取动漫列表失败:', error)
@@ -177,16 +177,6 @@ const onEpisodesOptionsChange = (options) => {
       fetchEpisodes(selectedAnime.value.animeId, page)
     }
   }
-}
-
-const getMatchStatusMeta = (status) => {
-  if (status === 'MATCHED') {
-    return { color: 'success', text: '已匹配' }
-  }
-  if (status === 'NO_MATCH_FOUND') {
-    return { color: 'warning', text: '无匹配' }
-  }
-  return { color: 'grey', text: '未匹配' }
 }
 
 const openRematchDialog = (episode) => {
@@ -530,15 +520,6 @@ const closeSubtitleDialog = () => {
 </template>
 
 <style scoped>
-/* Tailwind CSS 补充定义 */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
-}
-
 /* 动漫封面卡片网格 */
 .anime-card-grid {
   display: grid;

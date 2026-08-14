@@ -21,12 +21,10 @@ const form = ref({
   siteUrl: window.location.origin,
   adminUsername: '',
   adminPassword: '',
-  dandanBaseUrl: DEFAULT_DANDAN_BASE_URL
+  dandanBaseUrl: DEFAULT_DANDAN_BASE_URL,
+  dandanAppId: '',
+  dandanAppSecret: ''
 })
-
-// 增加 Dandan 字段
-form.value.dandanAppId = ''
-form.value.dandanAppSecret = ''
 
 const nextStep = () => {
   errorMessage.value = ''
@@ -96,8 +94,7 @@ const submitInstallation = async () => {
       siteDescription: form.value.siteDescription,
       siteUrl: form.value.siteUrl,
       adminUsername: form.value.adminUsername,
-      adminPassword: form.value.adminPassword
-        ,
+      adminPassword: form.value.adminPassword,
         dandanAppId: form.value.dandanAppId,
         dandanAppSecret: form.value.dandanAppSecret,
         dandanBaseUrl: form.value.dandanBaseUrl

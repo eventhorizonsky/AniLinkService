@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import axios from 'axios'
 import { hasRoleLevel, API_BASE } from '../utils/constants'
+import { useAuth } from '../composables/useAuth'
 
 const routes = [
   {
@@ -113,7 +114,7 @@ const router = createRouter({
 
 router.beforeEach(async (to, from, next) => {
   let installed = localStorage.getItem('installed')
-  const token = localStorage.getItem('token')
+  const { token, userInfo } = useAuth()
   let siteConfig = null
 
   // 仅在本地状态缺失时从接口获取，避免每次导航都请求 siteConfig
@@ -148,7 +149,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // 检查需要认证的路由
-  if (to.meta.requiresAuth && !token) {
+  if (to.meta.requiresAuth && !token.value) {
     return next('/')
   }
 
@@ -171,18 +172,11 @@ router.beforeEach(async (to, from, next) => {
     }
 
     if (tokenRequired) {
-      if (!token) {
+      if (!token.value) {
         return next('/')
       }
 
-      let userInfo = null
-      try {
-        userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
-      } catch (e) {
-        userInfo = {}
-      }
-
-      const allowed = hasRoleLevel(userInfo, requiredRoleRaw)
+      const allowed = hasRoleLevel(userInfo.value || {}, requiredRoleRaw)
 
       if (!allowed) {
         return next('/')

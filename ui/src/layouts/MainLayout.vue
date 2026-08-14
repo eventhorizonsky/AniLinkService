@@ -65,8 +65,8 @@
         <!-- 顶部栏 -->
         <header class="app-topbar">
           <button class="menu-toggle" aria-label="切换侧栏" @click="sidebarOpen = !sidebarOpen">
-          <i class="mdi mdi-menu"></i>
-        </button>
+            <i class="mdi mdi-menu"></i>
+          </button>
 
         <div class="search-wrap">
           <i class="mdi mdi-magnify"></i>
@@ -134,7 +134,7 @@
                     <div class="message-item-content">
                       <div class="message-item-title">{{ msg.title }}</div>
                       <div class="message-item-text">{{ msg.content }}</div>
-                      <div class="message-item-time">{{ formatMessageTime(msg.createdAt) }}</div>
+                      <div class="message-item-time">{{ formatRelativeTime(msg.createdAt) }}</div>
                     </div>
                   </div>
                 </template>
@@ -300,9 +300,10 @@ import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
-import { API_BASE, hasRoleLevel, isSuperAdmin } from '../utils/constants'
+import { useIsMobile } from '../composables/useIsMobile'
+import { formatRelativeTime } from '../utils/format'
+import { API_BASE, DEFAULT_SITE_NAME, hasRoleLevel, isSuperAdmin } from '../utils/constants'
 
-const DEFAULT_SITE_NAME = 'AniLink'
 const { isDark, toggleTheme } = useTheme()
 const { token, userInfo, isLoggedIn, setToken, setUserInfo, clearAuth } = useAuth()
 const router = useRouter()
@@ -434,22 +435,6 @@ const handleMarkAllAsRead = async () => {
   }
 }
 
-// 格式化时间
-const formatMessageTime = (dateString) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now - date
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins}分钟前`
-  if (diffHours < 24) return `${diffHours}小时前`
-  if (diffDays < 7) return `${diffDays}天前`
-  return date.toLocaleDateString('zh-CN')
-}
-
 // 处理消息点击
 const handleMessageClick = async (message) => {
   messageMenuOpen.value = false
@@ -483,13 +468,11 @@ const handleMessageClick = async (message) => {
 }
 
 // 判断是否是移动端
-const isMobileDevice = () => {
-  return window.innerWidth <= 1280
-}
+const { isMobile } = useIsMobile(1280, { useInnerWidth: true })
 
 // 处理消息按钮点击
 const handleMessageBtnClick = () => {
-  if (isMobileDevice()) {
+  if (isMobile.value) {
     // 移动端直接跳转到消息列表
     goToMessages()
   } else {
@@ -862,11 +845,6 @@ const handleLogout = () => {
 const goToProfile = () => {
   userMenuOpen.value = false
   router.push('/profile')
-}
-
-const goToFollows = () => {
-  userMenuOpen.value = false
-  router.push('/profile/follows')
 }
 
 const goToMessages = () => {

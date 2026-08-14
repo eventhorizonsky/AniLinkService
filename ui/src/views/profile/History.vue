@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { showAppMessage } from '../../utils/ui-feedback'
+import PaginationBar from '../../components/PaginationBar.vue'
+import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import { usePagination } from '../../composables/usePagination'
 import { DEFAULT_POSTER, API_BASE } from '../../utils/constants'
+import { formatMonthDayTime } from '../../utils/format'
 
 const router = useRouter()
 const list = ref([])
@@ -46,7 +48,7 @@ const goToAnime = (item) => {
 
 const deleteItem = async (id) => {
   if (!id) return
-  const ok = window.confirm('确定删除这条播放历史吗？')
+  const ok = await askAppConfirm({ title: '删除播放历史', message: '确定删除这条播放历史吗？' })
   if (!ok) return
   try {
     const res = await axios.delete(`${API_BASE}/play-history/${id}`)
@@ -58,7 +60,7 @@ const deleteItem = async (id) => {
 }
 
 const clearAll = async () => {
-  const ok = window.confirm('确定清空所有播放历史吗？该操作不可恢复。')
+  const ok = await askAppConfirm({ title: '清空播放历史', message: '确定清空所有播放历史吗？该操作不可恢复。', color: 'error' })
   if (!ok) return
   try {
     const res = await axios.delete(`${API_BASE}/play-history/clear`)
@@ -74,13 +76,6 @@ const { page, pageSize, totalPages, pages, changePage } = usePagination({
   getTotal: () => total.value,
   onPageChange: fetchData,
 })
-
-const formatTime = (v) => {
-  if (!v) return '--'
-  return new Date(v).toLocaleString('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-  })
-}
 
 const progressText = (item) => {
   const p = Number(item?.progressSeconds || 0)
@@ -132,7 +127,7 @@ onMounted(fetchData)
           <p class="hc-episode">{{ item.videoName || `视频 #${item.videoId || '-'}` }}</p>
 
           <div class="hc-meta">
-            <span class="hc-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(item.lastPlayTime) }}</span>
+            <span class="hc-time"><i class="mdi mdi-clock-outline"></i> {{ formatMonthDayTime(item.lastPlayTime) }}</span>
             <span class="hc-progress-text">{{ progressText(item) }}</span>
           </div>
 
@@ -146,12 +141,7 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-      <span class="info">共 {{ total }} 条</span>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 条`" @change="changePage" />
   </div>
 </template>
 

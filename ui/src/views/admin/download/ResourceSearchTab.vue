@@ -1,26 +1,11 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
 import { API_BASE } from '../../../utils/constants'
+import { useIsMobile } from '../../../composables/useIsMobile'
 
-const isMobile = ref(false)
-
-const checkViewport = () => {
-  isMobile.value =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 768px)').matches
-}
-
-onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
-})
+const { isMobile } = useIsMobile(768)
 
 const loading = ref(false)
 const searching = ref(false)

@@ -2,8 +2,10 @@ import { ref } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
 import { API_BASE } from '../utils/constants'
+import { useAuth } from './useAuth'
 
 export function useDownloadTasks() {
+  const { token } = useAuth()
   const tasks = ref([])
   const summary = ref(null)
   const sseConnected = ref(false)
@@ -28,9 +30,8 @@ export function useDownloadTasks() {
 
   const connectProgressStream = () => {
     disconnectProgressStream()
-    const token = localStorage.getItem('token') || ''
     const source = new EventSource(
-      `${API_BASE}/resource-search/download-tasks/stream?satoken=${encodeURIComponent(token)}`
+      `${API_BASE}/resource-search/download-tasks/stream?satoken=${encodeURIComponent(token.value)}`
     )
     eventSource = source
 

@@ -11,11 +11,6 @@ const { userInfo, setUserInfo } = useAuth()
 const loading = ref(true)
 const stats = ref({ follows: null, history: null, danmaku: null, unread: null })
 
-const avatar = computed(() => {
-  const bangumi = userInfo.value?.bangumiNickname
-  if (userInfo.value?.username) return null // 用首字母头像
-  return null
-})
 const initial = computed(() => (userInfo.value?.username || '用').charAt(0).toUpperCase())
 const roleLabel = computed(() => {
   const roles = userInfo.value?.roleCodeList || []

@@ -116,31 +116,6 @@
     background: var(--anime-accent-orange);
   }
 
-  .anime-fav-btn {
-    background: var(--al-bg);
-    border: 1.5px solid var(--anime-accent-brown);
-    color: var(--al-text-brown-3);
-    padding: 8px 24px;
-    border-radius: 40px;
-    font-weight: 600;
-    font-size: 1rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: 0.1s;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-  }
-
-  .anime-fav-btn i {
-    color: var(--al-star-soft);
-  }
-
-  .anime-fav-btn.favorited {
-    background: var(--al-bg-favorited);
-    border-color: var(--al-accent-brown-dark);
-  }
-
   /* Follow Button */
   .anime-follow-btn {
     background: var(--al-bg);
@@ -570,14 +545,6 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
-  .anime-copyright {
-    color: var(--al-text-copyright);
-    font-size: 0.8rem;
-    margin-top: 16px;
-    text-align: center;
-    border-top: 1px dashed var(--al-border-soft-11);
-    padding-top: 24px;
-  }
 /* ===== Responsive Design ===== */
 @media (max-width: 799px) {
   .anime-hero {
@@ -636,11 +603,6 @@
 
   .anime-badge {
     padding: 4px 12px;
-    font-size: 0.85rem;
-  }
-
-  .anime-fav-btn {
-    padding: 6px 16px;
     font-size: 0.85rem;
   }
 

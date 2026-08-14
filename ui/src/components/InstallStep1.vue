@@ -43,10 +43,6 @@ const formatUptime = (seconds) => {
 onMounted(() => {
   fetchSystemInfo()
 })
-
-defineExpose({
-  systemInfo
-})
 </script>
 
 <template>

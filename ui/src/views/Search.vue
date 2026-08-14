@@ -4,9 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { formatAnimeType } from '../utils/animeType'
 import { API_BASE } from '../utils/constants'
+import { useIsMobile } from '../composables/useIsMobile'
+import AnimeCard from '../components/AnimeCard.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { isMobile } = useIsMobile(768)
 
 const activeTab = ref('library')
 
@@ -59,8 +62,7 @@ const libSearch = () => {
 const libOuterEl = ref(null)
 
 const onLibScroll = () => {
-  const isMobile = window.matchMedia('(max-width: 768px)').matches
-  const el = isMobile ? libOuterEl.value : libScrollEl.value
+  const el = isMobile.value ? libOuterEl.value : libScrollEl.value
   if (!el || libLoadingMore.value || !libHasMore.value) return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
     libPage.value++
@@ -230,19 +232,20 @@ onBeforeUnmount(() => {
         </div>
         <template v-else>
           <div class="br-grid">
-            <router-link v-for="a in libList" :key="a.id || a.animeId" :to="'/anime/' + a.animeId" class="br-card">
-              <div class="br-card-image">
-                <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.title" loading="lazy" />
-                <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
-                <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-              </div>
-              <div class="br-card-body">
-                <h4 :title="a.title">{{ a.title || '未命名动漫' }}</h4>
-                <div class="br-card-meta">
-                  <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
-                </div>
-              </div>
-            </router-link>
+            <AnimeCard
+              v-for="a in libList"
+              :key="a.id || a.animeId"
+              :to="'/anime/' + a.animeId"
+              :image-url="a.imageUrl"
+              :alt="a.title"
+              :title="a.title || '未命名动漫'"
+              :title-attr="a.title"
+              hover
+            >
+              <template #meta>
+                <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
+              </template>
+            </AnimeCard>
           </div>
           <div v-if="libLoadingMore" class="load-more"><i class="mdi mdi-loading mdi-spin"></i> 加载更多...</div>
           <div v-else-if="!libHasMore && libList.length > libPageSize" class="load-more load-done">— 已加载全部 {{ libTotal }} 条 —</div>
@@ -298,21 +301,24 @@ onBeforeUnmount(() => {
         <div v-if="dbSearching" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
 
         <div v-else-if="dbKeyword && dbSearchResults.length" class="br-grid">
-          <router-link v-for="a in dbSearchResults" :key="a.animeId" :to="'/anime/' + a.animeId" class="br-card">
-            <div class="br-card-image">
-              <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle || a.title" loading="lazy" decoding="async" />
-              <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
+          <AnimeCard
+            v-for="a in dbSearchResults"
+            :key="a.animeId"
+            :to="'/anime/' + a.animeId"
+            :image-url="a.imageUrl"
+            :alt="a.animeTitle || a.title"
+            :title="a.animeTitle || a.title || '未命名番剧'"
+            :title-attr="a.animeTitle || a.title"
+            hover
+          >
+            <template #badges>
               <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
-              <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-            </div>
-            <div class="br-card-body">
-              <h4 :title="a.animeTitle || a.title">{{ a.animeTitle || a.title || '未命名番剧' }}</h4>
-              <div class="br-card-meta">
-                <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
-                <span v-else-if="a.year" class="genre">{{ a.year }}</span>
-              </div>
-            </div>
-          </router-link>
+            </template>
+            <template #meta>
+              <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
+              <span v-else-if="a.year" class="genre">{{ a.year }}</span>
+            </template>
+          </AnimeCard>
         </div>
 
         <div v-else-if="dbKeyword" class="empty-block">
@@ -334,17 +340,20 @@ onBeforeUnmount(() => {
             <p class="empty-title">该季度暂无番剧</p>
           </div>
           <div v-else class="br-grid">
-            <router-link v-for="a in dbList" :key="a.animeId" :to="'/anime/' + a.animeId" class="br-card">
-              <div class="br-card-image">
-                <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle" loading="lazy" decoding="async" />
-                <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
+            <AnimeCard
+              v-for="a in dbList"
+              :key="a.animeId"
+              :to="'/anime/' + a.animeId"
+              :image-url="a.imageUrl"
+              :alt="a.animeTitle"
+              :title="a.animeTitle"
+              :title-attr="a.animeTitle"
+              hover
+            >
+              <template #badges>
                 <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
-                <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-              </div>
-              <div class="br-card-body">
-                <h4 :title="a.animeTitle">{{ a.animeTitle }}</h4>
-              </div>
-            </router-link>
+              </template>
+            </AnimeCard>
           </div>
         </template>
       </div>
@@ -536,36 +545,7 @@ onBeforeUnmount(() => {
 .ss-sep { font-size: 0.85rem; color: var(--anime-text-secondary); font-weight: 500; }
 
 /* ========================= RESULT CARD ========================= */
-/* 复用 browse.css 的 .br-card 卡片样式，这里仅保留缺失图占位与播放遮罩 */
-
-.rc-no-img {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--al-gray-muted);
-  font-size: 2rem;
-  background: linear-gradient(135deg, var(--al-bg-beige), var(--al-bg-beige-13));
-}
-
-.rc-hover {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-  pointer-events: none;
-}
-.rc-hover i {
-  font-size: 2rem;
-  color: #fff;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-.br-card:hover .rc-hover { opacity: 1; }
+/* 复用 browse.css 的 .br-card 卡片样式与 AnimeCard 组件内的占位/遮罩 */
 
 /* ========================= EMPTY BLOCK ========================= */
 .empty-block {
@@ -592,25 +572,6 @@ onBeforeUnmount(() => {
   padding: 14px 0 4px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
 }
 .load-done { color: var(--al-gray-faint); font-size: 0.74rem; }
-
-/* ========================= PAGER (database) ========================= */
-.pager {
-  flex-shrink: 0;
-  margin-top: 4px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-}
-.pager button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border: 1px solid var(--al-border-input); background: var(--al-bg);
-  border-radius: 10px; cursor: pointer; font-size: 1rem; color: var(--anime-text-main);
-  transition: all 0.2s;
-}
-.pager button:hover:not(:disabled) { border-color: var(--anime-accent-red); color: var(--anime-accent-red); }
-.pager button:disabled { opacity: 0.35; cursor: not-allowed; }
-.pager-num { font-size: 0.85rem; color: var(--anime-text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ========================= SKELETON ========================= */
 .sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }

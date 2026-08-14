@@ -137,8 +137,22 @@ import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
-import { API_BASE } from '../utils/constants'
+import { API_BASE, isSuperAdmin } from '../utils/constants'
+import { formatDanmakuColor } from '../utils/format'
 import { useAnimeDerived } from '../composables/useAnimeDerived'
+import { useAuth } from '../composables/useAuth'
+import { useFollow } from '../composables/useFollow'
+import { useResourceSelection } from '../composables/useResourceSelection'
+import {
+  isFuture,
+  filterMainEpisodes,
+  filterSpecialEpisodes,
+  episodeNumberDisplay,
+  formatEpisodeDate,
+  buildPlayableEpisodeKeys,
+  getEpisodeResources,
+  truncateText,
+} from '../utils/episodes'
 import EpisodeComments from '../components/anime/EpisodeComments.vue'
 import MobilePlayerTabs from '../components/anime/MobilePlayerTabs.vue'
 import ResourceSelectDialog from '../components/anime/ResourceSelectDialog.vue'
@@ -146,6 +160,7 @@ import ResourceSelectDialog from '../components/anime/ResourceSelectDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
+const { token, userInfo } = useAuth()
 
 const videoId = computed(() => String(route.params.videoId || ''))
 const animeId = computed(() => String(route.query.animeId || ''))
@@ -165,14 +180,7 @@ const animeData = ref(null)
 const existingEpisodes = ref([])
 const loading = ref(false)
 const error = ref(null)
-const isSummaryExpanded = ref(false)
-const isFollowing = ref(false)
-const followStatus = ref('watching')
-const followLoading = ref(false)
-const showResourceDialog = ref(false)
 const isSwitching = ref(false)
-const selectedResources = ref([])
-const selectedEpisodeTitle = ref('')
 const isDesktopViewport = ref(true)
 
 const artRef = ref(null)
@@ -194,6 +202,15 @@ const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
 const RESOURCE_DIALOG_TITLE_MAX_LEN = 40
 const LIBASS_SUPPORTED_SUBTITLE_FORMATS = new Set(['ass', 'ssa'])
 const NATIVE_ARTPLAYER_SUBTITLE_FORMATS = new Set(['srt', 'vtt'])
+
+const { isFollowing, followStatus, checkFollowStatus, upgradeFollowWishToWatching } = useFollow()
+const { showResourceDialog, selectedResources, selectedEpisodeTitle, closeResourceDialog, selectResource, playEpisode } =
+  useResourceSelection({
+    router,
+    getAnimeId: () => animeId.value,
+    getExistingEpisodes: () => existingEpisodes.value,
+    titleMaxLen: RESOURCE_DIALOG_TITLE_MAX_LEN,
+  })
 
 const DEFAULT_DANMAKU_SETTINGS = {
   speed: 7,
@@ -294,7 +311,7 @@ const fetchAnimeData = async () => {
 
     if (animeResp.status === 'fulfilled' && animeResp.value.code === 200 && animeResp.value.data?.bangumi) {
       animeData.value = animeResp.value.data.bangumi
-      await checkFollowStatus()
+      await checkFollowStatus(animeId.value)
     } else {
       animeData.value = null
       isFollowing.value = false
@@ -320,97 +337,12 @@ const fetchAnimeData = async () => {
   }
 }
 
-const checkFollowStatus = async () => {
-  const token = localStorage.getItem('token')
-  if (!token || !animeId.value) {
-    isFollowing.value = false
-    followStatus.value = 'wish'
-    return
-  }
-
-  try {
-    const response = await axios.get(`${API_BASE}/follows/${animeId.value}`)
-    if (response.data?.code === 200 && response.data.data) {
-      isFollowing.value = true
-      followStatus.value = response.data.data.status || 'watching'
-    } else {
-      isFollowing.value = false
-      followStatus.value = 'wish'
-    }
-  } catch (e) {
-    console.error('检查追番状态失败:', e)
-    isFollowing.value = false
-    followStatus.value = 'wish'
-  }
-}
-
-const upgradeFollowWishToWatching = async () => {
-  const token = localStorage.getItem('token')
-  if (!token || !isFollowing.value || followStatus.value !== 'wish' || !animeId.value) return
-  try {
-    await axios.put(`${API_BASE}/follows/${animeId.value}/status`, null, { params: { status: 'watching' } })
-    followStatus.value = 'watching'
-    console.log('追番自动升级: 想看 → 在看')
-  } catch (e) {
-    console.debug('追番自动升级失败:', e)
-  }
-}
-
-const toggleFollow = async () => {
-  const token = localStorage.getItem('token')
-  if (!token) {
-    showAppMessage('请先登录', 'warning')
-    return
-  }
-  if (!animeId.value || !animeData.value) {
-    showAppMessage('番剧数据未就绪，请稍后重试', 'warning')
-    return
-  }
-
-  followLoading.value = true
-  try {
-    if (isFollowing.value) {
-      await axios.delete(`${API_BASE}/follows/${animeId.value}`)
-      isFollowing.value = false
-      showAppMessage('已取消追番', 'success')
-    } else {
-      await axios.post(`${API_BASE}/follows`, {
-        animeId: Number(animeId.value),
-        animeTitle: animeData.value?.titles?.[0]?.title || '未知',
-        imageUrl: animeData.value?.imageUrl || '',
-      })
-      isFollowing.value = true
-      showAppMessage('追番成功', 'success')
-    }
-  } catch (e) {
-    console.error('切换追番状态失败:', e)
-    showAppMessage('操作失败，请重试', 'error')
-  } finally {
-    followLoading.value = false
-  }
-}
-
 /**
  * Computed properties for anime display
  */
-const isFuture = (ep) => new Date(ep.airDate) > new Date()
+const mainEpisodes = computed(() => filterMainEpisodes(animeData.value?.episodes))
 
-const getEpisodeType = (ep) => {
-  const num = ep.episodeNumber
-  if (/^\d+$/.test(num)) return 'main'
-  if (num.startsWith('S')) return 'special'
-  if (num.startsWith('C')) return 'credit'
-  return 'other'
-}
-
-const mainEpisodes = computed(() =>
-  animeData.value?.episodes.filter(ep => getEpisodeType(ep) === 'main') || []
-)
-
-const specialEpisodes = computed(() => {
-  const eps = animeData.value?.episodes || []
-  return eps.filter(ep => ['special', 'credit'].includes(getEpisodeType(ep)))
-})
+const specialEpisodes = computed(() => filterSpecialEpisodes(animeData.value?.episodes))
 
 // ===== 选集面板 =====
 const episodeTab = ref('main')
@@ -435,20 +367,6 @@ const currentEpisodeNumber = computed(() => {
   return currentEp?.episodeNumber != null ? String(currentEp.episodeNumber) : ''
 })
 
-const episodeNumberDisplay = (ep) => {
-  const type = getEpisodeType(ep)
-  if (type === 'main') return `第${ep.episodeNumber}话`
-  if (type === 'special') return '特典'
-  if (type === 'credit') return '主题'
-  return ep.episodeNumber
-}
-
-const formatEpisodeDate = (iso) => {
-  if (!iso) return ''
-  const d = iso.slice(5, 10) // MM-DD
-  return d
-}
-
 const canPlayEpisode = (ep) => {
   if (!ep || ep.episodeId === undefined || ep.episodeId === null) return false
   return playableEpisodeKeys.value.has(String(ep.episodeId)) && !isFuture(ep)
@@ -467,15 +385,7 @@ const {
   copyrightText,
 } = useAnimeDerived(animeData)
 
-const playableEpisodeKeys = computed(() => {
-  const set = new Set()
-  existingEpisodes.value.forEach((ep) => {
-    if (ep.episodeId !== undefined && ep.episodeId !== null) {
-      set.add(String(ep.episodeId))
-    }
-  })
-  return set
-})
+const playableEpisodeKeys = computed(() => buildPlayableEpisodeKeys(existingEpisodes.value))
 
 const playableEpisodes = computed(() => {
   const episodes = animeData.value?.episodes || []
@@ -483,7 +393,7 @@ const playableEpisodes = computed(() => {
     if (!ep || isFuture(ep)) {
       return false
     }
-    return getEpisodeResources(ep.episodeId).length > 0
+    return getEpisodeResources(existingEpisodes.value, ep.episodeId).length > 0
   })
 })
 
@@ -579,12 +489,11 @@ const getCurrentPlayableEpisodeIndex = () => {
 const fetchSubtitles = async (videoId) => {
   try {
     if (!videoId) {
-      console.warn('videoId为空，无法获取字幕')
-      return []
-    }
+    console.warn('videoId为空，无法获取字幕')
+    return []
+  }
 
-    console.log('[subtitle] request list start, videoId =', videoId)
-    const response = await fetch(`${API_BASE}/media-files/${videoId}/subtitles?_ts=${Date.now()}`, {
+  const response = await fetch(`${API_BASE}/media-files/${videoId}/subtitles?_ts=${Date.now()}`, {
       cache: 'no-store',
     })
     if (!response.ok) {
@@ -592,7 +501,6 @@ const fetchSubtitles = async (videoId) => {
     }
 
     const data = await response.json()
-    console.log('字幕API返回数据:', data)
 
     // 处理后端ApiResponseVO格式返回
     if (data.code === 200 && Array.isArray(data.data)) {
@@ -624,8 +532,7 @@ const fetchSubtitles = async (videoId) => {
  * 保存播放进度到后端
  */
 const savePlayProgress = async () => {
-  const token = localStorage.getItem('token')
-  if (!token || !art.value) {
+  if (!token.value || !art.value) {
     return
   }
   
@@ -655,8 +562,6 @@ const savePlayProgress = async () => {
       durationSeconds: duration,
       isCompleted: isCompleted
     })
-    
-    console.log('播放进度已保存:', currentTime, '/', duration)
   } catch (error) {
     console.error('保存播放进度失败:', error)
   }
@@ -666,8 +571,7 @@ const savePlayProgress = async () => {
  * 加载播放进度
  */
 const loadPlayProgress = async () => {
-  const token = localStorage.getItem('token')
-  if (!token || !animeId.value) {
+  if (!token.value || !animeId.value) {
     return null
   }
   
@@ -715,8 +619,7 @@ const stopProgressSaveTimer = () => {
 let _lastSyncedKey = ''
 
 const syncEpisodeWatchedToBangumi = async () => {
-  const token = localStorage.getItem('token')
-  if (!token || !animeId.value || !episodeId.value) return
+  if (!token.value || !animeId.value || !episodeId.value) return
 
   // 去重：同集不重复同步
   const key = `${animeId.value}:${episodeId.value}`
@@ -832,26 +735,16 @@ const syncSubtitleOffset = (subtitle) => {
 /**
  * 判断当前登录用户是否为超级管理员
  */
-const isCurrentUserAdmin = () => {
-  try {
-    const userInfoStr = localStorage.getItem('userInfo')
-    if (!userInfoStr) return false
-    const userInfo = JSON.parse(userInfoStr)
-    return Array.isArray(userInfo?.roleCodeList) && userInfo.roleCodeList.includes('super-admin')
-  } catch {
-    return false
-  }
-}
+const isCurrentUserAdmin = () => isSuperAdmin(userInfo.value)
 
 /**
  * 将字幕偏移量持久化到后端（仅超管可用）
  */
 const persistSubtitleOffset = async (subtitleId, offsetMs) => {
   try {
-    const token = localStorage.getItem('token') || ''
     await fetch(`${API_BASE}/subtitles/${subtitleId}/offset?offset=${offsetMs}`, {
       method: 'PUT',
-      headers: { satoken: token },
+      headers: { satoken: token.value },
     })
   } catch (e) {
     console.warn('保存字幕偏移量失败:', e)
@@ -994,7 +887,6 @@ const convertDandanToArtplayer = (chats) => {
   }
 
   if (chats.length === 0) {
-    console.log('弹幕数组为空')
     return []
   }
 
@@ -1045,7 +937,7 @@ const convertDandanToArtplayer = (chats) => {
         }
 
         // 颜色转换: 十进制RGB到十六进制
-        const color = '#' + colorInt.toString(16).padStart(6, '0').toUpperCase()
+        const color = formatDanmakuColor(colorInt, '#FFFFFF')
 
         return {
           text: chat.m,
@@ -1078,7 +970,6 @@ const fetchDanmaku = async (episodeId) => {
     }
 
     const data = await response.json()
-    console.log('弹幕API返回数据:', data)
 
     // 处理后端自定义格式返回
     if (data.code === 200 && data.data) {
@@ -1147,86 +1038,6 @@ const sendDanmaku = async (danmu) => {
   }
 
   await axios.post(`${API_BASE}/v2/comment/${targetEpisodeId}/app`, requestBody)
-}
-
-/**
- * 根据episodeId获取可用资源
- */
-const getEpisodeResources = (episodeId) => {
-  if (episodeId === undefined || episodeId === null) {
-    return []
-  }
-  const key = String(episodeId)
-  return existingEpisodes.value.filter((item) => String(item.episodeId) === key && item.id !== undefined && item.id !== null)
-}
-
-const truncateText = (text, maxLen) => {
-  const str = String(text || '')
-  if (str.length <= maxLen) {
-    return str
-  }
-  return `${str.slice(0, maxLen)}...`
-}
-
-/**
- * 选择资源并播放
- */
-const goToPlayer = async (resource) => {
-  showResourceDialog.value = false
-  selectedResources.value = []
-
-  const targetVideoId = String(resource.id)
-  const targetEpisodeId = String(resource.episodeId ?? '')
-
-  // 更新当前播放的视频
-  try {
-    await router.push({
-      name: 'Player',
-      params: { videoId: targetVideoId },
-      query: {
-        animeId: String(animeId.value),
-        episodeId: targetEpisodeId
-      }
-    })
-  } catch (error) {
-    console.warn('router.push 异常，继续执行播放刷新:', error)
-  }
-}
-
-/**
- * 关闭资源选择对话框
- */
-const closeResourceDialog = () => {
-  showResourceDialog.value = false
-  selectedResources.value = []
-  selectedEpisodeTitle.value = ''
-}
-
-/**
- * 选择资源
- */
-const selectResource = (resource) => {
-  goToPlayer(resource)
-}
-
-/**
- * 播放剧集
- * @param {object} ep 分集
- * @param {boolean} fromPlayerChrome 为 true 时表示来自播放器内选集/上下集：多资源时直接播第一条，不弹窗。页面上的分集列表不传或传 false，保留资源选择弹窗。
- */
-const playEpisode = (ep, fromPlayerChrome = false) => {
-  if (isFuture(ep)) return
-  const resources = getEpisodeResources(ep.episodeId)
-  if (resources.length === 0) return
-
-  if (resources.length === 1 || fromPlayerChrome) {
-    goToPlayer(resources[0])
-    return
-  }
-
-  selectedResources.value = resources
-  selectedEpisodeTitle.value = truncateText(ep.episodeTitle || `第${ep.episodeNumber}话`, RESOURCE_DIALOG_TITLE_MAX_LEN)
-  showResourceDialog.value = true
 }
 
 const jumpToEpisodeById = (targetEpisodeId) => {
@@ -1330,8 +1141,7 @@ const buildDanmakuOptions = (danmakuData, mobile) => {
       }
 
       // 检查登录状态
-      const token = localStorage.getItem('token')
-      if (!token) {
+      if (!token.value) {
         if (art.value?.notice) {
           art.value.notice.show = '请先登录后再发送弹幕'
         }
@@ -1653,7 +1463,6 @@ const createPlayerInstance = async () => {
 
     // 监听播放器事件
     art.value.on('ready', async () => {
-      console.log('播放器已就绪')
       placeEpisodeControlBeforeScreenshot()
       syncMobileClass()
       installMobileTapHandler()
@@ -1664,7 +1473,6 @@ const createPlayerInstance = async () => {
         const doSeek = () => {
           if (art.value) {
             art.value.currentTime = t
-            console.log('已跳转到指定时间:', t)
           }
           // 跳转完成后清除 URL 中的 t 参数
           const { t: _, ...restQuery } = route.query
@@ -1687,7 +1495,6 @@ const createPlayerInstance = async () => {
           const savedProgress = await loadPlayProgress()
           if (savedProgress && savedProgress > 5) {
             art.value.currentTime = savedProgress
-            console.log('已恢复播放进度:', savedProgress)
           }
         } catch (error) {
           console.warn('恢复播放进度失败:', error)
@@ -1707,20 +1514,17 @@ const createPlayerInstance = async () => {
     })
 
     art.value.on('play', () => {
-      console.log('开始播放')
       startProgressSaveTimer()
       // 追番"想看" → 自动升级为"在看"
-      upgradeFollowWishToWatching()
+      upgradeFollowWishToWatching(animeId.value)
     })
 
     art.value.on('pause', () => {
-      console.log('暂停播放')
       savePlayProgress()
       stopProgressSaveTimer()
     })
 
     art.value.on('video:ended', () => {
-      console.log('播放结束')
       savePlayProgress()
       stopProgressSaveTimer()
       // 自动同步 Bangumi 剧集已看状态
@@ -1743,13 +1547,8 @@ const createPlayerInstance = async () => {
     })
 
     // 弹幕事件
-    art.value.on('artplayerPluginDanmuku:visible', () => {
-
-    })
-
     art.value.on('artplayerPluginDanmuku:loaded', (danmus) => {
       const count = Array.isArray(danmus) ? danmus.length : 0
-      console.log('已加载弹幕数:', count)
       if (art.value?.notice) {
         // 延迟一小段时间，避免被播放器初始化阶段的其他状态提示覆盖
         setTimeout(() => {
@@ -1811,8 +1610,7 @@ onMounted(async () => {
  * 失败静默，不影响观看。
  */
 const markEpisodeMessagesRead = async () => {
-  const token = localStorage.getItem('token')
-  if (!token || !episodeId.value) return
+  if (!token.value || !episodeId.value) return
   try {
     await axios.put(`${API_BASE}/messages/read-by-episode/${encodeURIComponent(episodeId.value)}`)
   } catch (e) {
@@ -1829,7 +1627,6 @@ watch(
   () => [String(route.params.videoId || ''), String(route.query.episodeId || ''), String(route.query.subtitleId || '')],
   async ([newVideoId, newEpisodeId, newSubtitleId], [oldVideoId, oldEpisodeId, oldSubtitleId]) => {
     closeResourceDialog()
-    isSummaryExpanded.value = false
 
     if (newVideoId === oldVideoId && newEpisodeId === oldEpisodeId && newSubtitleId === oldSubtitleId) {
       return
@@ -1848,7 +1645,6 @@ watch(
 
 watch(() => animeId.value, async () => {
   closeResourceDialog()
-  isSummaryExpanded.value = false
   await fetchAnimeData()
 })
 

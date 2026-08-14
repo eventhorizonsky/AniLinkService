@@ -3,12 +3,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
 import { API_BASE } from '../../utils/constants'
+import { useIsMobile } from '../../composables/useIsMobile'
 
 const loading = ref(false)
 const tasks = ref([])
 const triggeringId = ref('')
 const togglingId = ref('')
-const isMobile = ref(false)
+const { isMobile } = useIsMobile(768)
 let pollTimer = null
 
 const TYPE_LABELS = {
@@ -24,12 +25,6 @@ const STATUS_META = {
 }
 
 const anyRunning = computed(() => tasks.value.some(t => t.running))
-
-const checkViewport = () => {
-  isMobile.value = typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(max-width: 768px)').matches
-}
 
 // 展示调度方式（尽量用用户能理解的说法）
 const scheduleText = (t) => {
@@ -122,14 +117,11 @@ const stopPolling = () => {
 }
 
 onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
   fetchTasks()
   startPolling()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
   stopPolling()
 })
 </script>

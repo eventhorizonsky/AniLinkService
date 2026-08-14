@@ -1,4 +1,6 @@
 <script setup>
+import { formatTaskStatus as formatStatus } from '../../../utils/taskStatus'
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -16,18 +18,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const taskStatusMap = {
-  PENDING: '等待中',
-  RUNNING: '下载中',
-  SEEDING: '做种中',
-  MOVING: '迁移中',
-  SCANNING: '扫描中',
-  COMPLETED: '已完成',
-  CANCELLED: '已取消',
-  FAILED: '失败',
-  STALLED: '停滞'
-}
-
 const matchStatusMap = {
   MATCHED: '已匹配',
   UNMATCHED: '未匹配',
@@ -35,7 +25,6 @@ const matchStatusMap = {
   FAILED: '匹配失败'
 }
 
-const formatStatus = (status) => taskStatusMap[status] || status || '-'
 const formatMatchStatus = (status) => matchStatusMap[status] || status || '-'
 </script>
 

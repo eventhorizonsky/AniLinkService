@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import PaginationBar from '../../components/PaginationBar.vue'
 import { showAppMessage } from '../../utils/ui-feedback'
 import {
   FOLLOW_STATUS_ORDER_MAP as STATUS_ORDER,
@@ -306,12 +307,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-      <span class="info">共 {{ total }} 部</span>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 部`" @change="changePage" />
 
     <!-- 手动绑定弹窗 -->
     <div v-if="bindDialog.show" class="dialog-overlay" @click.self="bindDialog.show = false">

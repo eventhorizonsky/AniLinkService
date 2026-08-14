@@ -2,8 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import PaginationBar from '../../components/PaginationBar.vue'
 import { usePagination } from '../../composables/usePagination'
 import { DEFAULT_POSTER, API_BASE } from '../../utils/constants'
+import { DANMAKU_MODE_LABELS } from '../../utils/danmakuMode'
+import { formatDateTime } from '../../utils/format'
 
 const router = useRouter()
 const list = ref([])
@@ -57,18 +60,7 @@ const goToAnime = (record) => {
   if (record?.animeId) router.push(`/anime/${record.animeId}`)
 }
 
-const modeLabel = (mode) => {
-  const map = { 1: '普通', 4: '底部', 5: '顶部' }
-  return map[mode] || `模式${mode}`
-}
-
-const formatTime = (v) => {
-  if (!v) return '--'
-  return new Date(v).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
-}
+const modeLabel = (mode) => DANMAKU_MODE_LABELS[mode] || `模式${mode}`
 
 const formatPos = (seconds) => {
   if (seconds == null) return '--'
@@ -117,7 +109,7 @@ onMounted(fetchData)
             <span class="dm-ep">{{ record.episodeTitle || `#${record.episodeId}` }}</span>
             <span class="dm-mode">{{ modeLabel(record.mode) }}</span>
           </div>
-          <div class="dm-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(record.createdAt) }}</div>
+          <div class="dm-time"><i class="mdi mdi-clock-outline"></i> {{ formatDateTime(record.createdAt) }}</div>
         </div>
 
         <div class="dm-side">
@@ -127,11 +119,7 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" @change="changePage" />
   </div>
 </template>
 

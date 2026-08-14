@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { API_BASE, DEFAULT_POSTER } from '../utils/constants'
-import { formatScore as fmtScore } from '../utils/format'
+import { API_BASE, DEFAULT_POSTER, WEEKDAY_LABELS } from '../utils/constants'
+import { formatScore } from '../utils/format'
+import AnimeCard from '../components/AnimeCard.vue'
 
 const router = useRouter()
 
@@ -11,12 +12,9 @@ const scheduleLoading = ref(false)
 const scheduleError = ref('')
 const activeDay = ref(new Date().getDay())
 
-const weekTabs = [
-  { label: '日', key: 0 }, { label: '一', key: 1 },
-  { label: '二', key: 2 }, { label: '三', key: 3 },
-  { label: '四', key: 4 }, { label: '五', key: 5 },
-  { label: '六', key: 6 }
-]
+const weekTabs = Object.entries(WEEKDAY_LABELS)
+  .filter(([key]) => Number(key) >= 0 && Number(key) <= 6)
+  .map(([key, label]) => ({ label, key: Number(key) }))
 
 const fetchSchedule = async () => {
   scheduleLoading.value = true; scheduleError.value = ''
@@ -72,19 +70,22 @@ onMounted(() => { fetchSchedule() })
     <div v-else-if="scheduleError" class="br-empty error"><i class="mdi mdi-alert-circle-outline"></i> {{ scheduleError }}</div>
     <div v-else-if="!filteredBangumi.length" class="br-empty"><i class="mdi mdi-coffee-outline"></i> 该日暂无新番</div>
     <div v-else class="br-grid">
-      <div v-for="a in filteredBangumi" :key="a.animeId" class="br-card" @click="goToDetail(a)">
-        <div class="br-card-image">
-          <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
-          <span class="br-badge-score"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
+      <AnimeCard
+        v-for="a in filteredBangumi"
+        :key="a.animeId"
+        :image-url="a.imageUrl || DEFAULT_POSTER"
+        :alt="a.animeTitle"
+        :title="a.animeTitle"
+        @click="goToDetail(a)"
+      >
+        <template #badges>
+          <span class="br-badge-score"><i class="mdi mdi-star"></i> {{ formatScore(a.rating) }}</span>
           <span v-if="a.isOnAir" class="br-badge-dot" title="连载中"></span>
-        </div>
-        <div class="br-card-body">
-          <h4>{{ a.animeTitle }}</h4>
-          <div class="br-card-meta">
-            <span class="genre">{{ a.isOnAir ? '连载中' : '已完结' }}</span>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #meta>
+          <span class="genre">{{ a.isOnAir ? '连载中' : '已完结' }}</span>
+        </template>
+      </AnimeCard>
     </div>
   </div>
 </template>

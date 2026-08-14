@@ -30,22 +30,23 @@ const fetchLibraries = async () => {
   }
 }
 
-const fetchPaths = async (path = rootPath.value) => {
+const loadPaths = async (root, assign) => {
   loadingPaths.value = true
   try {
     const res = await axios.get(`${API_BASE}/init/media-library/paths`, {
       params: {
-        rootPath: path,
+        rootPath: root,
         onlyDir: true
       }
     })
     if (res.data?.code === 200) {
       const items = res.data.data || []
-      pathTree.value = items.map(item => ({
+      const tree = items.map(item => ({
         id: item.path,
         title: item.name,
         children: []
       }))
+      assign(tree)
     }
   } catch (error) {
     console.error('获取路径失败:', error)
@@ -54,30 +55,12 @@ const fetchPaths = async (path = rootPath.value) => {
   }
 }
 
+const fetchPaths = async (path = rootPath.value) => {
+  loadPaths(path, (tree) => { pathTree.value = tree })
+}
+
 const handleNodeSelect = async (item) => {
-  loadingPaths.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/init/media-library/paths`, {
-      params: {
-        rootPath: item.id,
-        onlyDir: true
-      }
-    })
-    if (res.data?.code === 200) {
-      const items = res.data.data || []
-      if (items.length > 0) {
-        item.children = items.map(child => ({
-          id: child.path,
-          title: child.name,
-          children: []
-        }))
-      }
-    }
-  } catch (error) {
-    console.error('获取子路径失败:', error)
-  } finally {
-    loadingPaths.value = false
-  }
+  loadPaths(item.id, (tree) => { if (tree.length > 0) item.children = tree })
 }
 
 const addLibrary = async () => {
@@ -190,10 +173,6 @@ const onPathSelect = (selected) => {
 
 onMounted(() => {
   fetchLibraries()
-})
-
-defineExpose({
-  mediaLibraries
 })
 </script>
 
