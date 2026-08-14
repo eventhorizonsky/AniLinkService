@@ -65,8 +65,8 @@
           :follow-status="followStatus"
           :follow-loading="followLoading"
           @update:is-summary-expanded="isSummaryExpanded = $event"
-          @toggleFollow="() => toggleFollow(resolvedAnimeId.value, animeData.value)"
-          @set-follow-status="(s) => setFollowStatus(resolvedAnimeId.value, s, animeData.value)"
+          @toggleFollow="() => toggleFollow(resolvedAnimeId, animeData)"
+          @set-follow-status="(s) => setFollowStatus(resolvedAnimeId, s, animeData)"
         />
 
         <AnimeLastWatchSection
