@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { formatBytes, formatSpeed } from '../../../utils/format'
 
 const props = defineProps({
   title: {
@@ -161,29 +162,6 @@ const cancellableSelection = computed(() => {
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(props.total / props.size)))
-
-const formatSpeed = (bps) => {
-  if (!bps || bps <= 0) return '0 B/s'
-  if (bps < 1024) return `${Math.round(bps)} B/s`
-  const kb = bps / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB/s`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(2)} MB/s`
-  const gb = mb / 1024
-  return `${gb.toFixed(2)} GB/s`
-}
-
-const formatBytes = (value) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
-  const num = Number(value)
-  if (num < 1024) return `${num} B`
-  const kb = num / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(2)} MB`
-  const gb = mb / 1024
-  return `${gb.toFixed(2)} GB`
-}
 
 const formatTime = (value) => {
   if (!value) return '-'

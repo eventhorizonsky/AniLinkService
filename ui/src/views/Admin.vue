@@ -3,10 +3,12 @@ import { ref, computed, onMounted, watch, defineAsyncComponent, provide } from '
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { useTheme } from '../composables/useTheme'
+import { useAuth } from '../composables/useAuth'
+import { API_BASE, isSuperAdmin as checkSuperAdmin } from '../utils/constants'
 
 const { isDark } = useTheme()
+const { userInfo, setUserInfo, clearAuth } = useAuth()
 
-const API_BASE = '/api'
 const router = useRouter()
 
 // 移动端默认收起侧边栏，桌面端默认展开
@@ -56,11 +58,7 @@ const componentMap = Object.fromEntries(
   [...mainMenuItems, ...systemSettingsMenuItems, ...mediaMenuItems].map(item => [item.id, item.component])
 )
 
-const userInfo = ref(null)
-
-const isSuperAdmin = computed(() =>
-  Array.isArray(userInfo.value?.roleCodeList) && userInfo.value.roleCodeList.includes('super-admin')
-)
+const isSuperAdmin = computed(() => checkSuperAdmin(userInfo.value))
 
 const visibleMainMenuItems = computed(() => mainMenuItems)
 
@@ -74,8 +72,7 @@ const fetchUserInfo = async () => {
     const res = await axios.post(`${API_BASE}/auth/currentUser`)
     if (res.data?.code === 200 && res.data?.data) {
       const userData = res.data.data
-      localStorage.setItem('userInfo', JSON.stringify(userData))
-      userInfo.value = userData
+      setUserInfo(userData)
     }
   } catch (error) {
     console.error('获取用户信息失败:', error)
@@ -84,26 +81,15 @@ const fetchUserInfo = async () => {
 }
 
 const checkLoginStatus = () => {
-  const token = localStorage.getItem('token')
-  const user = localStorage.getItem('userInfo')
-  if (!token || !user) {
+  if (!userInfo.value) {
     router.push('/')
     return
   }
-  try {
-    userInfo.value = JSON.parse(user)
-    // 获取最新的用户信息
-    fetchUserInfo()
-  } catch (e) {
-    console.error('解析用户信息失败:', e)
-    router.push('/')
-  }
+  fetchUserInfo()
 }
 
 const handleLogout = () => {
-  localStorage.removeItem('token')
-  localStorage.removeItem('userInfo')
-  userInfo.value = null
+  clearAuth()
   router.push('/')
 }
 

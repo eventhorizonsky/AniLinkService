@@ -1,19 +1,21 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
+import {
+  FOLLOW_STATUS_ORDER_MAP as STATUS_ORDER,
+  FOLLOW_STATUS_LABEL as STATUS_LABEL,
+  FOLLOW_STATUS_COLORS as STATUS_COLORS,
+} from '../../utils/followStatus'
+import { usePagination } from '../../composables/usePagination'
+import { API_BASE } from '../../utils/constants'
 
 const router = useRouter()
-const API_BASE = '/api'
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(24)
 const total = ref(0)
 const statusFilter = ref('active')
 const keyword = ref('')
@@ -43,10 +45,6 @@ const confirmCancel = () => {
   if (r) r(false)
 }
 
-const STATUS_ORDER = { wish: 0, watching: 1, watched: 2, on_hold: 3, dropped: 4 }
-const STATUS_LABEL = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
-const STATUS_COLORS = { wish: '#42a5f5', watching: '#ff9800', watched: '#4caf50', on_hold: '#ffc107', dropped: '#ef5350' }
-
 const statusOptions = [
   { label: '活跃', value: 'active' },
   { label: '全部', value: '' },
@@ -57,23 +55,13 @@ const statusOptions = [
   { label: '抛弃', value: 'dropped' }
 ]
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  const arr = []
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
-
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
     const params = { page: page.value, pageSize: pageSize.value, keyword: keyword.value.trim() }
-    const url = statusFilter.value === 'active' ? '/api/follows/active'
-              : statusFilter.value ? `/api/follows/status/${statusFilter.value}`
-              : '/api/follows'
+    const url = statusFilter.value === 'active' ? `${API_BASE}/follows/active`
+              : statusFilter.value ? `${API_BASE}/follows/status/${statusFilter.value}`
+              : `${API_BASE}/follows`
     const res = await axios.get(url, { params })
     if (res.data?.code !== 200) throw new Error(res.data?.msg || '加载追番失败')
 
@@ -96,11 +84,11 @@ const fetchData = async () => {
   } finally { loading.value = false }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 24,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const applyFilter = (value) => {
   statusFilter.value = value
@@ -127,7 +115,7 @@ const setStatus = async (follow, status) => {
   if (!follow.animeId || follow.status === status) return
   updatingId.value = follow.animeId
   try {
-    const res = await axios.put(`/api/follows/${follow.animeId}/status`, null, { params: { status } })
+    const res = await axios.put(`${API_BASE}/follows/${follow.animeId}/status`, null, { params: { status } })
     if (res.data?.code === 200) await fetchData()
     else showAppMessage(res.data?.msg || '更新状态失败', 'error')
   } catch (e) {
@@ -140,7 +128,7 @@ const unfollow = async (follow) => {
   const ok = await showConfirm('取消追番', `确定要取消追番《${follow.animeTitle}》吗？`, '取消追番')
   if (!ok) return
   try {
-    const res = await axios.delete(`/api/follows/${follow.animeId}`)
+    const res = await axios.delete(`${API_BASE}/follows/${follow.animeId}`)
     if (res.data?.code === 200) await fetchData()
     else showAppMessage(res.data?.msg || '取消追番失败', 'error')
   } catch (e) { showAppMessage('取消追番失败', 'error') }
@@ -155,7 +143,7 @@ const searchBindAnime = async () => {
   if (!bindDialog.value.keyword.trim()) return
   bindDialog.value.searching = true
   try {
-    const res = await axios.get('/api/animes/search-dandan', { params: { keyword: bindDialog.value.keyword } })
+    const res = await axios.get(`${API_BASE}/animes/search-dandan`, { params: { keyword: bindDialog.value.keyword } })
     const raw = res.data?.data
     const listRaw = raw?.animes || raw?.data?.animes || []
     bindDialog.value.results = Array.isArray(listRaw) ? listRaw : []
@@ -166,7 +154,7 @@ const searchBindAnime = async () => {
 const bindAnime = async (follow, anime) => {
   try {
     const title = anime.animeTitle || anime.title
-    await axios.put(`/api/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
+    await axios.put(`${API_BASE}/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
     showAppMessage(`已绑定「${title}」`, 'success')
     bindDialog.value.show = false
     await fetchData()
@@ -177,7 +165,7 @@ const autoMatch = async (follow) => {
   menuId.value = null
   matchDialog.value = { show: true, follow }
   try {
-    const res = await axios.post(`/api/follows/${follow.id}/match`)
+    const res = await axios.post(`${API_BASE}/follows/${follow.id}/match`)
     const body = res.data
     if (body?.code === 200 && body.data?.matched) {
       matchDialog.value.show = false
@@ -203,7 +191,7 @@ const pullBangumi = async () => {
   if (!ok) return
   pulling.value = true
   try {
-    const res = await axios.post('/api/bangumi/sync/pull-collections')
+    const res = await axios.post(`${API_BASE}/bangumi/sync/pull-collections`)
     if (res.data?.code === 200 && res.data?.data) {
       const d = res.data.data
       showAppMessage(`同步完成：共 ${d.total} 条，新增 ${d.created}，更新 ${d.updated}，跳过 ${d.skipped}`, 'success')

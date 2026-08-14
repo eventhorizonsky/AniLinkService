@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { API_BASE } from '../../utils/constants'
+import { formatDateTime, formatDanmakuColor as danmakuColorHex } from '../../utils/format'
 
 const loading = ref(false)
 const records = ref([])
@@ -19,23 +21,10 @@ const danmakuModeLabel = (mode) => {
   return map[mode] || `模式${mode}`
 }
 
-const danmakuColorHex = (color) => {
-  if (color == null) return '#FFFFFF'
-  return '#' + color.toString(16).padStart(6, '0').toUpperCase()
-}
-
-const formatDateTime = (value) => {
-  if (!value) return '--'
-  return new Date(value).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
-
 const fetchRecords = async () => {
   loading.value = true
   try {
-    const res = await axios.get('/api/admin/danmaku-records', {
+    const res = await axios.get(`${API_BASE}/admin/danmaku-records`, {
       params: {
         page: page.value,
         pageSize: pageSize.value,

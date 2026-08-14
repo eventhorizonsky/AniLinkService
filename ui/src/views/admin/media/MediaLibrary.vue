@@ -2,8 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
 
 const mediaLibraries = ref([])
 const loading = ref(false)

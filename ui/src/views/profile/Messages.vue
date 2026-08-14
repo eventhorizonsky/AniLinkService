@@ -3,13 +3,13 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { usePagination } from '../../composables/usePagination'
+import { API_BASE } from '../../utils/constants'
 
 const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(20)
 const total = ref(0)
 const filterType = ref('')
 
@@ -19,22 +19,13 @@ const typeFilters = [
   { label: '系统通知', value: 'system' }
 ]
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  const arr = []
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
 const unreadCount = computed(() => list.value.filter((m) => !m.isRead).length)
 
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
     const params = { page: page.value, pageSize: pageSize.value }
-    const url = filterType.value ? `/api/messages/type/${filterType.value}` : '/api/messages'
+    const url = filterType.value ? `${API_BASE}/messages/type/${filterType.value}` : `${API_BASE}/messages`
     const res = await axios.get(url, { params })
     if (res.data?.code === 200) {
       list.value = res.data.data?.content || []
@@ -44,11 +35,11 @@ const fetchData = async () => {
   finally { loading.value = false }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 20,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const applyFilter = (value) => {
   filterType.value = value
@@ -58,7 +49,7 @@ const applyFilter = (value) => {
 
 const openMessage = async (msg) => {
   if (!msg.isRead) {
-    try { await axios.put(`/api/messages/${msg.id}/read`) } catch (e) { /* ignore */ }
+    try { await axios.put(`${API_BASE}/messages/${msg.id}/read`) } catch (e) { /* ignore */ }
     msg.isRead = true
   }
   if (msg.type === 'episode_update' && msg.videoId) {
@@ -78,7 +69,7 @@ const openMessage = async (msg) => {
 
 const markAllRead = async () => {
   try {
-    const res = await axios.put('/api/messages/mark-all-read')
+    const res = await axios.put(`${API_BASE}/messages/mark-all-read`)
     if (res.data?.code === 200 || res.data?.code === 0) {
       showAppMessage('已全部标记为已读', 'success')
       await fetchData()
@@ -90,7 +81,7 @@ const removeMessage = async (id) => {
   const ok = window.confirm('确定要删除这条消息吗？')
   if (!ok) return
   try {
-    const res = await axios.delete(`/api/messages/${id}`)
+    const res = await axios.delete(`${API_BASE}/messages/${id}`)
     if (res.data?.code === 200) {
       if (list.value.length === 1 && page.value > 1) page.value -= 1
       await fetchData()

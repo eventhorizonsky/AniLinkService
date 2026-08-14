@@ -2,6 +2,8 @@
 import { ref, watch } from 'vue'
 import axios from 'axios'
 import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
+import { API_BASE } from '../../../utils/constants'
+import { formatFileSize } from '../../../utils/format'
 
 const props = defineProps({
   mediaFileId: {
@@ -9,8 +11,6 @@ const props = defineProps({
     required: true
   }
 })
-
-const API_BASE = '/api'
 
 const subtitles = ref([])
 const loading = ref(false)
@@ -161,13 +161,6 @@ const resetUploadForm = () => {
     trackName: '',
     language: ''
   }
-}
-
-const formatFileSize = (bytes) => {
-  if (!bytes) return '-'
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
 }
 
 const getSourceTypeLabel = (sourceType) => {

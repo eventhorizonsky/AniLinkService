@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import axios from 'axios'
+import { hasRoleLevel, API_BASE } from '../utils/constants'
 
 const routes = [
   {
@@ -115,9 +116,10 @@ router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('token')
   let siteConfig = null
 
-  // 若状态不存在，则从接口获取，避免频繁请求 siteConfig 的同时确保状态可靠
+  // 仅在本地状态缺失时从接口获取，避免每次导航都请求 siteConfig
+  if (installed == null) {
     try {
-      const res = await axios.get('/api/site/config')
+      const res = await axios.get(`${API_BASE}/site/config`)
       const isInstalled = res.data?.data?.installed === true
       siteConfig = res.data?.data || null
       installed = isInstalled ? 'true' : 'false'
@@ -133,7 +135,7 @@ router.beforeEach(async (to, from, next) => {
       localStorage.removeItem('installed')
       installed = 'false'
     }
-  
+  }
 
   // 如果已安装，访问安装页跳转到首页
   if (installed === 'true' && to.path === '/install') {
@@ -180,24 +182,7 @@ router.beforeEach(async (to, from, next) => {
         userInfo = {}
       }
 
-      const roleLevel = {
-        user: 1,
-        admin: 2,
-        'super-admin': 3
-      }
-      const requiredRole = (requiredRoleRaw || 'user').toString().trim()
-      const requiredLevel = roleLevel[requiredRole]
-      const roleCodes = Array.isArray(userInfo?.roleCodeList) ? userInfo.roleCodeList : []
-
-      let allowed = false
-      if (!requiredLevel) {
-        allowed = roleCodes.includes(requiredRole)
-      } else {
-        allowed = roleCodes.some((role) => {
-          const level = roleLevel[role]
-          return typeof level === 'number' && level >= requiredLevel
-        })
-      }
+      const allowed = hasRoleLevel(userInfo, requiredRoleRaw)
 
       if (!allowed) {
         return next('/')

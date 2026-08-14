@@ -2,8 +2,8 @@
 import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { API_BASE } from '../../utils/constants'
 
-const API_BASE = '/api'
 const loading = ref(false)
 const binding = ref(false)
 const unbinding = ref(false)

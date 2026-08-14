@@ -3,8 +3,8 @@ import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
 import axios from 'axios'
 import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
 import DownloadTaskTable from '../../../components/admin/download/DownloadTaskTable.vue'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
+import { formatSpeed } from '../../../utils/format'
 
 const emit = defineEmits(['stats-loaded'])
 
@@ -74,17 +74,6 @@ const scheduleRefresh = () => {
 }
 
 const ACTIVE_STATUSES = ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING']
-
-const formatSpeed = (bps) => {
-  if (!bps || bps <= 0) return '0 B/s'
-  if (bps < 1024) return `${Math.round(bps)} B/s`
-  const kb = bps / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB/s`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(2)} MB/s`
-  const gb = mb / 1024
-  return `${gb.toFixed(2)} GB/s`
-}
 
 const statCards = computed(() => [
   { label: '活跃任务', value: props.stats?.active ?? '-', icon: 'mdi-progress-download', color: 'primary' },

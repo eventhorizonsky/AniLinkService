@@ -69,6 +69,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import { API_BASE } from '../../utils/constants';
 
 const props = defineProps({
   subjectId: {
@@ -96,7 +97,7 @@ const fetchComments = async (reset = false) => {
   try {
     const currentOffset = reset ? 0 : offset.value;
     const res = await fetch(
-      `/api/bangumi/subjects/${props.subjectId}/comments?limit=${PAGE_SIZE}&offset=${currentOffset}`
+      `${API_BASE}/bangumi/subjects/${props.subjectId}/comments?limit=${PAGE_SIZE}&offset=${currentOffset}`
     );
     if (!res.ok) {
       emit('unavailable');

@@ -3,8 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import QRCode from 'qrcode'
 import { showAppMessage } from '../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../utils/constants'
 
 const loading = ref(false)
 const regenerating = ref(false)

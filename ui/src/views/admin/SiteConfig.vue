@@ -2,8 +2,8 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { API_BASE } from '../../utils/constants'
 
-const API_BASE = '/api'
 const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 
 const loading = ref(false)

@@ -2,8 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
 
 const isMobile = ref(false)
 
@@ -309,7 +308,7 @@ onMounted(async () => {
           </v-btn>
         </div>
 
-        <v-alert v-if="hasMore && resources.length === 0" class="mt-4" type="warning" variant="tonal" density="comfortable">
+        <v-alert v-if="hasMore && resources.length > 0" class="mt-4" type="warning" variant="tonal" density="comfortable">
           搜索结果过多，当前仅显示部分结果，可使用「加载更多」继续获取。
         </v-alert>
       </v-card-text>

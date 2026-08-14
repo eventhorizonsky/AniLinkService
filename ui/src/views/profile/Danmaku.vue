@@ -1,17 +1,15 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { usePagination } from '../../composables/usePagination'
+import { DEFAULT_POSTER, API_BASE } from '../../utils/constants'
 
 const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(20)
 const total = ref(0)
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const danmakuHex = (record) => {
   const c = Number(record?.color)
@@ -19,20 +17,10 @@ const danmakuHex = (record) => {
   return '#' + c.toString(16).padStart(6, '0')
 }
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  const arr = []
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
-
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
-    const res = await axios.get('/api/v2/danmaku-records/mine', {
+    const res = await axios.get(`${API_BASE}/v2/danmaku-records/mine`, {
       params: { page: page.value, pageSize: pageSize.value }
     })
     if (res.data?.code === 200) {
@@ -43,11 +31,11 @@ const fetchData = async () => {
   finally { loading.value = false }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 20,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const goToPlayer = (record) => {
   if (record.videoId) {
@@ -112,7 +100,7 @@ onMounted(fetchData)
     <div v-else class="danmaku-list">
       <div v-for="record in list" :key="record.id" class="danmaku-card">
         <div class="dm-poster" @click="goToAnime(record)">
-          <img :src="record.imageUrl || defaultPoster" :alt="record.animeTitle" loading="lazy" />
+          <img :src="record.imageUrl || DEFAULT_POSTER" :alt="record.animeTitle" loading="lazy" />
           <div class="dm-poster-shade"></div>
           <div class="dm-poster-play"><i class="mdi mdi-play"></i></div>
         </div>

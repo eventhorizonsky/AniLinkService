@@ -254,24 +254,13 @@
       </div>
     </div>
 
-    <div v-if="showResourceDialog" class="resource-dialog-mask" @click.self="closeResourceDialog">
-      <div class="resource-dialog">
-        <h3 class="resource-dialog-title">选择播放资源</h3>
-        <p class="resource-dialog-subtitle">{{ selectedEpisodeTitle }}</p>
-        <div class="resource-list">
-          <button
-            v-for="(resource, index) in selectedResources"
-            :key="resource.id"
-            class="resource-item"
-            @click="selectResource(resource)"
-          >
-            <span class="resource-name">{{ resource.fileName || `资源 ${index + 1}` }}</span>
-            <span class="resource-meta">ID: {{ resource.id }}</span>
-          </button>
-        </div>
-        <button class="resource-cancel-btn" @click="closeResourceDialog">取消</button>
-      </div>
-    </div>
+    <ResourceSelectDialog
+      :open="showResourceDialog"
+      :resources="selectedResources"
+      :title="selectedEpisodeTitle"
+      @select="selectResource"
+      @close="closeResourceDialog"
+    />
   </div>
 </template>
 
@@ -280,6 +269,11 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { showAppMessage } from '../utils/ui-feedback';
+import { API_BASE } from '../utils/constants';
+import { followStatusLabel } from '../utils/followStatus';
+import { useAuth } from '../composables/useAuth';
+import { useAnimeDerived } from '../composables/useAnimeDerived';
+import { formatDateTime } from '../utils/format';
 import AnimeHeroSection from '../components/anime/AnimeHeroSection.vue';
 import EpisodeListSection from '../components/anime/EpisodeListSection.vue';
 import TrailerCarousel from '../components/anime/TrailerCarousel.vue';
@@ -288,6 +282,7 @@ import MetadataCard from '../components/anime/MetadataCard.vue';
 import FooterLinks from '../components/anime/FooterLinks.vue';
 import BangumiComments from '../components/anime/BangumiComments.vue';
 import AnimeLastWatchSection from '../components/anime/AnimeLastWatchSection.vue';
+import ResourceSelectDialog from '../components/anime/ResourceSelectDialog.vue';
 
 // Props
 const props = defineProps({
@@ -346,9 +341,9 @@ const fetchAnimeData = async () => {
     let targetAnimeId = resolvedAnimeId.value || route.params.animeId;
     let url;
     if (props.bgmMode && route.params.subjectId) {
-      url = `/api/animes/bangumi/${route.params.subjectId}/raw-json`;
+      url = `${API_BASE}/animes/bangumi/${route.params.subjectId}/raw-json`;
     } else {
-      url = `/api/animes/${targetAnimeId}/raw-json`;
+      url = `${API_BASE}/animes/${targetAnimeId}/raw-json`;
     }
 
     const response = await fetch(url);
@@ -367,7 +362,7 @@ const fetchAnimeData = async () => {
     }
 
     try {
-      const episodesResponse = await fetch(`/api/animes/${targetAnimeId}/episodes?page=1&pageSize=9999`);
+      const episodesResponse = await fetch(`${API_BASE}/animes/${targetAnimeId}/episodes?page=1&pageSize=9999`);
       const episodesResult = await episodesResponse.json();
       if (episodesResult.code === 200 && episodesResult.data && Array.isArray(episodesResult.data.content)) {
         existingEpisodes.value = episodesResult.data.content;
@@ -396,7 +391,7 @@ const fetchAnimeResume = async () => {
   }
   resumeLoading.value = true;
   try {
-    const response = await axios.get(`/api/play-history/anime/${resolvedAnimeId.value}/resume`);
+    const response = await axios.get(`${API_BASE}/play-history/anime/${resolvedAnimeId.value}/resume`);
     if (response.data?.code === 200) {
       animeResume.value = response.data.data ?? null;
     } else {
@@ -420,7 +415,7 @@ const checkFollowStatus = async (animeIdOverride) => {
 
   const aid = animeIdOverride || resolvedAnimeId.value;
   try {
-    const response = await axios.get(`/api/follows/${aid}`);
+    const response = await axios.get(`${API_BASE}/follows/${aid}`);
     if (response.data.code === 200 && response.data.data) {
       isFollowing.value = true;
       followStatus.value = response.data.data.status || 'watching';
@@ -452,10 +447,10 @@ const setFollowStatus = async (status) => {
   try {
     if (isFollowing.value) {
       // 已追番 → 更新状态
-      await axios.put(`/api/follows/${resolvedAnimeId.value}/status`, null, { params: { status } });
+      await axios.put(`${API_BASE}/follows/${resolvedAnimeId.value}/status`, null, { params: { status } });
     } else {
       // 未追番 → 创建追番并设置状态
-      await axios.post('/api/follows', {
+      await axios.post(`${API_BASE}/follows`, {
         animeId: resolvedAnimeId.value,
         animeTitle: animeData.value.titles?.[0]?.title || '未知',
         imageUrl: animeData.value.imageUrl || '',
@@ -464,8 +459,7 @@ const setFollowStatus = async (status) => {
     }
     isFollowing.value = true;
     followStatus.value = status;
-    const labels = { watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' };
-    showAppMessage(`已标记为「${labels[status] || status}」`, 'success');
+    showAppMessage(`已标记为「${followStatusLabel(status)}」`, 'success');
   } catch (error) {
     console.error('Failed to set follow status:', error);
     showAppMessage('操作失败，请重试', 'error');
@@ -489,7 +483,7 @@ const toggleFollow = async () => {
 
   followLoading.value = true;
   try {
-    await axios.delete(`/api/follows/${resolvedAnimeId.value}`);
+    await axios.delete(`${API_BASE}/follows/${resolvedAnimeId.value}`);
     isFollowing.value = false;
     followStatus.value = 'wish';
     showAppMessage('已取消追番', 'success');
@@ -524,9 +518,6 @@ watch(
 );
 
 // Utility Functions
-const formatDate = (iso) => iso ? iso.slice(0, 10) : '';
-const todayStr = new Date().toISOString().slice(0, 10);
-const isToday = (ep) => formatDate(ep.airDate) === todayStr;
 const isFuture = (ep) => new Date(ep.airDate) > new Date();
 
 // Episode type classification
@@ -543,25 +534,18 @@ const mainEpisodes = computed(() =>
   animeData.value?.episodes.filter(ep => getEpisodeType(ep) === 'main') || []
 );
 
-const formatRating = (value, digits = 1) => {
-  const num = Number(value);
-  return Number.isFinite(num) ? num.toFixed(digits) : '--';
-};
-
-const isOnAir = computed(() => Boolean(animeData.value?.isOnAir));
-const ratingMain = computed(() => formatRating(animeData.value?.rating, 1));
-const ratingBangumi = computed(() => animeData.value?.ratingDetails?.['Bangumi评分'] ?? '7.8');
-const ratingAnidb = computed(() => animeData.value?.ratingDetails?.['Anidb连载中评分'] ?? '8.51');
-
-const totalEpisodes = computed(() => {
-  const meta = animeData.value?.metadata || [];
-  const epItem = meta.find(m => m.startsWith('话数'));
-  return epItem ? epItem.split(':')[1]?.trim() : '10';
-});
-
-const formattedSummary = computed(() => {
-  return animeData.value?.summary?.replace(/\n/g, '<br>') || '';
-});
+const {
+  isOnAir,
+  ratingMain,
+  ratingBangumi,
+  ratingAnidb,
+  totalEpisodes,
+  formattedSummary,
+  titleInfo,
+  airDayText,
+  staffList,
+  copyrightText,
+} = useAnimeDerived(animeData);
 
 const playableEpisodeKeys = computed(() => {
   const set = new Set();
@@ -571,40 +555,6 @@ const playableEpisodeKeys = computed(() => {
     }
   });
   return set;
-});
-
-const titleInfo = computed(() => {
-  const titles = animeData.value?.titles || [];
-  if (titles.length === 0) return { main: '', sub: '' };
-  return {
-    main: titles[0]?.title || '',
-    sub: titles[1]?.title || ''
-  };
-});
-
-const airDayText = computed(() => {
-  const day = animeData.value?.airDay;
-  const dayMap = { 0: '周日', 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' };
-  return dayMap[day] || '';
-});
-
-const staffList = computed(() => {
-  const meta = animeData.value?.metadata || [];
-  const keys = ['原作', '导演', '音乐', '动画制作'];
-  return meta
-    .filter(item => keys.some(key => item.startsWith(key)))
-    .map(item => {
-      const parts = item.split(':');
-      if (parts.length >= 2) {
-        return `<strong>${parts[0]}:</strong>${parts.slice(1).join(':')}`;
-      }
-      return item;
-    });
-});
-
-const copyrightText = computed(() => {
-  const meta = animeData.value?.metadata || [];
-  return meta.find(m => m.startsWith('Copyright')) || '©山田鐘人・アベツカサ／小学館／「葬送のフリーレン」製作委員会';
 });
 
 const bangumiSubjectId = computed(() => {
@@ -623,18 +573,9 @@ const bangumiSubjectUrl = computed(() => {
 });
 
 const showCommentsTab = computed(() => bangumiSubjectId.value !== null && commentsAvailable.value);
-const isLoggedIn = computed(() => Boolean(localStorage.getItem('token')));
+const { isLoggedIn, setUserInfo } = useAuth();
 
-const formatDateTime = (value) => {
-  if (!value) return '';
-  return new Date(value).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
+
 
 const showLastWatchSection = computed(() => {
   if (!isLoggedIn.value || loading.value || error.value) return false;
@@ -684,7 +625,7 @@ const resumeProgressText = computed(() => {
   return `${progress} 秒 / ${duration} 秒（${Math.min(100, Math.max(0, percent))}%）`;
 });
 
-const resumeLastPlayText = computed(() => formatDateTime(animeResume.value?.lastPlayTime));
+const resumeLastPlayText = computed(() => formatDateTime(animeResume.value?.lastPlayTime, ''));
 
 const resumeEpisodeLine = computed(() => {
   const h = animeResume.value;
@@ -739,10 +680,10 @@ const refreshCurrentUserInfo = async () => {
   }
 
   try {
-    const response = await axios.post('/api/auth/currentUser');
+    const response = await axios.post(`${API_BASE}/auth/currentUser`);
     if (response.data?.code === 200 && response.data?.data) {
       currentUserInfo.value = response.data.data;
-      localStorage.setItem('userInfo', JSON.stringify(response.data.data));
+      setUserInfo(response.data.data);
       return;
     }
   } catch {
@@ -759,7 +700,7 @@ const fetchBangumiCollection = async () => {
 
   bgmCollectionLoading.value = true;
   try {
-    const response = await axios.get(`/api/bangumi/subjects/${bangumiSubjectId.value}/collection`);
+    const response = await axios.get(`${API_BASE}/bangumi/subjects/${bangumiSubjectId.value}/collection`);
     if (response.data?.code === 200 && response.data?.data) {
       bgmCollectionForm.value = {
         type: Number(response.data.data.type || 3),
@@ -801,7 +742,7 @@ const submitBangumiCollection = async () => {
       rate: Number(bgmCollectionForm.value.rate || 0),
       comment: bgmCollectionForm.value.comment || ''
     };
-    const response = await axios.post(`/api/bangumi/subjects/${bangumiSubjectId.value}/collection`, payload);
+    const response = await axios.post(`${API_BASE}/bangumi/subjects/${bangumiSubjectId.value}/collection`, payload);
     if (response.data?.code === 200) {
       showAppMessage('已同步到 Bangumi', 'success');
       bgmCollectionEditMode.value = false;
@@ -980,87 +921,6 @@ const playEpisode = (ep) => {
 .anime-sidebar {
   width: 280px;
   flex-shrink: 0;
-}
-
-.resource-dialog-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1200;
-  padding: 20px;
-}
-
-.resource-dialog {
-  width: min(560px, 100%);
-  background: var(--al-bg);
-  border-radius: 16px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
-  padding: 20px;
-}
-
-.resource-dialog-title {
-  margin: 0;
-  font-size: 1.2rem;
-  color: var(--al-text-strong);
-}
-
-.resource-dialog-subtitle {
-  margin: 8px 0 14px;
-  color: var(--al-text-secondary);
-}
-
-.resource-list {
-  display: grid;
-  gap: 10px;
-  max-height: 50vh;
-  overflow: auto;
-}
-
-.resource-item {
-  border: 1px solid var(--al-border-soft);
-  background: var(--al-bg-watch);
-  border-radius: 10px;
-  padding: 12px 14px;
-  text-align: left;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.resource-item:hover {
-  border-color: var(--al-accent);
-  background: var(--al-bg-active-warm);
-}
-
-.resource-name {
-  color: var(--al-text-strong);
-  font-weight: 600;
-}
-
-.resource-meta {
-  color: var(--al-text-muted);
-  font-size: 0.85rem;
-}
-
-.resource-cancel-btn {
-  margin-top: 14px;
-  width: 100%;
-  border: 1px solid var(--al-border-soft-4);
-  background: var(--al-bg);
-  color: var(--al-text-brown-21);
-  border-radius: 10px;
-  height: 40px;
-  cursor: pointer;
-}
-
-.resource-cancel-btn:hover {
-  background: var(--al-bg-panel);
 }
 
 /* Section Tabs */
@@ -1430,10 +1290,6 @@ const playEpisode = (ep) => {
 
   .anime-sidebar {
     width: 100%;
-  }
-
-  .resource-dialog {
-    padding: 16px;
   }
 
   .bangumi-collection-form {

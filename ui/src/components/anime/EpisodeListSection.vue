@@ -52,6 +52,7 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { formatDate } from '../../utils/format';
 
 const props = defineProps({
   episodes: {
@@ -89,8 +90,6 @@ const tabs = [
 const EPISODE_TITLE_MAX_LEN = 36;
 
 const todayStr = new Date().toISOString().slice(0, 10);
-
-const formatDate = (iso) => iso ? iso.slice(0, 10) : '';
 
 const isToday = (ep) => formatDate(ep.airDate) === todayStr;
 
@@ -169,7 +168,6 @@ const playEpisode = (ep) => {
 </script>
 
 <style scoped>
-@import '../../styles/anime.css';
 
 /* 正在播放的剧集样式 */
 .anime-episode-card.is-current {

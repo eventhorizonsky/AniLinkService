@@ -3,8 +3,7 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../utils/constants'
 
 const loading = ref(false)
 const versionInfo = ref(null)

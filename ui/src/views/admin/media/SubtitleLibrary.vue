@@ -2,8 +2,8 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
+import { formatFileSize } from '../../../utils/format'
 
 const subtitles = ref([])
 const loading = ref(false)
@@ -12,7 +12,7 @@ const sourceType = ref(null)
 const pagination = ref({
   page: 1,
   itemsPerPage: 10,
-  pageCount: 0
+  totalItems: 0
 })
 
 const offsetDialog = ref(false)
@@ -47,7 +47,7 @@ const fetchSubtitles = async (pageNum = pagination.value.page) => {
     if (res.data?.code === 200 && res.data?.data) {
       subtitles.value = res.data.data.content || []
       pagination.value.page = (res.data.data.currentPage || 0) + 1
-      pagination.value.pageCount = res.data.data.totalElements || 0
+      pagination.value.totalItems = res.data.data.totalElements || 0
     }
   } catch (error) {
     showAppMessage('获取字幕列表失败: ' + (error.response?.data?.msg || error.message), 'error')
@@ -152,13 +152,6 @@ const sourceTypeColor = (value) => {
   return colors[value] || 'grey'
 }
 
-const formatFileSize = (bytes) => {
-  if (!bytes) return '-'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-}
-
 onMounted(() => {
   fetchSubtitles(1)
 })
@@ -219,7 +212,7 @@ onMounted(() => {
           :items="subtitles"
           :loading="loading"
           :items-per-page="pagination.itemsPerPage"
-          :items-length="pagination.pageCount"
+          :items-length="pagination.totalItems"
           density="compact"
           class="elevation-0"
           @update:options="onTableOptionsChange"
@@ -315,12 +308,12 @@ onMounted(() => {
           </v-card>
 
           <div
-            v-if="pagination.pageCount > pagination.itemsPerPage"
+            v-if="pagination.totalItems > pagination.itemsPerPage"
             class="d-flex justify-center mt-2"
           >
             <v-pagination
               v-model="pagination.page"
-              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+              :length="Math.max(1, Math.ceil(pagination.totalItems / pagination.itemsPerPage))"
               @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
             />
           </div>

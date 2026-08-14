@@ -514,7 +514,7 @@
     color: var(--al-text-brown-6);
   }
 
-  .anime-staff-item :deep(strong) {
+  .anime-staff-item strong {
     color: var(--al-text-brown-10);
     margin-right: 6px;
   }

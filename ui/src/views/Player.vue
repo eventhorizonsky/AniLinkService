@@ -117,24 +117,13 @@
     </div>
 
     <!-- 资源选择对话框 -->
-    <div v-if="showResourceDialog" class="resource-dialog-mask" @click.self="closeResourceDialog">
-      <div class="resource-dialog">
-        <h3 class="resource-dialog-title">选择播放资源</h3>
-        <p class="resource-dialog-subtitle">{{ selectedEpisodeTitle }}</p>
-        <div class="resource-list">
-          <button
-            v-for="(resource, index) in selectedResources"
-            :key="resource.id"
-            class="resource-item"
-            @click="selectResource(resource)"
-          >
-            <span class="resource-name">{{ resource.fileName || `资源 ${index + 1}` }}</span>
-            <span class="resource-meta">ID: {{ resource.id }}</span>
-          </button>
-        </div>
-        <button class="resource-cancel-btn" @click="closeResourceDialog">取消</button>
-      </div>
-    </div>
+    <ResourceSelectDialog
+      :open="showResourceDialog"
+      :resources="selectedResources"
+      :title="selectedEpisodeTitle"
+      @select="selectResource"
+      @close="closeResourceDialog"
+    />
 
   </div>
 </template>
@@ -148,8 +137,11 @@ import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import SubtitlesOctopus from 'libass-wasm'
 import { showAppMessage } from '../utils/ui-feedback'
+import { API_BASE } from '../utils/constants'
+import { useAnimeDerived } from '../composables/useAnimeDerived'
 import EpisodeComments from '../components/anime/EpisodeComments.vue'
 import MobilePlayerTabs from '../components/anime/MobilePlayerTabs.vue'
+import ResourceSelectDialog from '../components/anime/ResourceSelectDialog.vue'
 
 
 const route = useRoute()
@@ -174,7 +166,6 @@ const existingEpisodes = ref([])
 const loading = ref(false)
 const error = ref(null)
 const isSummaryExpanded = ref(false)
-const isFavorited = ref(false)
 const isFollowing = ref(false)
 const followStatus = ref('watching')
 const followLoading = ref(false)
@@ -199,8 +190,6 @@ const subtitlesOctopusFonts = ['/static/SourceHanSansCN-Bold.woff2']
 let playerRecreateSeq = 0
 
 const DANMAKU_SETTINGS_STORAGE_KEY = 'anilink:danmaku:settings:v1'
-const AIR_DAY_MAP = { 0: '周日', 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
-const STAFF_META_KEYS = ['原作', '导演', '音乐', '动画制作']
 const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
 const RESOURCE_DIALOG_TITLE_MAX_LEN = 40
 const LIBASS_SUPPORTED_SUBTITLE_FORMATS = new Set(['ass', 'ssa'])
@@ -299,8 +288,8 @@ const fetchAnimeData = async () => {
     error.value = null
 
     const [animeResp, episodesResp] = await Promise.allSettled([
-      fetchJson(`/api/animes/${animeId.value}/raw-json`),
-      fetchJson(`/api/animes/${animeId.value}/episodes?page=1&pageSize=9999`),
+      fetchJson(`${API_BASE}/animes/${animeId.value}/raw-json`),
+      fetchJson(`${API_BASE}/animes/${animeId.value}/episodes?page=1&pageSize=9999`),
     ])
 
     if (animeResp.status === 'fulfilled' && animeResp.value.code === 200 && animeResp.value.data?.bangumi) {
@@ -340,7 +329,7 @@ const checkFollowStatus = async () => {
   }
 
   try {
-    const response = await axios.get(`/api/follows/${animeId.value}`)
+    const response = await axios.get(`${API_BASE}/follows/${animeId.value}`)
     if (response.data?.code === 200 && response.data.data) {
       isFollowing.value = true
       followStatus.value = response.data.data.status || 'watching'
@@ -359,7 +348,7 @@ const upgradeFollowWishToWatching = async () => {
   const token = localStorage.getItem('token')
   if (!token || !isFollowing.value || followStatus.value !== 'wish' || !animeId.value) return
   try {
-    await axios.put(`/api/follows/${animeId.value}/status`, null, { params: { status: 'watching' } })
+    await axios.put(`${API_BASE}/follows/${animeId.value}/status`, null, { params: { status: 'watching' } })
     followStatus.value = 'watching'
     console.log('追番自动升级: 想看 → 在看')
   } catch (e) {
@@ -381,11 +370,11 @@ const toggleFollow = async () => {
   followLoading.value = true
   try {
     if (isFollowing.value) {
-      await axios.delete(`/api/follows/${animeId.value}`)
+      await axios.delete(`${API_BASE}/follows/${animeId.value}`)
       isFollowing.value = false
       showAppMessage('已取消追番', 'success')
     } else {
-      await axios.post('/api/follows', {
+      await axios.post(`${API_BASE}/follows`, {
         animeId: Number(animeId.value),
         animeTitle: animeData.value?.titles?.[0]?.title || '未知',
         imageUrl: animeData.value?.imageUrl || '',
@@ -465,25 +454,18 @@ const canPlayEpisode = (ep) => {
   return playableEpisodeKeys.value.has(String(ep.episodeId)) && !isFuture(ep)
 }
 
-const formatRating = (value, digits = 1) => {
-  const num = Number(value)
-  return Number.isFinite(num) ? num.toFixed(digits) : '--'
-}
-
-const isOnAir = computed(() => Boolean(animeData.value?.isOnAir))
-const ratingMain = computed(() => formatRating(animeData.value?.rating, 1))
-const ratingBangumi = computed(() => animeData.value?.ratingDetails?.['Bangumi评分'] ?? '7.8')
-const ratingAnidb = computed(() => animeData.value?.ratingDetails?.['Anidb连载中评分'] ?? '8.51')
-
-const totalEpisodes = computed(() => {
-  const meta = animeData.value?.metadata || []
-  const epItem = meta.find(m => m.startsWith('话数'))
-  return epItem ? epItem.split(':')[1]?.trim() : '10'
-})
-
-const formattedSummary = computed(() => {
-  return animeData.value?.summary?.replace(/\n/g, '<br>') || ''
-})
+const {
+  isOnAir,
+  ratingMain,
+  ratingBangumi,
+  ratingAnidb,
+  totalEpisodes,
+  formattedSummary,
+  titleInfo,
+  airDayText,
+  staffList,
+  copyrightText,
+} = useAnimeDerived(animeData)
 
 const playableEpisodeKeys = computed(() => {
   const set = new Set()
@@ -522,7 +504,7 @@ const ddplayLink = computed(() => {
     return ''
   }
 
-  const streamUrl = `${window.location.origin}/api/media-files/stream/${videoId.value}`
+  const streamUrl = `${window.location.origin}${API_BASE}/media-files/stream/${videoId.value}`
   const filePath = currentEpisodeResource.value?.filePath || currentEpisodeResource.value?.fileName || ''
   const withOptionalFilePath = filePath
     ? `${streamUrl}|filePath=${filePath}`
@@ -589,37 +571,7 @@ const getCurrentPlayableEpisodeIndex = () => {
   return playableEpisodes.value.findIndex((ep) => String(ep.episodeId) === currentEpisodeKey)
 }
 
-const titleInfo = computed(() => {
-  const titles = animeData.value?.titles || []
-  if (titles.length === 0) return { main: '', sub: '' }
-  return {
-    main: titles[0]?.title || '',
-    sub: titles[1]?.title || ''
-  }
-})
 
-const airDayText = computed(() => {
-  const day = animeData.value?.airDay
-  return AIR_DAY_MAP[day] || ''
-})
-
-const staffList = computed(() => {
-  const meta = animeData.value?.metadata || []
-  return meta
-    .filter(item => STAFF_META_KEYS.some(key => item.startsWith(key)))
-    .map(item => {
-      const parts = item.split(':')
-      if (parts.length >= 2) {
-        return `<strong>${parts[0]}:</strong>${parts.slice(1).join(':')}`
-      }
-      return item
-    })
-})
-
-const copyrightText = computed(() => {
-  const meta = animeData.value?.metadata || []
-  return meta.find(m => m.startsWith('Copyright')) || ''
-})
 
 /**
  * 根据videoId获取字幕文件列表
@@ -632,7 +584,7 @@ const fetchSubtitles = async (videoId) => {
     }
 
     console.log('[subtitle] request list start, videoId =', videoId)
-    const response = await fetch(`/api/media-files/${videoId}/subtitles?_ts=${Date.now()}`, {
+    const response = await fetch(`${API_BASE}/media-files/${videoId}/subtitles?_ts=${Date.now()}`, {
       cache: 'no-store',
     })
     if (!response.ok) {
@@ -652,7 +604,7 @@ const fetchSubtitles = async (videoId) => {
           return {
             id: subtitle.id,
             name: subtitle.trackName || `${subtitle.language || '未知语言'}`,
-            url: `/api/subtitles/${subtitle.id}/download`,
+            url: `${API_BASE}/subtitles/${subtitle.id}/download`,
             format,
             timeOffset: Number(subtitle.timeOffset || 0),
             isLibassSupported: LIBASS_SUPPORTED_SUBTITLE_FORMATS.has(format),
@@ -693,7 +645,7 @@ const savePlayProgress = async () => {
     const isCompleted = currentTime / duration >= 0.8 // 播放超过80%认为已完成
     if (isCompleted) syncEpisodeWatchedToBangumi()    // 达到80%即时同步
 
-    await axios.post('/api/play-history/progress', {
+    await axios.post(`${API_BASE}/play-history/progress`, {
       videoId: videoId.value,
       videoName: `Episode ${episodeId.value || ''}`,
       animeId: animeId.value,
@@ -720,7 +672,7 @@ const loadPlayProgress = async () => {
   }
   
   try {
-    const response = await axios.get(`/api/play-history/anime/${animeId.value}/resume`)
+    const response = await axios.get(`${API_BASE}/play-history/anime/${animeId.value}/resume`)
     if (response.data.code === 200 && response.data.data) {
       // 仅在当前播放视频与历史视频一致时恢复秒数，避免跨分集误跳进度。
       if (String(response.data.data.videoId || '') !== String(videoId.value || '')) {
@@ -757,7 +709,7 @@ const stopProgressSaveTimer = () => {
 
 /**
  * 自动同步 Bangumi 剧集"已看"状态。
- * 仅在用户已登录、已绑定 Bangumi、且当前剧集确实看完（>=85%）时触发。
+ * 仅在用户已登录、已绑定 Bangumi、且当前剧集确实看完（>=80%）时触发。
  * 失败静默，不影响用户观看体验。
  */
 let _lastSyncedKey = ''
@@ -783,7 +735,7 @@ const syncEpisodeWatchedToBangumi = async () => {
 
   _lastSyncedKey = key
   try {
-    await axios.post('/api/bangumi/sync/episode-watched', null, {
+    await axios.post(`${API_BASE}/bangumi/sync/episode-watched`, null, {
       params: {
         animeId: animeId.value,
         episodeNumber: String(currentEp.episodeNumber)
@@ -897,7 +849,7 @@ const isCurrentUserAdmin = () => {
 const persistSubtitleOffset = async (subtitleId, offsetMs) => {
   try {
     const token = localStorage.getItem('token') || ''
-    await fetch(`/api/subtitles/${subtitleId}/offset?offset=${offsetMs}`, {
+    await fetch(`${API_BASE}/subtitles/${subtitleId}/offset?offset=${offsetMs}`, {
       method: 'PUT',
       headers: { satoken: token },
     })
@@ -1120,7 +1072,7 @@ const fetchDanmaku = async (episodeId) => {
       return []
     }
 
-    const response = await fetch(`/api/v2/comment/${episodeId}?withRelated=true`)
+    const response = await fetch(`${API_BASE}/v2/comment/${episodeId}?withRelated=true`)
     if (!response.ok) {
       throw new Error(`弹幕接口返回状态: ${response.status}`)
     }
@@ -1194,7 +1146,7 @@ const sendDanmaku = async (danmu) => {
     episodeTitle: currentEpisodeResource.value?.episodeTitle || null,
   }
 
-  await axios.post(`/api/v2/comment/${targetEpisodeId}/app`, requestBody)
+  await axios.post(`${API_BASE}/v2/comment/${targetEpisodeId}/app`, requestBody)
 }
 
 /**
@@ -1304,13 +1256,6 @@ const jumpToAdjacentEpisode = (delta) => {
 
   playEpisode(list[nextIndex], true)
   return list[nextIndex]
-}
-
-/**
- * 切换收藏
- */
-const toggleFavorite = () => {
-  isFavorited.value = !isFavorited.value
 }
 
 const destroyPlayerInstance = () => {
@@ -1641,7 +1586,7 @@ const createPlayerInstance = async () => {
     // 初始化 Artplayer
     art.value = new Artplayer({
       container: artRef.value,
-      url: `/api/media-files/stream/${targetVideoId}`,
+      url: `${API_BASE}/media-files/stream/${targetVideoId}`,
       poster: '',
       volume: 0.5,
       isLive: false,
@@ -1675,7 +1620,7 @@ const createPlayerInstance = async () => {
       plugins: [
         artplayerPluginDanmuku(danmakuOptions),
         artplayerPluginVttThumbnail({
-          vtt: `/api/media-files/${targetVideoId}/thumbnails.vtt`,
+          vtt: `${API_BASE}/media-files/${targetVideoId}/thumbnails.vtt`,
         }),
         ...(subtitlePlugin ? [subtitlePlugin] : []),
       ],
@@ -1869,7 +1814,7 @@ const markEpisodeMessagesRead = async () => {
   const token = localStorage.getItem('token')
   if (!token || !episodeId.value) return
   try {
-    await axios.put(`/api/messages/read-by-episode/${encodeURIComponent(episodeId.value)}`)
+    await axios.put(`${API_BASE}/messages/read-by-episode/${encodeURIComponent(episodeId.value)}`)
   } catch (e) {
     console.debug('标记剧集消息已读失败:', e)
   }
@@ -2289,92 +2234,6 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   font-size: 12px;
   padding: 6px 10px;
-}
-
-/* Resource Dialog */
-.resource-dialog-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1200;
-  padding: 20px;
-}
-
-.resource-dialog {
-  width: min(560px, 100%);
-  background: var(--al-bg);
-  border-radius: 16px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
-  padding: 20px;
-}
-
-.resource-dialog-title {
-  margin: 0;
-  font-size: 1.2rem;
-  color: var(--al-text-strong);
-}
-
-.resource-dialog-subtitle {
-  margin: 8px 0 14px;
-  color: var(--al-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.resource-list {
-  display: grid;
-  gap: 10px;
-  max-height: 50vh;
-  overflow: auto;
-}
-
-.resource-item {
-  border: 1px solid var(--al-border-soft);
-  background: var(--al-bg-watch);
-  border-radius: 10px;
-  padding: 12px 14px;
-  text-align: left;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.resource-item:hover {
-  border-color: var(--al-accent);
-  background: var(--al-bg-active-warm);
-}
-
-.resource-name {
-  color: var(--al-text-strong);
-  font-weight: 600;
-}
-
-.resource-meta {
-  color: var(--al-text-muted);
-  font-size: 0.85rem;
-}
-
-.resource-cancel-btn {
-  margin-top: 14px;
-  width: 100%;
-  border: 1px solid var(--al-border-soft-4);
-  background: var(--al-bg);
-  color: var(--al-text-brown-21);
-  border-radius: 10px;
-  height: 40px;
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.resource-cancel-btn:hover {
-  background: var(--al-bg-panel);
 }
 
 /* 平板/移动端控件约束：防止控件栏宽度溢出。

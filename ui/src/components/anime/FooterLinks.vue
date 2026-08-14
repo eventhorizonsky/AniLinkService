@@ -29,5 +29,4 @@ defineProps({
 </script>
 
 <style scoped>
-@import '../../styles/anime.css';
 </style>

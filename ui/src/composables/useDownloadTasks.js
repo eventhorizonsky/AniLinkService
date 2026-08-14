@@ -1,8 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../utils/constants'
 
 export function useDownloadTasks() {
   const tasks = ref([])

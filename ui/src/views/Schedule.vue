@@ -1,11 +1,10 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { API_BASE, DEFAULT_POSTER } from '../utils/constants'
+import { formatScore as fmtScore } from '../utils/format'
 
 const router = useRouter()
-const API_BASE = '/api'
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const bangumiList = ref([])
 const scheduleLoading = ref(false)
@@ -38,11 +37,6 @@ const filteredBangumi = computed(() =>
   bangumiList.value.filter(i => i.airDay === activeDay.value).sort((a, b) => (b.rating || 0) - (a.rating || 0))
 )
 const dayCount = (d) => bangumiList.value.filter(i => i.airDay === d).length
-
-const fmtScore = (v) => {
-  if (v == null || v === '') return '-'
-  const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
-}
 
 const goToDetail = (a) => { if (a?.animeId) router.push('/anime/' + a.animeId) }
 
@@ -80,7 +74,7 @@ onMounted(() => { fetchSchedule() })
     <div v-else class="br-grid">
       <div v-for="a in filteredBangumi" :key="a.animeId" class="br-card" @click="goToDetail(a)">
         <div class="br-card-image">
-          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+          <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
           <span class="br-badge-score"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
           <span v-if="a.isOnAir" class="br-badge-dot" title="连载中"></span>
         </div>

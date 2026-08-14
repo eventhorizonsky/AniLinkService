@@ -299,10 +299,12 @@ import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
 import { useTheme } from '../composables/useTheme'
+import { useAuth } from '../composables/useAuth'
+import { API_BASE, hasRoleLevel, isSuperAdmin } from '../utils/constants'
 
-const API_BASE = '/api'
 const DEFAULT_SITE_NAME = 'AniLink'
 const { isDark, toggleTheme } = useTheme()
+const { token, userInfo, isLoggedIn, setToken, setUserInfo, clearAuth } = useAuth()
 const router = useRouter()
 const route = useRoute()
 const searchQuery = ref('')
@@ -315,7 +317,6 @@ const sendCodeCountdown = ref(0)
 const userMenuOpen = ref(false)
 const sidebarOpen = ref(false)
 const siteConfig = ref(null)
-const userInfo = ref(null)
 const captchaId = ref('')
 const captchaImage = ref('')
 
@@ -529,8 +530,7 @@ const fetchUserInfo = async () => {
     const res = await axios.post(`${API_BASE}/auth/currentUser`)
     if (res.data?.code === 200 && res.data?.data) {
       const userData = res.data.data
-      localStorage.setItem('userInfo', JSON.stringify(userData))
-      userInfo.value = userData
+      setUserInfo(userData)
       startUnreadCountPolling()
     }
   } catch (error) {
@@ -540,26 +540,12 @@ const fetchUserInfo = async () => {
   }
 }
 
-// 检查登录状态
+// 检查登录状态：token/userInfo 已由 useAuth 从 localStorage 初始化，这里仅拉取最新用户信息。
 const checkLoginStatus = () => {
-  const token = localStorage.getItem('token')
-  const user = localStorage.getItem('userInfo')
-  if (token) {
-    if (user) {
-      try {
-        userInfo.value = JSON.parse(user)
-      } catch (e) {
-        console.error('解析用户信息失败:', e)
-      }
-    }
-    // 获取最新的用户信息
+  if (token.value) {
     fetchUserInfo()
   }
 }
-
-const isLoggedIn = computed(() => {
-  return !!localStorage.getItem('token') && !!userInfo.value
-})
 
 const isRegisterOpen = computed(() => {
   return !!siteConfig.value?.authRegisterEnabled
@@ -584,24 +570,7 @@ const isRemoteAccessVisible = computed(() => {
     return false
   }
 
-  const roleLevel = {
-    user: 1,
-    admin: 2,
-    'super-admin': 3
-  }
-
-  const requiredRole = (requiredRoleRaw || 'user').toString().trim()
-  const requiredLevel = roleLevel[requiredRole]
-  const roleCodes = Array.isArray(userInfo.value?.roleCodeList) ? userInfo.value.roleCodeList : []
-
-  if (!requiredLevel) {
-    return roleCodes.includes(requiredRole)
-  }
-
-  return roleCodes.some((role) => {
-    const level = roleLevel[role]
-    return typeof level === 'number' && level >= requiredLevel
-  })
+  return hasRoleLevel(userInfo.value, requiredRoleRaw)
 })
 
 const sendCodeDisabled = computed(() => {
@@ -632,10 +601,7 @@ const currentUser = computed(() => {
   return userInfo.value?.username || ''
 })
 
-const isAdmin = computed(() => {
-  if (!userInfo.value || !userInfo.value.roleCodeList) return false
-  return userInfo.value.roleCodeList.includes('super-admin')
-})
+const isAdmin = computed(() => isSuperAdmin(userInfo.value))
 
 const syncDocumentTitle = () => {
   if (typeof document === 'undefined') {
@@ -741,8 +707,10 @@ const handleLogin = async () => {
 
     if (res.data?.code === 200 && res.data?.data) {
       const { tokenValue } = res.data.data
-      localStorage.setItem('token', tokenValue)
-      window.location.reload()
+      setToken(tokenValue)
+      showLoginDialog.value = false
+      loginForm.value = { account: '', password: '' }
+      fetchUserInfo()
       return
     } else {
       showAppMessage(res.data?.msg || '登录失败', 'error')
@@ -884,10 +852,11 @@ const handleRegister = async () => {
 }
 
 const handleLogout = () => {
-  localStorage.removeItem('token')
-  localStorage.removeItem('userInfo')
-  localStorage.removeItem('rememberMe')
-  window.location.reload()
+  clearAuth()
+  userMenuOpen.value = false
+  sidebarOpen.value = false
+  stopUnreadCountPolling()
+  router.push('/')
 }
 
 const goToProfile = () => {

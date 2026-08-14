@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, onUnmounted, provide, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, provide, defineAsyncComponent } from 'vue'
 import { useDownloadTasks } from '../../../composables/useDownloadTasks'
 import DownloadTasksTab from './DownloadTasksTab.vue'
 import ResourceSearchTab from './ResourceSearchTab.vue'
@@ -40,10 +40,12 @@ const checkViewport = () => {
 onMounted(() => {
   checkViewport()
   window.addEventListener('resize', checkViewport)
+  connectProgressStream()
 })
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
   window.removeEventListener('resize', checkViewport)
+  disconnectProgressStream()
 })
 
 const applyStats = (stats) => {
@@ -54,14 +56,6 @@ const applyStats = (stats) => {
 
 provide('navigateTo', () => {
   activeTab.value = 'settings'
-})
-
-onMounted(() => {
-  connectProgressStream()
-})
-
-onBeforeUnmount(() => {
-  disconnectProgressStream()
 })
 </script>
 

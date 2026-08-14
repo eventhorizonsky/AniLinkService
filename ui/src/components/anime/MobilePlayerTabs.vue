@@ -4,7 +4,7 @@
     <div class="mpt-head">
       <img
         class="mpt-poster"
-        :src="anime.imageUrl || defaultPoster"
+        :src="anime.imageUrl || DEFAULT_POSTER"
         :alt="titleInfo.main"
         loading="lazy"
       />
@@ -44,7 +44,7 @@
     <div class="mpt-body">
       <!-- 简介 -->
       <div v-if="activeTab === 'info'" class="mpt-pane mpt-info">
-        <p v-if="summary" class="mpt-summary" v-html="summary"></p>
+        <p v-if="summary" class="mpt-summary" v-html="sanitizeHtml(summary)"></p>
 
         <dl class="mpt-meta-list">
           <template v-if="totalEpisodes">
@@ -66,11 +66,11 @@
             v-for="(s, i) in staffList"
             :key="i"
             class="mpt-staff-item"
-            v-html="s"
+            v-html="sanitizeHtml(s)"
           ></div>
         </div>
 
-        <div v-if="copyrightText" class="mpt-copyright" v-html="copyrightText"></div>
+        <div v-if="copyrightText" class="mpt-copyright" v-html="sanitizeHtml(copyrightText)"></div>
       </div>
 
       <!-- 选集 -->
@@ -129,6 +129,8 @@
 <script setup>
 import { ref } from 'vue'
 import EpisodeComments from './EpisodeComments.vue'
+import { DEFAULT_POSTER } from '../../utils/constants'
+import { sanitizeHtml } from '../../utils/sanitize'
 
 defineProps({
   anime: { type: Object, required: true },
@@ -150,8 +152,6 @@ defineProps({
   episodeNumberDisplay: { type: Function, default: (ep) => String(ep?.episodeNumber ?? '') },
   formatEpisodeDate: { type: Function, default: () => '' },
 })
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const tabs = [
   { label: '简介', value: 'info' },

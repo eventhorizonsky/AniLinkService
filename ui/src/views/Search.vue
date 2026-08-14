@@ -3,10 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { formatAnimeType } from '../utils/animeType'
+import { API_BASE } from '../utils/constants'
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE = '/api'
 
 const activeTab = ref('library')
 

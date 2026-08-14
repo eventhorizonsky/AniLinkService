@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuth } from '../composables/useAuth'
 import { showSessionExpiredDialog } from './ui-feedback'
 
 let initialized = false
@@ -9,11 +10,12 @@ export function setupHttpInterceptors() {
   }
   initialized = true
 
+  const { token, clearAuth } = useAuth()
+
   axios.interceptors.request.use(
     (config) => {
-      const token = localStorage.getItem('token')
-      if (token) {
-        config.headers.satoken = token
+      if (token.value) {
+        config.headers.satoken = token.value
       }
       return config
     },
@@ -24,12 +26,10 @@ export function setupHttpInterceptors() {
     (response) => response,
     (error) => {
       const status = error?.response?.status
-      const hasToken = !!localStorage.getItem('token')
+      const hasToken = !!token.value
 
       if (status === 401 && hasToken) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('userInfo')
-        localStorage.removeItem('rememberMe')
+        clearAuth()
         showSessionExpiredDialog('登录状态已过期，请重新登录。确认后将返回首页。')
       }
 

@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
 
 const metadataProgress = ref(null)
 const matchProgress = ref(null)

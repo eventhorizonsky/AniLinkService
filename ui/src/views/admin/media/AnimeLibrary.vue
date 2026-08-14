@@ -4,8 +4,8 @@ import axios from 'axios'
 import { formatAnimeType } from '../../../utils/animeType'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
+import { formatDuration, formatFileSize } from '../../../utils/format'
 
 const animes = ref([])
 const loading = ref(false)
@@ -22,7 +22,7 @@ const selectedEpisodeForSubtitle = ref(null)
 const episodesPagination = ref({
   page: 1,
   itemsPerPage: 10,
-  pageCount: 0
+  totalItems: 0
 })
 
 const search = ref('')
@@ -30,7 +30,7 @@ const sortBy = ref([])
 const pagination = ref({
   page: 1,
   itemsPerPage: 10,
-  pageCount: 1
+  totalItems: 1
 })
 
 const episodeHeaders = [
@@ -61,7 +61,7 @@ const fetchAnimes = async (pageNum = 1) => {
     const res = await axios.get(`${API_BASE}/animes`, { params })
     if (res.data?.code === 200 && res.data.data) {
       animes.value = res.data.data.content || []
-      pagination.value.pageCount = res.data.data.totalElements || 0
+      pagination.value.totalItems = res.data.data.totalElements || 0
       pagination.value.page = pageNum
       console.log('获取动漫列表成功:', pagination.value)
     }
@@ -90,7 +90,7 @@ const fetchEpisodes = async (animeId, page = episodesPagination.value.page) => {
         sizeStr: formatFileSize(ep.size),
         videoFormat: formatVideoCodec(ep.videoCodec, ep.audioCodec)
       }))
-      episodesPagination.value.pageCount = data.totalElements || 0
+      episodesPagination.value.totalItems = data.totalElements || 0
       episodesPagination.value.page = data.currentPage || page
     }
   } catch (error) {
@@ -113,29 +113,6 @@ const selectAnime = async (anime) => {
 // 关闭详情弹窗
 const closeDetails = () => {
   dialogOpen.value = false
-}
-
-// 格式化时长
-const formatDuration = (ms) => {
-  if (!ms) return '未知'
-  const seconds = Math.floor(ms / 1000)
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-  }
-  return `${minutes}:${String(secs).padStart(2, '0')}`
-}
-
-// 格式化文件大小
-const formatFileSize = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
 // 格式化视频编码信息
@@ -316,12 +293,12 @@ const closeSubtitleDialog = () => {
           </div>
 
           <div
-            v-if="pagination.pageCount > pagination.itemsPerPage"
+            v-if="pagination.totalItems > pagination.itemsPerPage"
             class="d-flex justify-center mt-4"
           >
             <v-pagination
               v-model="pagination.page"
-              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+              :length="Math.max(1, Math.ceil(pagination.totalItems / pagination.itemsPerPage))"
               @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
             />
           </div>
@@ -396,7 +373,7 @@ const closeSubtitleDialog = () => {
                   </div>
                   <div class="flex items-center gap-1">
                     <span class="font-medium text-sm text-gray-700 min-w-[60px]">本地：</span>
-                    <span class="text-sm text-gray-900">{{ episodesPagination.pageCount }}</span>
+                    <span class="text-sm text-gray-900">{{ episodesPagination.totalItems }}</span>
                   </div>
                   <div class="flex items-center gap-1" v-if="selectedAnime.duration">
                     <span class="font-medium text-sm text-gray-700 min-w-[60px]">片长：</span>
@@ -439,13 +416,13 @@ const closeSubtitleDialog = () => {
 
           <!-- 下方：剧集列表 -->
           <div>
-            <h4 class="mb-3">本地剧集列表 (共 {{ episodesPagination.pageCount }} 集)</h4>
+            <h4 class="mb-3">本地剧集列表 (共 {{ episodesPagination.totalItems }} 集)</h4>
             <v-data-table-server
               :headers="episodeHeaders"
               :items="episodes"
               :loading="episodesLoading"
               :items-per-page="episodesPagination.itemsPerPage"
-              :items-length="episodesPagination.pageCount"
+              :items-length="episodesPagination.totalItems"
               :page="episodesPagination.page"
               density="compact"
               class="elevation-1"

@@ -2,11 +2,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { API_BASE } from '../utils/constants'
+import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
-const API_BASE = '/api'
+const { userInfo, setUserInfo } = useAuth()
 
-const userInfo = ref(null)
 const loading = ref(true)
 const stats = ref({ follows: null, history: null, danmaku: null, unread: null })
 
@@ -49,8 +50,7 @@ const fetchStats = async () => {
     axios.get(`${API_BASE}/messages/unread-count`)
   ])
   if (u.status === 'fulfilled' && u.value.data?.code === 200 && u.value.data.data) {
-    userInfo.value = u.value.data.data
-    localStorage.setItem('userInfo', JSON.stringify(u.value.data.data))
+    setUserInfo(u.value.data.data)
   }
   if (f.status === 'fulfilled') stats.value.follows = Number(f.value.data?.data?.totalElements ?? f.value.data?.data?.length ?? 0)
   if (h.status === 'fulfilled') stats.value.history = Number(h.value.data?.data?.totalElements ?? 0)

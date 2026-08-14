@@ -5,8 +5,8 @@ import axios from 'axios'
 import InstallStep1 from '../components/InstallStep1.vue'
 import InstallStep2 from '../components/InstallStep2.vue'
 import InstallStep3 from '../components/InstallStep3.vue'
+import { API_BASE } from '../utils/constants'
 
-const API_BASE = '/api'
 const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 const router = useRouter()
 

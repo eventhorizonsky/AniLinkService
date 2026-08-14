@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../utils/constants'
 
 const loading = ref(false)
 const regenerating = ref(false)
@@ -19,12 +18,12 @@ const fetchConfig = async () => {
     if (res.data?.code === 200 && res.data?.data) {
       config.value = res.data.data
     } else {
-      snackText.value = res.data?.message || '加载失败'
+      snackText.value = res.data?.msg || '加载失败'
       snackbar.value = true
     }
   } catch (e) {
     console.error(e)
-    snackText.value = e.response?.data?.message || '加载 MCP 配置失败'
+    snackText.value = e.response?.data?.msg || '加载 MCP 配置失败'
     snackbar.value = true
   } finally {
     loading.value = false
@@ -50,14 +49,14 @@ const doRegenerate = async () => {
     const res = await axios.post(`${API_BASE}/mcp/config/regenerate`)
     if (res.data?.code === 200 && res.data?.data) {
       config.value = res.data.data
-      snackText.value = res.data?.message || '已重置 API Key'
+      snackText.value = res.data?.msg || '已重置 API Key'
       snackbar.value = true
     } else {
-      snackText.value = res.data?.message || '重置失败'
+      snackText.value = res.data?.msg || '重置失败'
       snackbar.value = true
     }
   } catch (e) {
-    snackText.value = e.response?.data?.message || '重置失败'
+    snackText.value = e.response?.data?.msg || '重置失败'
     snackbar.value = true
   } finally {
     regenerating.value = false

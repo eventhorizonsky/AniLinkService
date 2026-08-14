@@ -62,7 +62,7 @@
       <!-- 简介摘要 -->
       <div class="anime-summary-block">
         <div class="anime-summary" :class="{ expanded: isSummaryExpanded }">
-          <p v-html="formattedSummary"></p>
+          <p v-html="sanitizeHtml(formattedSummary)"></p>
         </div>
         <button class="anime-expand-btn" @click="toggleSummary">
           {{ isSummaryExpanded ? '收起' : '展开' }}
@@ -74,6 +74,9 @@
 
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue';
+import { FOLLOW_STATUS as STATUS_MAP, FOLLOW_STATUS_OPTIONS as statusOptions } from '../../utils/followStatus';
+import { sanitizeHtml } from '../../utils/sanitize';
+import { useAuth } from '../../composables/useAuth';
 
 const props = defineProps({
   animeData: {
@@ -142,22 +145,6 @@ const emit = defineEmits(['update:isSummaryExpanded', 'toggleFavorite', 'toggleF
 
 const menuOpen = ref(false);
 
-const STATUS_MAP = {
-  wish:    { label: '想看', color: '#42a5f5' },
-  watching:{ label: '在看', color: '#ff9800' },
-  watched: { label: '看过', color: '#4caf50' },
-  on_hold: { label: '搁置', color: '#ffc107' },
-  dropped: { label: '抛弃', color: '#ef5350' },
-};
-
-const statusOptions = [
-  { value: 'wish',     label: '想看', color: '#42a5f5' },
-  { value: 'watching', label: '在看', color: '#ff9800' },
-  { value: 'watched',  label: '看过', color: '#4caf50' },
-  { value: 'on_hold',  label: '搁置', color: '#ffc107' },
-  { value: 'dropped',  label: '抛弃', color: '#ef5350' },
-];
-
 const statusLabel = (s) => STATUS_MAP[s]?.label || '想看';
 
 const handleFollowClick = (e) => {
@@ -179,9 +166,7 @@ const selectStatus = (status) => {
   }
 };
 
-const showFollowBtn = computed(() => {
-  return !!localStorage.getItem('token');
-});
+const { isLoggedIn: showFollowBtn } = useAuth();
 
 const airingStatusText = computed(() => {
   if (props.isOnAir) {
@@ -214,7 +199,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu));
 </script>
 
 <style scoped>
-@import '../../styles/anime.css';
+
 
 /* 追番按钮包裹 */
 .anime-follow-btn-wrap {

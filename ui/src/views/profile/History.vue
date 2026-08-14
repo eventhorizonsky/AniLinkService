@@ -1,35 +1,23 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { usePagination } from '../../composables/usePagination'
+import { DEFAULT_POSTER, API_BASE } from '../../utils/constants'
 
 const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(12)
 const total = ref(0)
 
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
-
 const progressPercent = (item) => Math.min(100, Math.max(0, Number(item?.progressPercentage || 0)))
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const arr = []
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
 
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
-    const res = await axios.get('/api/play-history', {
+    const res = await axios.get(`${API_BASE}/play-history`, {
       params: { page: page.value, pageSize: pageSize.value }
     })
     if (res.data?.code === 200) {
@@ -61,7 +49,7 @@ const deleteItem = async (id) => {
   const ok = window.confirm('确定删除这条播放历史吗？')
   if (!ok) return
   try {
-    const res = await axios.delete(`/api/play-history/${id}`)
+    const res = await axios.delete(`${API_BASE}/play-history/${id}`)
     if (res.data?.code === 200) {
       if (list.value.length === 1 && page.value > 1) page.value -= 1
       await fetchData()
@@ -73,7 +61,7 @@ const clearAll = async () => {
   const ok = window.confirm('确定清空所有播放历史吗？该操作不可恢复。')
   if (!ok) return
   try {
-    const res = await axios.delete('/api/play-history/clear')
+    const res = await axios.delete(`${API_BASE}/play-history/clear`)
     if (res.data?.code === 200) {
       page.value = 1
       await fetchData()
@@ -81,11 +69,11 @@ const clearAll = async () => {
   } catch (e) { console.error('清空播放历史失败:', e); showAppMessage('清空播放历史失败', 'error') }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 12,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const formatTime = (v) => {
   if (!v) return '--'
@@ -131,7 +119,7 @@ onMounted(fetchData)
     <div v-else class="history-list">
       <div v-for="item in list" :key="item.id" class="history-card">
         <div class="hc-poster" @click="goToAnime(item)">
-          <img :src="item.imageUrl || defaultPoster" :alt="item.animeTitle" loading="lazy" />
+          <img :src="item.imageUrl || DEFAULT_POSTER" :alt="item.animeTitle" loading="lazy" />
           <div class="hc-poster-shade"></div>
           <div class="hc-poster-play"><i class="mdi mdi-play"></i></div>
           <div class="hc-poster-progress">

@@ -51,6 +51,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { UiFeedbackEvents } from './utils/ui-feedback'
+import { API_BASE } from './utils/constants'
 
 const router = useRouter()
 const checkingInstall = ref(true)
@@ -73,7 +74,7 @@ const confirmDialog = ref({
 
 const checkInstallStatus = async () => {
   try {
-    const res = await axios.get('/api/site/config')
+    const res = await axios.get(`${API_BASE}/site/config`)
     const isInstalled = res.data?.data?.installed === true
 
     if (isInstalled) {
@@ -93,6 +94,8 @@ const checkInstallStatus = async () => {
     checkingInstall.value = false
   }
 }
+
+let cleanupListeners = null
 
 onMounted(async () => {
   const handleNotify = (event) => {
@@ -141,8 +144,6 @@ onMounted(async () => {
   // 如果没有本地缓存，从服务器获取
   await checkInstallStatus()
 })
-
-let cleanupListeners = null
 
 onBeforeUnmount(() => {
   if (cleanupListeners) {

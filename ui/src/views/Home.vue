@@ -2,14 +2,14 @@
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import { FOLLOW_STATUS_LABEL as STATUS_LABEL_MAP } from '../utils/followStatus'
+import { API_BASE, DEFAULT_POSTER } from '../utils/constants'
+import { formatScore as fmtScore } from '../utils/format'
+import { useAuth } from '../composables/useAuth'
 
 const router = useRouter()
-const API_BASE = '/api'
 
-const STATUS_LABEL_MAP = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
 const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 // ===================== Follow List =====================
 const followList = ref([])
@@ -22,19 +22,13 @@ const trendingLoading = ref(false)
 const trendingError = ref('')
 
 // ===================== User =====================
-const userInfo = ref(null)
-try {
-  const stored = localStorage.getItem('userInfo')
-  if (stored) userInfo.value = JSON.parse(stored)
-} catch (e) { /* ignore */ }
-
-const isLoggedIn = computed(() => !!localStorage.getItem('token') && !!userInfo.value)
+const { isLoggedIn } = useAuth()
 
 // ===================== Hero Carousel =====================
 const heroSlides = computed(() => trendingHot.value.slice(0, 5))
 const heroTags = ['🔥 热播中', '✨ 新作', '🏆 霸权', '🎬 热门', '⭐ 推荐']
 const heroTag = (i) => heroTags[i % heroTags.length]
-const heroBg = (slide) => slide.imageUrl || defaultPoster
+const heroBg = (slide) => slide.imageUrl || DEFAULT_POSTER
 
 const currentSlide = ref(0)
 let autoPlayTimer = null
@@ -107,10 +101,6 @@ watch(() => followList.value.length, () => {
 })
 
 // ===================== Formatting =====================
-const fmtScore = (v) => {
-  if (v == null || v === '') return '-'
-  const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
-}
 const fmtHeat = (v) => {
   if (v == null || v === '') return ''
   const n = Number(v)
@@ -218,7 +208,7 @@ onBeforeUnmount(() => {
 
         <!-- 右侧封面卡片（原比例） -->
         <div class="hero-poster">
-          <img :src="slide.imageUrl || defaultPoster" :alt="slide.animeTitle" loading="lazy" />
+          <img :src="slide.imageUrl || DEFAULT_POSTER" :alt="slide.animeTitle" loading="lazy" />
           <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
         </div>
       </div>
@@ -264,7 +254,7 @@ onBeforeUnmount(() => {
           @click="goToDetail(a)"
         >
           <div class="br-card-image">
-            <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+            <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
             <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
             <span v-if="a.unreadEpisodeCount > 0" class="br-follow-unread" title="未读新剧集">{{ a.unreadEpisodeCount }}</span>
           </div>
@@ -293,7 +283,7 @@ onBeforeUnmount(() => {
     <div v-else class="br-grid">
       <div v-for="a in trendingHot.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
         <div class="br-card-image">
-          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+          <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
           <span class="br-badge-new">热播</span>
           <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
         </div>
@@ -320,7 +310,7 @@ onBeforeUnmount(() => {
     <div v-else class="br-grid">
       <div v-for="a in trendingNewAnime.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
         <div class="br-card-image">
-          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+          <img :src="a.imageUrl || DEFAULT_POSTER" :alt="a.animeTitle" loading="lazy" />
           <span class="br-badge-new br-badge-new--sparkle">新作</span>
           <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
         </div>

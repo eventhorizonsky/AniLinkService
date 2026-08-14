@@ -4,8 +4,8 @@ import axios from 'axios'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../../utils/constants'
+import { formatFileSize } from '../../../utils/format'
 
 const mediaFiles = ref([])
 const loading = ref(false)
@@ -23,7 +23,7 @@ const selectedFileForSubtitle = ref(null)
 const pagination = ref({
   page: 1,
   itemsPerPage: 10,
-  pageCount: 1
+  totalItems: 1
 })
 
 const selectedFile = ref(null)
@@ -71,7 +71,7 @@ const fetchMediaFiles = async (pageNum = 1) => {
     const res = await axios.get(`${API_BASE}/media-files`, { params })
     if (res.data?.code === 200 && res.data?.data) {
       mediaFiles.value = res.data.data.content || []
-      pagination.value.pageCount = res.data.data.totalElements || 0
+      pagination.value.totalItems = res.data.data.totalElements || 0
       pagination.value.page = pageNum
     }
   } catch (error) {
@@ -176,16 +176,7 @@ const reprocessMetadata = async (libraryId) => {
   }
 }
 
-// 格式化文件大小
-const formatFileSize = (bytes) => {
-  if (!bytes) return '-'
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
-}
-
-// 格式化时长
+// 格式化时长（此处为 “2h 3m 4s” 风格，与 format.js 的 H:MM:SS 不同，保留）
 const formatDuration = (ms) => {
   if (!ms) return '-'
   const seconds = Math.floor(ms / 1000)
@@ -341,7 +332,7 @@ onMounted(() => {
           :items="mediaFiles"
           :loading="loading"
           :items-per-page="pagination.itemsPerPage"
-          :items-length="pagination.pageCount"
+          :items-length="pagination.totalItems"
           density="compact"
           class="elevation-0"
           @update:options="onTableOptionsChange"
@@ -500,12 +491,12 @@ onMounted(() => {
           </v-card>
 
           <div
-            v-if="pagination.pageCount > pagination.itemsPerPage"
+            v-if="pagination.totalItems > pagination.itemsPerPage"
             class="d-flex justify-center mt-2"
           >
             <v-pagination
               v-model="pagination.page"
-              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+              :length="Math.max(1, Math.ceil(pagination.totalItems / pagination.itemsPerPage))"
               @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
             />
           </div>

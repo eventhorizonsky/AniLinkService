@@ -2,8 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../../utils/constants'
 
 const loading = ref(false)
 const tasks = ref([])
@@ -52,6 +51,7 @@ const formatDuration = (ms) => {
 const statusMeta = (status) => STATUS_META[status] || STATUS_META.never
 
 const fetchTasks = async () => {
+  loading.value = true
   try {
     const res = await axios.get(`${API_BASE}/admin/scheduled-tasks`)
     if (res.data?.code === 200) {
