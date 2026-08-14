@@ -285,13 +285,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import axios from 'axios'
 import { showAppMessage } from '../utils/ui-feedback'
 
 const API_BASE = '/api'
 const DEFAULT_SITE_NAME = 'AniLink'
 const router = useRouter()
+const route = useRoute()
 const searchQuery = ref('')
 const showLoginDialog = ref(false)
 const showRegisterDialog = ref(false)
@@ -658,6 +659,16 @@ const onKeydown = (e) => {
     sidebarOpen.value = false
   }
 }
+
+watch(
+  () => route.fullPath,
+  () => {
+    const contentEl = document.querySelector('.app-content')
+    if (contentEl) {
+      contentEl.scrollTop = 0
+    }
+  }
+)
 
 watch(
   () => siteConfig.value?.siteName,

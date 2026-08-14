@@ -263,6 +263,10 @@ onMounted(() => {
   <div>
     <!-- 操作工具栏 -->
     <v-card class="mb-4">
+      <v-card-title class="d-flex align-center ga-2">
+        <i class="mdi mdi-file-video-outline" style="color: #c45d2b;"></i>
+        文件搜索
+      </v-card-title>
       <v-card-text class="pa-4">
         <v-row dense class="align-center">
           <v-col cols="12" md="3">
@@ -329,114 +333,189 @@ onMounted(() => {
       </v-card-text>
     </v-card>
 
-    <!-- 文件列表 -->
+    <!-- 文件列表（桌面表格） -->
     <v-card>
-      <v-data-table-server
-        :headers="headers"
-        :items="mediaFiles"
-        :loading="loading"
-        :items-per-page="pagination.itemsPerPage"
-        :items-length="pagination.pageCount"
-        density="compact"
-        class="elevation-0"
-        @update:options="onTableOptionsChange"
-      >
-  
-        <template v-slot:item.size="{ item }">
-          <span class="text-caption">{{ formatFileSize(item.size) }}</span>
-        </template>
+      <div class="d-none d-lg-block">
+        <v-data-table-server
+          :headers="headers"
+          :items="mediaFiles"
+          :loading="loading"
+          :items-per-page="pagination.itemsPerPage"
+          :items-length="pagination.pageCount"
+          density="compact"
+          class="elevation-0"
+          @update:options="onTableOptionsChange"
+        >
 
-        <template v-slot:item.metadataFetched="{ item }">
-          <v-chip
-            :color="item.metadataFetched ? 'success' : 'warning'"
-            size="small"
-            label
+          <template v-slot:item.size="{ item }">
+            <span class="text-caption">{{ formatFileSize(item.size) }}</span>
+          </template>
+
+          <template v-slot:item.metadataFetched="{ item }">
+            <v-chip
+              :color="item.metadataFetched ? 'success' : 'warning'"
+              size="small"
+              label
+            >
+              {{ item.metadataFetched ? '已解析' : '待解析' }}
+            </v-chip>
+          </template>
+
+          <template v-slot:item.matchStatus="{ item }">
+            <v-chip
+              :color="getMatchStatusMeta(item.matchStatus).color"
+              size="small"
+              label
+            >
+              {{ getMatchStatusMeta(item.matchStatus).text }}
+            </v-chip>
+          </template>
+
+          <template v-slot:item.videoCodec="{ item }">
+            <span class="text-caption">{{ item.videoCodec || '-' }}</span>
+          </template>
+
+          <template v-slot:item.resolution="{ item }">
+            <span class="text-caption">{{ getResolution(item) }}</span>
+          </template>
+
+          <template v-slot:item.actions="{ item }">
+            <div class="d-flex align-center ga-1">
+              <v-btn
+                icon="mdi-eye"
+                variant="text"
+                size="x-small"
+                color="info"
+                @click="viewFileDetail(item)"
+              />
+              <v-tooltip location="top" text="重新搜索匹配">
+                <template #activator="{ props }">
+                  <v-btn
+                    icon="mdi-sync"
+                    variant="text"
+                    size="x-small"
+                    color="primary"
+                    :disabled="loading"
+                    v-bind="props"
+                    @click="openRematchDialog(item)"
+                  />
+                </template>
+              </v-tooltip>
+              <v-tooltip location="top" text="字幕管理">
+                <template #activator="{ props }">
+                  <v-btn
+                    icon="mdi-subtitles"
+                    variant="text"
+                    size="x-small"
+                    color="purple"
+                    v-bind="props"
+                    @click="openSubtitleManager(item)"
+                  />
+                </template>
+              </v-tooltip>
+              <v-menu>
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    icon="mdi-delete"
+                    variant="text"
+                    size="x-small"
+                    color="error"
+                    v-bind="props"
+                  />
+                </template>
+                <v-list>
+                  <v-list-item @click="deleteFile(item.id, false)">
+                    <v-list-item-title>删除记录</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="deleteFile(item.id, true)">
+                    <v-list-item-title>删除记录及文件</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
+          </template>
+
+          <template v-slot:no-data>
+            <div class="text-center py-8">
+              <v-icon size="64" color="grey-lighten-1">mdi-file-video-outline</v-icon>
+              <p class="text-body-1 mt-4 text-grey">暂无视频文件</p>
+            </div>
+          </template>
+        </v-data-table-server>
+      </div>
+
+      <!-- 文件列表（移动端卡片） -->
+      <v-card-text class="d-lg-none pa-4">
+        <div v-if="loading" class="text-center py-8">
+          <v-progress-circular indeterminate color="primary" />
+        </div>
+
+        <template v-else-if="mediaFiles.length > 0">
+          <v-card v-for="item in mediaFiles" :key="item.id" class="mb-3" variant="outlined">
+            <v-card-item>
+              <template #prepend>
+                <v-avatar color="info" variant="tonal">
+                  <v-icon>mdi-file-video</v-icon>
+                </v-avatar>
+              </template>
+              <v-card-title class="text-body-1 text-wrap">{{ item.fileName }}</v-card-title>
+              <v-card-subtitle class="text-caption text-truncate" :title="item.filePath">
+                {{ item.filePath || '-' }}
+              </v-card-subtitle>
+            </v-card-item>
+
+            <v-card-text class="pt-2">
+              <div class="text-caption mb-2">
+                {{ formatFileSize(item.size) }} · {{ getResolution(item) }} · {{ item.videoCodec || '-' }}
+              </div>
+              <div class="d-flex flex-wrap ga-2">
+                <v-chip :color="item.metadataFetched ? 'success' : 'warning'" size="x-small" label>
+                  {{ item.metadataFetched ? '已解析' : '待解析' }}
+                </v-chip>
+                <v-chip :color="getMatchStatusMeta(item.matchStatus).color" size="x-small" label>
+                  {{ getMatchStatusMeta(item.matchStatus).text }}
+                </v-chip>
+              </div>
+            </v-card-text>
+
+            <v-card-actions>
+              <v-btn icon="mdi-eye" variant="text" size="small" color="info" @click="viewFileDetail(item)" />
+              <v-btn icon="mdi-sync" variant="text" size="small" color="primary" :disabled="loading" @click="openRematchDialog(item)" />
+              <v-btn icon="mdi-subtitles" variant="text" size="small" color="purple" @click="openSubtitleManager(item)" />
+              <v-spacer />
+              <v-menu>
+                <template v-slot:activator="{ props }">
+                  <v-btn icon="mdi-delete" variant="text" size="small" color="error" v-bind="props" />
+                </template>
+                <v-list>
+                  <v-list-item @click="deleteFile(item.id, false)">
+                    <v-list-item-title>删除记录</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="deleteFile(item.id, true)">
+                    <v-list-item-title>删除记录及文件</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </v-card-actions>
+          </v-card>
+
+          <div
+            v-if="pagination.pageCount > pagination.itemsPerPage"
+            class="d-flex justify-center mt-2"
           >
-            {{ item.metadataFetched ? '已解析' : '待解析' }}
-          </v-chip>
-        </template>
-
-        <template v-slot:item.matchStatus="{ item }">
-          <v-chip
-            :color="getMatchStatusMeta(item.matchStatus).color"
-            size="small"
-            label
-          >
-            {{ getMatchStatusMeta(item.matchStatus).text }}
-          </v-chip>
-        </template>
-
-        <template v-slot:item.videoCodec="{ item }">
-          <span class="text-caption">{{ item.videoCodec || '-' }}</span>
-        </template>
-
-        <template v-slot:item.resolution="{ item }">
-          <span class="text-caption">{{ getResolution(item) }}</span>
-        </template>
-
-        <template v-slot:item.actions="{ item }">
-          <div class="d-flex align-center ga-1">
-            <v-btn
-              icon="mdi-eye"
-              variant="text"
-              size="x-small"
-              color="info"
-              @click="viewFileDetail(item)"
+            <v-pagination
+              v-model="pagination.page"
+              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+              @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
             />
-            <v-tooltip location="top" text="重新搜索匹配">
-              <template #activator="{ props }">
-                <v-btn
-                  icon="mdi-sync"
-                  variant="text"
-                  size="x-small"
-                  color="primary"
-                  :disabled="loading"
-                  v-bind="props"
-                  @click="openRematchDialog(item)"
-                />
-              </template>
-            </v-tooltip>
-            <v-tooltip location="top" text="字幕管理">
-              <template #activator="{ props }">
-                <v-btn
-                  icon="mdi-subtitles"
-                  variant="text"
-                  size="x-small"
-                  color="purple"
-                  v-bind="props"
-                  @click="openSubtitleManager(item)"
-                />
-              </template>
-            </v-tooltip>
-            <v-menu>
-              <template v-slot:activator="{ props }">
-                <v-btn
-                  icon="mdi-delete"
-                  variant="text"
-                  size="x-small"
-                  color="error"
-                  v-bind="props"
-                />
-              </template>
-              <v-list>
-                <v-list-item @click="deleteFile(item.id, false)">
-                  <v-list-item-title>删除记录</v-list-item-title>
-                </v-list-item>
-                <v-list-item @click="deleteFile(item.id, true)">
-                  <v-list-item-title>删除记录及文件</v-list-item-title>
-                </v-list-item>
-              </v-list>
-            </v-menu>
           </div>
         </template>
 
-        <template v-slot:no-data>
-          <div class="text-center py-8">
-            <v-icon size="64" color="grey-lighten-1">mdi-file-video-outline</v-icon>
-            <p class="text-body-1 mt-4 text-grey">暂无视频文件</p>
-          </div>
-        </template>
-      </v-data-table-server>
+        <div v-else class="text-center py-8">
+          <v-icon size="64" color="grey-lighten-1">mdi-file-video-outline</v-icon>
+          <p class="text-body-1 mt-4 text-grey">暂无视频文件</p>
+        </div>
+      </v-card-text>
     </v-card>
 
     <MediaRematchDialog

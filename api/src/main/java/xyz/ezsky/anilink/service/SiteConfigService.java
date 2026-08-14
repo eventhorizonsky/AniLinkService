@@ -41,7 +41,9 @@ public class SiteConfigService {
     private static final String RESOURCE_DOWNLOAD_LIMIT_KBPS = "resource_download_limit_kbps";
     private static final String RESOURCE_UPLOAD_LIMIT_KBPS = "resource_upload_limit_kbps";
     private static final String RESOURCE_SEED_TIME_SECONDS = "resource_seed_time_seconds";
+    private static final String RESOURCE_DOWNLOAD_STALL_TIMEOUT_SECONDS = "resource_download_stall_timeout_seconds";
     private static final String RESOURCE_CUSTOM_TRACKERS = "resource_custom_trackers";
+    private static final String RESOURCE_TRACKER_LIST_URL = "resource_tracker_list_url";
     private static final String RESOURCE_NODE_PROXY_HOST = "resource_node_proxy_host";
     private static final String RESOURCE_NODE_PROXY_PORT = "resource_node_proxy_port";
     private static final String RSS_PROXY_HOST = "rss_proxy_host";
@@ -118,7 +120,9 @@ public class SiteConfigService {
         vo.setResourceDownloadLimitKbps(getResourceDownloadLimitKbps());
         vo.setResourceUploadLimitKbps(getResourceUploadLimitKbps());
         vo.setResourceSeedTimeSeconds(getResourceSeedTimeSeconds());
+        vo.setResourceDownloadStallTimeoutSeconds(getResourceDownloadStallTimeoutSeconds());
         vo.setResourceCustomTrackers(getResourceCustomTrackers());
+        vo.setResourceTrackerListUrl(getResourceTrackerListUrl());
         vo.setResourceNodeProxyHost(getResourceNodeProxyHost());
         vo.setResourceNodeProxyPort(getResourceNodeProxyPort());
         vo.setRssProxyHost(getRssProxyHost());
@@ -287,8 +291,18 @@ public class SiteConfigService {
                 "下载完成后做种时长（秒）"
             );
         }
+        if (request.getResourceDownloadStallTimeoutSeconds() != null) {
+            saveOrUpdateConfig(
+                RESOURCE_DOWNLOAD_STALL_TIMEOUT_SECONDS,
+                String.valueOf(Math.max(0, request.getResourceDownloadStallTimeoutSeconds())),
+                "下载停滞判定时长（秒）"
+            );
+        }
         if (request.getResourceCustomTrackers() != null) {
             saveOrUpdateConfig(RESOURCE_CUSTOM_TRACKERS, request.getResourceCustomTrackers(), "新任务附加 Tracker");
+        }
+        if (request.getResourceTrackerListUrl() != null) {
+            saveOrUpdateConfig(RESOURCE_TRACKER_LIST_URL, request.getResourceTrackerListUrl(), "Tracker 列表订阅地址");
         }
         if (request.getResourceNodeProxyHost() != null) {
             saveOrUpdateConfig(RESOURCE_NODE_PROXY_HOST, request.getResourceNodeProxyHost(), "资源节点请求代理主机");
@@ -409,8 +423,16 @@ public class SiteConfigService {
         return getIntConfig(RESOURCE_SEED_TIME_SECONDS, 0);
     }
 
+    public int getResourceDownloadStallTimeoutSeconds() {
+        return getIntConfig(RESOURCE_DOWNLOAD_STALL_TIMEOUT_SECONDS, 6 * 60 * 60);
+    }
+
     public String getResourceCustomTrackers() {
         return getConfigValue(RESOURCE_CUSTOM_TRACKERS);
+    }
+
+    public String getResourceTrackerListUrl() {
+        return getConfigValue(RESOURCE_TRACKER_LIST_URL);
     }
 
     public String getResourceNodeProxyHost() {

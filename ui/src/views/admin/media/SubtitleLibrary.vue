@@ -167,6 +167,10 @@ onMounted(() => {
 <template>
   <div>
     <v-card class="mb-4">
+      <v-card-title class="d-flex align-center ga-2">
+        <i class="mdi mdi-subtitles-outline" style="color: #c45d2b;"></i>
+        字幕搜索
+      </v-card-title>
       <v-card-text class="pa-4">
         <v-row dense class="align-center">
           <v-col cols="12" md="5">
@@ -208,63 +212,125 @@ onMounted(() => {
     </v-card>
 
     <v-card>
-      <v-data-table-server
-        :headers="headers"
-        :items="subtitles"
-        :loading="loading"
-        :items-per-page="pagination.itemsPerPage"
-        :items-length="pagination.pageCount"
-        density="compact"
-        class="elevation-0"
-        @update:options="onTableOptionsChange"
-      >
-        <template #item.fileName="{ item }">
-          <div>
-            <div class="text-body-2 text-truncate" :title="item.fileName">{{ item.fileName }}</div>
-            <div class="text-caption text-grey">{{ formatFileSize(item.fileSize) }}</div>
+      <!-- 桌面表格 -->
+      <div class="d-none d-lg-block">
+        <v-data-table-server
+          :headers="headers"
+          :items="subtitles"
+          :loading="loading"
+          :items-per-page="pagination.itemsPerPage"
+          :items-length="pagination.pageCount"
+          density="compact"
+          class="elevation-0"
+          @update:options="onTableOptionsChange"
+        >
+          <template #item.fileName="{ item }">
+            <div>
+              <div class="text-body-2 text-truncate" :title="item.fileName">{{ item.fileName }}</div>
+              <div class="text-caption text-grey">{{ formatFileSize(item.fileSize) }}</div>
+            </div>
+          </template>
+
+          <template #item.videoFileName="{ item }">
+            <div>
+              <div class="text-body-2 text-truncate" :title="item.videoFileName">{{ item.videoFileName || '-' }}</div>
+              <div class="text-caption text-grey text-truncate" :title="item.videoFilePath">{{ item.videoFilePath || '-' }}</div>
+            </div>
+          </template>
+
+          <template #item.animeTitle="{ item }">
+            <div class="text-truncate" :title="item.animeTitle">{{ item.animeTitle || '-' }}</div>
+          </template>
+
+          <template #item.episodeTitle="{ item }">
+            <div class="text-truncate" :title="item.episodeTitle">{{ item.episodeTitle || '-' }}</div>
+          </template>
+
+          <template #item.sourceType="{ item }">
+            <v-chip size="small" label :color="sourceTypeColor(item.sourceType)">
+              {{ sourceTypeLabel(item.sourceType) }}
+            </v-chip>
+          </template>
+
+          <template #item.timeOffset="{ item }">
+            <span class="text-caption">{{ item.timeOffset || 0 }} ms</span>
+          </template>
+
+          <template #item.actions="{ item }">
+            <div class="d-flex align-center ga-1">
+              <v-btn icon="mdi-download" variant="text" size="x-small" color="primary" @click="handleDownload(item)" />
+              <v-btn icon="mdi-timer-cog" variant="text" size="x-small" color="info" @click="openOffsetDialog(item)" />
+              <v-btn icon="mdi-delete" variant="text" size="x-small" color="error" @click="handleDelete(item)" />
+            </div>
+          </template>
+
+          <template #no-data>
+            <div class="text-center py-8">
+              <v-icon size="64" color="grey-lighten-1">mdi-subtitles-outline</v-icon>
+              <p class="text-body-1 mt-4 text-grey">暂无字幕数据</p>
+            </div>
+          </template>
+        </v-data-table-server>
+      </div>
+
+      <!-- 移动端卡片 -->
+      <v-card-text class="d-lg-none pa-4">
+        <div v-if="loading" class="text-center py-8">
+          <v-progress-circular indeterminate color="primary" />
+        </div>
+
+        <template v-else-if="subtitles.length > 0">
+          <v-card v-for="item in subtitles" :key="item.id" class="mb-3" variant="outlined">
+            <v-card-item>
+              <template #prepend>
+                <v-avatar color="purple" variant="tonal">
+                  <v-icon>mdi-subtitles</v-icon>
+                </v-avatar>
+              </template>
+              <v-card-title class="text-body-1 text-wrap">{{ item.fileName }}</v-card-title>
+              <v-card-subtitle class="text-caption text-truncate" :title="item.videoFileName">
+                {{ item.videoFileName || '视频：-' }}
+              </v-card-subtitle>
+            </v-card-item>
+
+            <v-card-text class="pt-2">
+              <div class="text-caption text-grey text-truncate mb-2" :title="item.videoFilePath">
+                {{ item.videoFilePath || '-' }}
+              </div>
+              <div class="d-flex flex-wrap ga-2 align-center">
+                <span class="text-body-2 text-truncate">{{ item.animeTitle || '-' }}</span>
+                <span class="text-caption text-grey">{{ item.episodeTitle || '-' }}</span>
+                <v-chip size="x-small" label :color="sourceTypeColor(item.sourceType)">
+                  {{ sourceTypeLabel(item.sourceType) }}
+                </v-chip>
+                <span class="text-caption text-grey ml-auto">{{ item.timeOffset || 0 }} ms</span>
+              </div>
+            </v-card-text>
+
+            <v-card-actions>
+              <v-btn icon="mdi-download" variant="text" size="small" color="primary" @click="handleDownload(item)" />
+              <v-btn icon="mdi-timer-cog" variant="text" size="small" color="info" @click="openOffsetDialog(item)" />
+              <v-btn icon="mdi-delete" variant="text" size="small" color="error" @click="handleDelete(item)" />
+            </v-card-actions>
+          </v-card>
+
+          <div
+            v-if="pagination.pageCount > pagination.itemsPerPage"
+            class="d-flex justify-center mt-2"
+          >
+            <v-pagination
+              v-model="pagination.page"
+              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+              @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
+            />
           </div>
         </template>
 
-        <template #item.videoFileName="{ item }">
-          <div>
-            <div class="text-body-2 text-truncate" :title="item.videoFileName">{{ item.videoFileName || '-' }}</div>
-            <div class="text-caption text-grey text-truncate" :title="item.videoFilePath">{{ item.videoFilePath || '-' }}</div>
-          </div>
-        </template>
-
-        <template #item.animeTitle="{ item }">
-          <div class="text-truncate" :title="item.animeTitle">{{ item.animeTitle || '-' }}</div>
-        </template>
-
-        <template #item.episodeTitle="{ item }">
-          <div class="text-truncate" :title="item.episodeTitle">{{ item.episodeTitle || '-' }}</div>
-        </template>
-
-        <template #item.sourceType="{ item }">
-          <v-chip size="small" label :color="sourceTypeColor(item.sourceType)">
-            {{ sourceTypeLabel(item.sourceType) }}
-          </v-chip>
-        </template>
-
-        <template #item.timeOffset="{ item }">
-          <span class="text-caption">{{ item.timeOffset || 0 }} ms</span>
-        </template>
-
-        <template #item.actions="{ item }">
-          <div class="d-flex align-center ga-1">
-            <v-btn icon="mdi-download" variant="text" size="x-small" color="primary" @click="handleDownload(item)" />
-            <v-btn icon="mdi-timer-cog" variant="text" size="x-small" color="info" @click="openOffsetDialog(item)" />
-            <v-btn icon="mdi-delete" variant="text" size="x-small" color="error" @click="handleDelete(item)" />
-          </div>
-        </template>
-
-        <template #no-data>
-          <div class="text-center py-8">
-            <v-icon size="64" color="grey-lighten-1">mdi-subtitles-outline</v-icon>
-            <p class="text-body-1 mt-4 text-grey">暂无字幕数据</p>
-          </div>
-        </template>
-      </v-data-table-server>
+        <div v-else class="text-center py-8">
+          <v-icon size="64" color="grey-lighten-1">mdi-subtitles-outline</v-icon>
+          <p class="text-body-1 mt-4 text-grey">暂无字幕数据</p>
+        </div>
+      </v-card-text>
     </v-card>
 
     <v-dialog v-model="offsetDialog" max-width="420">

@@ -89,8 +89,8 @@ onMounted(() => {
         弹幕管理
       </v-card-title>
       <v-card-text>
-        <v-row dense align="center" class="mb-4">
-          <v-col cols="12" sm="3">
+        <v-row dense class="align-center">
+          <v-col cols="12" sm="6" md="3">
             <v-text-field
               v-model="filterUserId"
               label="用户ID"
@@ -101,7 +101,7 @@ onMounted(() => {
               clearable
             />
           </v-col>
-          <v-col cols="12" sm="3">
+          <v-col cols="12" sm="6" md="3">
             <v-text-field
               v-model="filterEpisodeId"
               label="弹幕库ID"
@@ -112,7 +112,7 @@ onMounted(() => {
               clearable
             />
           </v-col>
-          <v-col cols="12" sm="3">
+          <v-col cols="12" sm="6" md="3">
             <v-text-field
               v-model="filterAnimeId"
               label="番剧ID"
@@ -123,7 +123,7 @@ onMounted(() => {
               clearable
             />
           </v-col>
-          <v-col cols="12" sm="3">
+          <v-col cols="12" sm="6" md="3">
             <v-text-field
               v-model="filterKeyword"
               label="关键词搜索"
@@ -135,13 +135,14 @@ onMounted(() => {
               @keyup.enter="handleSearch"
             />
           </v-col>
+          <v-col cols="12" class="d-flex ga-2">
+            <v-btn color="primary" variant="elevated" size="small" :loading="loading" @click="handleSearch">
+              <v-icon start>mdi-magnify</v-icon>
+              搜索
+            </v-btn>
+            <v-btn color="grey" variant="text" size="small" @click="handleReset">重置</v-btn>
+          </v-col>
         </v-row>
-        <div class="d-flex ga-2">
-          <v-btn color="primary" variant="flat" @click="handleSearch" :loading="loading">
-            <i class="mdi mdi-magnify mr-1"></i> 搜索
-          </v-btn>
-          <v-btn variant="outlined" @click="handleReset">重置</v-btn>
-        </div>
       </v-card-text>
     </v-card>
 
@@ -154,49 +155,91 @@ onMounted(() => {
 
         <div v-else-if="records.length > 0">
           <p class="text-caption text-grey mb-4">共 {{ totalElements }} 条记录</p>
-          <v-table density="compact">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>用户</th>
-                <th>番剧</th>
-                <th>分集</th>
-                <th>弹幕内容</th>
-                <th>时间</th>
-                <th>模式</th>
-                <th>颜色</th>
-                <th>发送时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in records" :key="item.id">
-                <td>{{ item.id }}</td>
-                <td>{{ item.username }} <span class="text-caption text-grey">(#{{ item.userId }})</span></td>
-                <td>{{ item.animeTitle || `#${item.animeId || '-'}` }}</td>
-                <td>{{ item.episodeTitle || `#${item.episodeId || '-'}` }}</td>
-                <td>
-                  <div class="d-flex align-center ga-2">
-                    <div
-                      class="danmaku-color-dot"
-                      :style="{ backgroundColor: danmakuColorHex(item.color) }"
-                    />
-                    <span>{{ item.comment }}</span>
-                  </div>
-                </td>
-                <td>{{ item.time != null ? item.time.toFixed(1) + 's' : '-' }}</td>
-                <td>
+
+          <div class="d-none d-lg-block">
+            <v-table density="compact">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>用户</th>
+                  <th>番剧</th>
+                  <th>分集</th>
+                  <th>弹幕内容</th>
+                  <th>时间</th>
+                  <th>模式</th>
+                  <th>颜色</th>
+                  <th>发送时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in records" :key="item.id">
+                  <td>{{ item.id }}</td>
+                  <td>{{ item.username }} <span class="text-caption text-grey">(#{{ item.userId }})</span></td>
+                  <td>{{ item.animeTitle || `#${item.animeId || '-'}` }}</td>
+                  <td>{{ item.episodeTitle || `#${item.episodeId || '-'}` }}</td>
+                  <td>
+                    <div class="d-flex align-center ga-2">
+                      <div
+                        class="danmaku-color-dot"
+                        :style="{ backgroundColor: danmakuColorHex(item.color) }"
+                      />
+                      <span>{{ item.comment }}</span>
+                    </div>
+                  </td>
+                  <td>{{ item.time != null ? item.time.toFixed(1) + 's' : '-' }}</td>
+                  <td>
+                    <v-chip size="x-small" variant="tonal"
+                      :color="item.mode === 5 ? 'primary' : item.mode === 4 ? 'success' : 'grey'">
+                      {{ danmakuModeLabel(item.mode) }}
+                    </v-chip>
+                  </td>
+                  <td>
+                    <code class="text-caption">{{ danmakuColorHex(item.color) }}</code>
+                  </td>
+                  <td class="text-caption">{{ formatDateTime(item.createdAt) }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+
+          <div class="d-lg-none">
+            <v-card v-for="item in records" :key="item.id" class="mb-3" variant="outlined">
+              <v-card-item>
+                <template #prepend>
+                  <v-avatar color="primary" variant="tonal" size="small">
+                    <v-icon size="small">mdi-comment-text</v-icon>
+                  </v-avatar>
+                </template>
+                <v-card-title class="text-body-1 text-wrap">
+                  #{{ item.id }} · {{ item.username || '匿名' }}
+                  <span class="text-caption text-grey">(#{{ item.userId }})</span>
+                </v-card-title>
+                <v-card-subtitle class="text-body-2 text-wrap">
+                  {{ item.animeTitle || `#${item.animeId || '-'}` }} ·
+                  {{ item.episodeTitle || `#${item.episodeId || '-'}` }}
+                </v-card-subtitle>
+              </v-card-item>
+
+              <v-card-text class="pt-2">
+                <div class="d-flex align-center ga-2 mb-3">
+                  <div
+                    class="danmaku-color-dot"
+                    :style="{ backgroundColor: danmakuColorHex(item.color) }"
+                  />
+                  <span>{{ item.comment }}</span>
+                </div>
+                <div class="d-flex flex-wrap ga-2 align-center text-caption text-medium-emphasis">
                   <v-chip size="x-small" variant="tonal"
                     :color="item.mode === 5 ? 'primary' : item.mode === 4 ? 'success' : 'grey'">
                     {{ danmakuModeLabel(item.mode) }}
                   </v-chip>
-                </td>
-                <td>
                   <code class="text-caption">{{ danmakuColorHex(item.color) }}</code>
-                </td>
-                <td class="text-caption">{{ formatDateTime(item.createdAt) }}</td>
-              </tr>
-            </tbody>
-          </v-table>
+                  <span>{{ item.time != null ? item.time.toFixed(1) + 's' : '-' }}</span>
+                  <span class="ml-auto">{{ formatDateTime(item.createdAt) }}</span>
+                </div>
+              </v-card-text>
+            </v-card>
+          </div>
 
           <div v-if="totalPages > 1" class="d-flex justify-center mt-4">
             <v-pagination v-model="page" :length="totalPages" @update:model-value="handlePageChange" />

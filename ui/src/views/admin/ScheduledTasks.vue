@@ -160,11 +160,6 @@ onUnmounted(() => {
         <v-card-title class="text-body-1 font-weight-bold">
           <v-icon start color="primary">mdi-timer-sand</v-icon>
           定时任务
-          <v-spacer />
-          <v-btn size="small" variant="tonal" @click="fetchTasks">
-            <v-icon start size="small">mdi-refresh</v-icon>
-            刷新
-          </v-btn>
         </v-card-title>
 
         <v-table density="comfortable" hover>
@@ -242,15 +237,11 @@ onUnmounted(() => {
 
       <!-- ===== 移动端：卡片 ===== -->
       <template v-else>
-        <div class="d-flex align-center justify-space-between mb-3">
+        <div class="d-flex align-center mb-3">
           <div class="text-body-1 font-weight-bold">
             <v-icon start color="primary">mdi-timer-sand</v-icon>
             定时任务
           </div>
-          <v-btn size="small" variant="tonal" @click="fetchTasks">
-            <v-icon start size="small">mdi-refresh</v-icon>
-            刷新
-          </v-btn>
         </div>
 
         <v-card
@@ -344,6 +335,25 @@ onUnmounted(() => {
         <v-icon size="64" color="medium-emphasis">mdi-timer-off</v-icon>
         <p class="mt-4 text-body-1 text-medium-emphasis">暂无定时任务</p>
       </v-card>
+
+      <!-- 浮动刷新按钮 -->
+      <v-btn
+        class="floating-refresh"
+        icon="mdi-refresh"
+        color="primary"
+        elevation="4"
+        size="large"
+        @click="fetchTasks"
+      />
     </template>
   </div>
 </template>
+
+<style scoped>
+.floating-refresh {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  z-index: 100;
+}
+</style>

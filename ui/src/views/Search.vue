@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { formatAnimeType } from '../utils/animeType'
@@ -56,8 +56,11 @@ const libSearch = () => {
   router.push({ path: '/search', query: q })
 }
 
+const libOuterEl = ref(null)
+
 const onLibScroll = () => {
-  const el = libScrollEl.value
+  const isMobile = window.matchMedia('(max-width: 768px)').matches
+  const el = isMobile ? libOuterEl.value : libScrollEl.value
   if (!el || libLoadingMore.value || !libHasMore.value) return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
     libPage.value++
@@ -163,6 +166,13 @@ watch(() => route.query.q, () => syncAndFetch())
 onMounted(() => {
   syncAndFetch()
   fetchSeasons()
+  libOuterEl.value = document.querySelector('.app-content')
+  libOuterEl.value?.addEventListener('scroll', onLibScroll, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  libOuterEl.value?.removeEventListener('scroll', onLibScroll)
+  libOuterEl.value = null
 })
 </script>
 
@@ -613,7 +623,9 @@ onMounted(() => {
 
 /* ========================= RESPONSIVE ========================= */
 @media (max-width: 768px) {
-  .discover-root { min-height: 0; }
+  .discover-root { min-height: 0; flex: none; }
+  .tab-content { flex: none; min-height: 0; }
+  .scroll-area { flex: none; min-height: 0; overflow-y: visible; overflow-x: visible; }
   .discover-tab { padding: 9px 16px; font-size: 0.82rem; gap: 5px; }
   .toolbar-row { flex-direction: column; align-items: stretch; }
   .search-box { width: 100%; }
@@ -630,12 +642,20 @@ onMounted(() => {
 </style>
 
 <style>
-/* 发现页：禁止外层滚动（含移动端），用 flex 精确撑满剩余高度；
+/* 发现页：禁止外层滚动（PC），用 flex 精确撑满剩余高度；
    内部仅 .scroll-area 滚动，避免出现两层滚动条 */
 .app-content:has(.discover-root) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 移动端恢复外层滚动，内容自然排布，避免内层滚动区域过小 */
+  .app-content:has(.discover-root) {
+    display: block;
+    overflow-y: auto;
+  }
 }
 </style>
 

@@ -6,7 +6,9 @@ import axios from 'axios'
 const API_BASE = '/api'
 const router = useRouter()
 
-const drawer = ref(true)
+// 移动端默认收起侧边栏，桌面端默认展开
+const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 1280
+const drawer = ref(!isMobile())
 const selectedItem = ref('system')
 
 const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
@@ -19,10 +21,7 @@ const VideoFileManager = defineAsyncComponent(() => import('./admin/media/VideoF
 const AnimeLibrary = defineAsyncComponent(() => import('./admin/media/AnimeLibrary.vue'))
 const SubtitleLibrary = defineAsyncComponent(() => import('./admin/media/SubtitleLibrary.vue'))
 const QueueProgress = defineAsyncComponent(() => import('./admin/media/QueueProgress.vue'))
-const ResourceDownload = defineAsyncComponent(() => import('./admin/media/ResourceDownload.vue'))
-const ResourceDownloadProgress = defineAsyncComponent(() => import('./admin/download/ResourceDownloadProgress.vue'))
-const ResourceDownloadSettings = defineAsyncComponent(() => import('./admin/download/ResourceDownloadSettings.vue'))
-const ResourceRssSubscription = defineAsyncComponent(() => import('./admin/download/ResourceRssSubscription.vue'))
+const ResourceDownloadCenter = defineAsyncComponent(() => import('./admin/download/DownloadCenter.vue'))
 const UserManagement = defineAsyncComponent(() => import('./admin/UserManagement.vue'))
 const McpAccess = defineAsyncComponent(() => import('./admin/McpAccess.vue'))
 const AdminDanmaku = defineAsyncComponent(() => import('./admin/AdminDanmaku.vue'))
@@ -30,7 +29,8 @@ const AdminDanmaku = defineAsyncComponent(() => import('./admin/AdminDanmaku.vue
 const mainMenuItems = [
   { id: 'system', title: '系统信息', icon: 'mdi-information', component: SystemInfo },
   { id: 'users', title: '用户管理', icon: 'mdi-account-cog', component: UserManagement },
-  { id: 'danmaku', title: '弹幕管理', icon: 'mdi-comment-text-multiple', component: AdminDanmaku }
+  { id: 'danmaku', title: '弹幕管理', icon: 'mdi-comment-text-multiple', component: AdminDanmaku },
+  { id: 'download-center', title: '下载中心', icon: 'mdi-download-network', component: ResourceDownloadCenter }
 ]
 
 const systemSettingsMenuItems = [
@@ -49,15 +49,8 @@ const mediaMenuItems = [
   { id: 'subtitles', title: '字幕管理', icon: 'mdi-subtitles-outline', component: SubtitleLibrary }
 ]
 
-const resourceDownloadMenuItems = [
-  { id: 'resource-search-download', title: '资源搜索下载', icon: 'mdi-cloud-search', component: ResourceDownload },
-  { id: 'resource-rss-subscription', title: 'RSS订阅下载', icon: 'mdi-rss-box', component: ResourceRssSubscription },
-  { id: 'resource-download-progress', title: '下载任务进度', icon: 'mdi-download-multiple', component: ResourceDownloadProgress },
-  { id: 'resource-download-settings', title: '资源与下载器配置', icon: 'mdi-tune-variant', component: ResourceDownloadSettings }
-]
-
 const componentMap = Object.fromEntries(
-  [...mainMenuItems, ...systemSettingsMenuItems, ...mediaMenuItems, ...resourceDownloadMenuItems].map(item => [item.id, item.component])
+  [...mainMenuItems, ...systemSettingsMenuItems, ...mediaMenuItems].map(item => [item.id, item.component])
 )
 
 const userInfo = ref(null)
@@ -117,8 +110,10 @@ const currentComponent = computed(() => {
 
 const fallbackMenuId = computed(() => visibleMainMenuItems.value[0]?.id || 'system')
 
+// 移动端选中导航后收起侧边栏（分组子项同样生效，分组头展开不触发）
 const handleSelectMenu = (id) => {
   selectedItem.value = id
+  if (isMobile()) drawer.value = false
 }
 
 provide('navigateTo', handleSelectMenu)
@@ -177,29 +172,6 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
 
           <v-list-item
             v-for="item in mediaMenuItems"
-            :key="item.id"
-            :value="item.id"
-            :active="selectedItem === item.id"
-            @click="handleSelectMenu(item.id)"
-            :prepend-icon="item.icon"
-            :title="item.title"
-            class="pl-6"
-            color="primary"
-            link
-          ></v-list-item>
-        </v-list-group>
-
-        <v-list-group value="resource-download">
-          <template #activator="{ props }">
-            <v-list-item
-              v-bind="props"
-              prepend-icon="mdi-download-network"
-              title="资源下载（实验性功能）"
-            />
-          </template>
-
-          <v-list-item
-            v-for="item in resourceDownloadMenuItems"
             :key="item.id"
             :value="item.id"
             :active="selectedItem === item.id"

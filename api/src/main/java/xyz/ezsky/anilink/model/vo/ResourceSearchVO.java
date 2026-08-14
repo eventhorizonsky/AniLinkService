@@ -107,6 +107,61 @@ public final class ResourceSearchVO {
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class DownloadTaskStats {
+        private long pending;
+        private long running;
+        private long seeding;
+        private long moving;
+        private long scanning;
+        private long completed;
+        private long failed;
+        private long cancelled;
+        private long stalled;
+        private long active;
+        private long todayCompleted;
+        private long todayFailed;
+        private long todayCancelled;
+        private long downloadBps;
+        private long uploadBps;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DownloadTaskPageResult {
+        private List<DownloadTask> items;
+        private long total;
+        private int page;
+        private int size;
+        private boolean hasMore;
+        private DownloadTaskStats stats;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BatchDownloadResult {
+        private int created;
+        private int duplicated;
+        private List<String> errors;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NodeConnectionTestResult {
+        private boolean ok;
+        private long latencyMs;
+        private String message;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class BindingStatus {
         private Long taskId;
         private String taskStatus;

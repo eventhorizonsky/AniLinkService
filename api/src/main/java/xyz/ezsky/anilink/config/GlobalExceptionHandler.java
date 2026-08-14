@@ -74,9 +74,16 @@ public class GlobalExceptionHandler {
                 if (message != null) {
                     String normalized = message.toLowerCase();
                     if (normalized.contains("broken pipe")
-                            || normalized.contains("connection reset by peer")
                             || normalized.contains("connection reset")
-                            || normalized.contains("socket closed")) {
+                            || normalized.contains("socket closed")
+                            || normalized.contains("abort")
+                            || normalized.contains("forcibly closed")
+                            // Windows 中文系统的连接中止/重置消息
+                            || normalized.contains("中止了")
+                            || normalized.contains("强制关闭")
+                            || normalized.contains("已建立的连接")
+                            || normalized.contains("连接被重置")
+                            || normalized.contains("连接被对方")) {
                         return true;
                     }
                 }

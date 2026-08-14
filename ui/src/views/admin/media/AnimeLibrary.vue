@@ -33,15 +33,6 @@ const pagination = ref({
   pageCount: 1
 })
 
-const animeHeaders = [
-  { title: '动漫ID', key: 'animeId', width: '80px' },
-  { title: '标题', key: 'title', width: '200px' },
-  { title: '备用标题', key: 'altTitle', width: '200px' },
-  { title: '年份', key: 'year', width: '80px' },
-  { title: '集数', key: 'episodes', width: '80px' },
-  { title: '操作', key: 'actions', width: '120px', sortable: false }
-]
-
 const episodeHeaders = [
   { title: '文件名', key: 'fileName' },
   { title: '剧集名称', key: 'episodeTitle' },
@@ -161,6 +152,13 @@ const onSearch = () => {
   fetchAnimes(1)
 }
 
+// 重置搜索
+const resetSearch = () => {
+  search.value = ''
+  pagination.value.page = 1
+  fetchAnimes(1)
+}
+
 // 表格分页/排序/过滤变化（动漫列表）
 const onTableOptionsChange = (options) => {
   const page = options.page || 1
@@ -245,94 +243,94 @@ const closeSubtitleDialog = () => {
 <template>
   <div>
     <v-card elevation="2" class="mb-6">
-      <v-card-title class="text-h6">
-        <v-icon start>mdi-anime-box</v-icon>
+      <v-card-title class="d-flex align-center ga-2">
+        <i class="mdi mdi-library" style="color: #c45d2b;"></i>
         动漫库管理
       </v-card-title>
 
-      <v-divider></v-divider>
-
       <v-card-text class="py-4">
-        <div class="d-flex gap-3 mb-4">
-          <v-text-field
-            v-model="search"
-            placeholder="搜索动漫标题..."
-            prepend-icon="mdi-magnify"
-            variant="outlined"
-            density="compact"
-            clearable
-            @keyup.enter="onSearch"
-          ></v-text-field>
-          <v-btn
-            color="primary"
-            @click="onSearch"
-            :loading="loading"
-            prepend-icon="mdi-search"
-          >
-            搜索
-          </v-btn>
-          <v-btn
-            variant="outlined"
-            @click="() => { search = ''; pagination.page = 1; fetchAnimes(1) }"
-            prepend-icon="mdi-refresh"
-          >
-            重置
-          </v-btn>
+        <v-row dense class="align-center mb-4">
+          <v-col cols="12" md="8">
+            <v-text-field
+              v-model="search"
+              placeholder="搜索动漫标题..."
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+              @keyup.enter="onSearch"
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" md="4" class="d-flex ga-2 justify-md-end">
+            <v-btn
+              color="primary"
+              variant="elevated"
+              size="small"
+              :loading="loading"
+              @click="onSearch"
+            >
+              <v-icon start>mdi-magnify</v-icon>
+              搜索
+            </v-btn>
+            <v-btn
+              color="grey"
+              variant="text"
+              size="small"
+              @click="resetSearch"
+            >
+              重置
+            </v-btn>
+          </v-col>
+        </v-row>
+
+        <!-- 动漫列表（封面卡片，PC/移动端统一） -->
+        <div v-if="loading" class="d-flex justify-center py-8">
+          <v-progress-circular indeterminate color="primary" />
         </div>
 
-        <!-- 动漫列表 -->
-        <v-data-table-server
-          :headers="animeHeaders"
-          :items="animes"
-          :loading="loading"
-          :items-per-page="pagination.itemsPerPage"
-          :items-length="pagination.pageCount"
-          density="compact"
-          class="elevation-1"
-          hover
-          @update:options="onTableOptionsChange"
-        >
-          <template v-slot:item.title="{ item }">
-            <div class="text-truncate" :title="item.title">{{ item.title }}</div>
-          </template>
-
-          <template v-slot:item.altTitle="{ item }">
-            <div class="text-truncate text-caption text-grey" :title="item.altTitle">
-              {{ item.altTitle || '-' }}
-            </div>
-          </template>
-
-          <template v-slot:item.year="{ item }">
-            <v-chip size="small" variant="outlined">
-              {{ item.year || '-' }}
-            </v-chip>
-          </template>
-
-          <template v-slot:item.episodes="{ item }">
-            <v-badge :content="item.episodes || 0" color="info">
-              <v-icon small>mdi-list-box</v-icon>
-            </v-badge>
-          </template>
-
-          <template v-slot:item.actions="{ item }">
-            <v-btn
-              size="small"
-              variant="text"
-              color="primary"
+        <template v-else-if="animes.length > 0">
+          <div class="anime-card-grid">
+            <v-card
+              v-for="item in animes"
+              :key="item.animeId || item.id"
+              class="anime-card"
+              variant="outlined"
               @click="selectAnime(item)"
-              prepend-icon="mdi-eye"
             >
-              查看
-            </v-btn>
-          </template>
+              <v-img
+                v-if="item.imageUrl"
+                :src="item.imageUrl"
+                aspect-ratio="3/4"
+                cover
+                class="anime-cover"
+              />
+              <div v-else class="anime-cover-noimg">
+                <v-icon size="40">mdi-image-off</v-icon>
+              </div>
+              <div class="anime-card-body">
+                <div class="anime-card-title">{{ item.title }}</div>
+                <v-chip size="x-small" variant="tonal" color="primary">{{ item.type || '未知类型' }}</v-chip>
+              </div>
+            </v-card>
+          </div>
 
-          <template v-slot:no-data>
-            <div class="text-center py-8 text-grey">
-              <v-icon size="48" class="mb-2">mdi-anime-box-outline</v-icon>
-              <div>暂无动漫数据</div>
-            </div>
-          </template>
-        </v-data-table-server>
+          <div
+            v-if="pagination.pageCount > pagination.itemsPerPage"
+            class="d-flex justify-center mt-4"
+          >
+            <v-pagination
+              v-model="pagination.page"
+              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
+              @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
+            />
+          </div>
+        </template>
+
+        <div v-else class="text-center py-8 text-grey">
+          <v-icon size="48" class="mb-2">mdi-library-outline</v-icon>
+          <div>暂无动漫数据</div>
+        </div>
       </v-card-text>
     </v-card>
 
@@ -562,5 +560,47 @@ const closeSubtitleDialog = () => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
+}
+
+/* 动漫封面卡片网格 */
+.anime-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+.anime-card {
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.anime-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12) !important;
+}
+.anime-cover {
+  width: 100%;
+}
+.anime-cover-noimg {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f4f5;
+  color: #c3b7ab;
+}
+.anime-card-body {
+  padding: 10px 12px 12px;
+}
+.anime-card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #1f2937;
+  margin-bottom: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>

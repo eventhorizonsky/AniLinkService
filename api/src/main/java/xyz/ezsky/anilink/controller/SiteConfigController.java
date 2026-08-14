@@ -11,6 +11,7 @@ import xyz.ezsky.anilink.model.dto.UpdateSiteConfigRequest;
 import xyz.ezsky.anilink.model.vo.SiteConfigVO;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
 import xyz.ezsky.anilink.service.EmailService;
+import xyz.ezsky.anilink.service.ResourceDownloadService;
 import xyz.ezsky.anilink.service.SiteConfigService;
 
 /**
@@ -26,6 +27,9 @@ public class SiteConfigController {
 
     @Autowired
     private EmailService emailService;
+
+    @Autowired
+    private ResourceDownloadService resourceDownloadService;
     
     /**
      * 获取站点配置信息
@@ -45,6 +49,9 @@ public class SiteConfigController {
     @Operation(summary = "更新站点配置", description = "更新站点名称、描述、URL等配置信息")
     public ApiResponseVO<String> updateSiteConfig(@RequestBody UpdateSiteConfigRequest request) {
         siteConfigService.updateSiteConfig(request);
+        if (request.getResourceDownloadLimitKbps() != null || request.getResourceUploadLimitKbps() != null) {
+            resourceDownloadService.refreshGlobalRateLimit();
+        }
         return ApiResponseVO.success("更新成功", "站点配置已更新");
     }
 

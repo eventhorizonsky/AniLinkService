@@ -50,8 +50,14 @@ public class UpdateSiteConfigRequest {
     @Schema(description = "下载完成后的做种时长（秒）", example = "0")
     private Integer resourceSeedTimeSeconds;
 
+    @Schema(description = "下载停滞判定时长（秒），超过该时长无新进度则标记为停滞，0 表示不启用", example = "21600")
+    private Integer resourceDownloadStallTimeoutSeconds;
+
     @Schema(description = "新任务附加 Tracker（每行一个或逗号分隔）", example = "udp://tracker.opentrackr.org:1337/announce")
     private String resourceCustomTrackers;
+
+    @Schema(description = "Tracker 列表订阅地址（每行一个或逗号分隔）", example = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt")
+    private String resourceTrackerListUrl;
 
     @Schema(description = "资源节点请求代理主机", example = "127.0.0.1")
     private String resourceNodeProxyHost;
