@@ -8,18 +8,23 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import xyz.ezsky.anilink.model.entity.MediaFile;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 /**
  * Web 播放器服务端转码/秒转封装服务
@@ -28,10 +33,20 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>REMUX（秒转封装）：编码本身浏览器可解、仅容器不支持时，用 {@code ffmpeg -c copy}
  *       直接封装为 HLS（mpegts），几乎零 CPU、零质量损失；</li>
+ *   <li>MIXED：视频原样封装、仅音频转 AAC（-c:v copy，最省资源）；</li>
  *   <li>TRANSCODE（转码）：编码不支持时，转码为 H.264/AAC 的 HLS 流。</li>
  * </ul>
- * 两种模式都产出 HLS 分片（m3u8 + ts），天然支持拖动 seek，前端用 hls.js 播放。
- * </p>
+ *
+ * <p>「即跳即转」能力：
+ * <ul>
+ *   <li>所有模式都返回带 ENDLIST 的完整 VOD 清单（进度条一开始就是完整时长），
+ *       transcode 模式按源时长 + 强制关键帧预铺分片；remux/mixed 模式用 ffprobe
+ *       关键帧边界探测精确分片；</li>
+ *   <li>拖动到未产出区域时（判定为跳转），杀掉当前 ffmpeg，用 {@code -ss} 输入流定位 +
+ *       {@code -start_number} 对齐分片序号，从目标位置重新起转，无需从开头线性追赶；</li>
+ *   <li>转码编码器自动选择硬件加速（QSV/NVENC/VAAPI/AMF），回退 libx264，弱机也能
+ *       远超实时速度产出分片。</li>
+ * </ul>
  *
  * <p>会话以 媒体ID+模式 为粒度复用，ffmpeg 后台持续产出分片，播放结束空闲一段时间后
  * 由定时任务清理进程与分片目录。</p>
@@ -74,6 +89,21 @@ public class MediaTranscodeService {
     @Value("${media.transcode.max-concurrent:1}")
     private int maxConcurrent;
 
+    @Value("${media.transcode.threads:4}")
+    private int ffmpegThreads;
+
+    @Value("${media.transcode.max-width:1920}")
+    private int maxTranscodeWidth;
+
+    @Value("${media.transcode.encoder:auto}")
+    private String configuredEncoder;
+
+    @Value("${media.transcode.seek-reanchor-threshold-seconds:120}")
+    private double reanchorThresholdSeconds;
+
+    @Value("${media.transcode.vaapi-device:/dev/dri/renderD128}")
+    private String vaapiDevice;
+
     @Autowired
     private SiteConfigService siteConfigService;
 
@@ -88,14 +118,119 @@ public class MediaTranscodeService {
     @Value("${media.transcode.probe-timeout-seconds:30}")
     private long probeTimeoutSeconds;
 
+    // ==================== 编码器自动选择 ====================
+
+    private enum EncoderKind { LIBX264, QSV, NVENC, VAAPI, AMF, VIDEOTOOLBOX }
+
+    private static final class EncoderProfile {
+        final EncoderKind kind;
+        final String codec;
+        final String label;
+
+        EncoderProfile(EncoderKind kind, String codec, String label) {
+            this.kind = kind;
+            this.codec = codec;
+            this.label = label;
+        }
+    }
+
+    private static final EncoderProfile LIBX264_PROFILE = new EncoderProfile(EncoderKind.LIBX264, "libx264", "libx264");
+    private static final String[] ENCODER_PRIORITY = {"h264_qsv", "h264_nvenc", "h264_vaapi", "h264_amf", "h264_videotoolbox"};
+    private static final Map<String, EncoderProfile> ENCODER_PROFILES = Map.of(
+            "h264_qsv", new EncoderProfile(EncoderKind.QSV, "h264_qsv", "Intel QSV"),
+            "h264_nvenc", new EncoderProfile(EncoderKind.NVENC, "h264_nvenc", "NVIDIA NVENC"),
+            "h264_vaapi", new EncoderProfile(EncoderKind.VAAPI, "h264_vaapi", "VAAPI"),
+            "h264_amf", new EncoderProfile(EncoderKind.AMF, "h264_amf", "AMD AMF"),
+            "h264_videotoolbox", new EncoderProfile(EncoderKind.VIDEOTOOLBOX, "h264_videotoolbox", "VideoToolbox")
+    );
+
+    private volatile EncoderProfile activeEncoderProfile;
+    private volatile Set<String> availableEncoders;
+
+    private EncoderProfile activeEncoder() {
+        EncoderProfile p = activeEncoderProfile;
+        if (p != null) {
+            return p;
+        }
+        synchronized (this) {
+            p = activeEncoderProfile;
+            if (p != null) {
+                return p;
+            }
+            p = resolveEncoder();
+            activeEncoderProfile = p;
+            log.info("转码编码器：{}（{}）", p.label, p.codec);
+            return p;
+        }
+    }
+
+    private EncoderProfile resolveEncoder() {
+        Set<String> avail = probeEncoders();
+        String override = configuredEncoder == null ? "" : configuredEncoder.trim().toLowerCase(Locale.ROOT);
+        if (!override.isEmpty() && !"auto".equals(override)) {
+            if ("libx264".equals(override)) {
+                return LIBX264_PROFILE;
+            }
+            EncoderProfile prof = ENCODER_PROFILES.get(override);
+            if (prof != null && avail.contains(override)) {
+                return prof;
+            }
+            if (prof != null) {
+                log.warn("指定的编码器 {} 不可用（可用：{}），回退 libx264", override, avail);
+            }
+        }
+        for (String name : ENCODER_PRIORITY) {
+            EncoderProfile prof = ENCODER_PROFILES.get(name);
+            if (prof != null && avail.contains(name)) {
+                return prof;
+            }
+        }
+        return LIBX264_PROFILE;
+    }
+
+    private Set<String> probeEncoders() {
+        if (availableEncoders != null) {
+            return availableEncoders;
+        }
+        Set<String> names = new HashSet<>();
+        try {
+            Process p = new ProcessBuilder("ffmpeg", "-hide_banner", "-encoders")
+                    .redirectErrorStream(true)
+                    .start();
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    sb.append(line).append('\n');
+                }
+            }
+            if (p.waitFor(Math.max(5, probeTimeoutSeconds), TimeUnit.SECONDS)) {
+                for (String line : sb.toString().split("\n")) {
+                    String[] toks = line.trim().split("\\s+");
+                    if (toks.length >= 3 && toks[1].startsWith("h264_")) {
+                        names.add(toks[1]);
+                    }
+                }
+            } else {
+                p.destroyForcibly();
+            }
+        } catch (Exception e) {
+            log.warn("ffmpeg 编码器探测失败：{}", e.getMessage());
+        }
+        availableEncoders = names;
+        log.info("ffmpeg 可用 H.264 编码器：{}", names.isEmpty() ? "（无，回退 libx264）" : names);
+        return names;
+    }
+
     /**
-     * 启动时后台预热 ffmpeg 探测，避免首个播放请求被慢速冷启动阻塞。
+     * 启动时后台预热 ffmpeg 可用性与编码器探测，避免首个播放请求被慢速冷启动阻塞。
      */
     @PostConstruct
     public void warmupFfmpegProbe() {
         Thread warmup = new Thread(() -> {
             try {
                 isFfmpegAvailable();
+                activeEncoder();
             } catch (Exception e) {
                 log.warn("ffmpeg 预热探测异常：{}", e.getMessage());
             }
@@ -105,24 +240,35 @@ public class MediaTranscodeService {
     }
 
     /**
-     * 转码/秒转会话
+     * 转码/秒转会话。进程可因跳转重锚被替换（process/generation/anchorIdx 随之更新）。
      */
     private static final class TranscodeSession {
         final PlayMode mode;
         final Path dir;
-        final Process process;
-        Thread drainThread;
+        final Path input;
+        final Path segmentPattern;
+        volatile Process process;
+        volatile Thread drainThread;
         volatile long lastAccess = System.currentTimeMillis();
         volatile boolean failed;
         volatile Integer exitCode;
+        /** 每次重启 ffmpeg 自增，用于让旧进程的 drain 线程不再覆盖新进程的状态 */
+        volatile int generation;
+        /** 当前 ffmpeg 进程对应输出分片的起始序号（初始 0，跳转重锚后为跳转目标） */
+        volatile int anchorIdx;
+        /** remux/mixed 关键帧边界（秒，各分片起始时间）；null=尚未探测/不可用 */
+        volatile List<Double> boundaries;
 
-        TranscodeSession(PlayMode mode, Path dir, Process process, Thread drainThread) {
+        TranscodeSession(PlayMode mode, Path dir, Path input, Path segmentPattern) {
             this.mode = mode;
             this.dir = dir;
-            this.process = process;
-            this.drainThread = drainThread;
+            this.input = input;
+            this.segmentPattern = segmentPattern;
         }
     }
+
+    /** 关键帧边界探测结果缓存（mediaFileId → 分片起始时间序列），上限后整体清空 */
+    private final Map<Long, List<Double>> boundaryCache = new ConcurrentHashMap<>();
 
     /**
      * 根据媒体文件元数据给出后端推荐播放模式（前端最终基于浏览器能力决定）。
@@ -301,6 +447,12 @@ public class MediaTranscodeService {
                 throw new IllegalStateException("等待转码清单被中断");
             }
         }
+        // 启动超时：立即清理卡死的孤儿会话（含进程与分片目录），
+        // 否则 ffmpeg 会持续空转吃满 CPU/内存，直到空闲回收才被清理，
+        // 造成日志中的 HikariPool 线程饥饿与 503 之后服务不可用。
+        log.warn("转码启动超时，清理孤儿会话：{}", key);
+        killSession(session);
+        sessions.remove(key, session);
         throw new IllegalStateException("转码启动超时，未生成分片清单");
     }
 
@@ -360,37 +512,48 @@ public class MediaTranscodeService {
     /**
      * 获取供浏览器播放的 HLS 清单内容。
      *
-     * <p>transcode 模式：视频关键帧被强制对齐到分片边界（-force_key_frames），分片时长可以精确预铺，
-     * 因此按源时长合成一份带 ENDLIST 的完整 VOD 清单，浏览器一开始就能得到准确总时长，可正常拖动 seek。</p>
-     *
-     * <p>remux/mixed 模式：分片按源文件关键帧自然切分（-c copy），分片时长与数量无法提前预测，
-     * 按固定分片时长估算会得到错误的总时长，且会引用不存在的分片（进度条总时长虚高、拖到末尾
-     * 等待 404/提前结束）。因此直接透传 ffmpeg 实时清单（EVENT 类型，随分片产出增长），
-     * EXTINF 与总时长始终为真实值。</p>
+     * <p>所有模式尽量返回带 ENDLIST 的完整 VOD 清单，进度条一开始就是完整时长：
+     * <ul>
+     *   <li>transcode：分片按源时长 + 强制关键帧预铺（精确对齐）；</li>
+     *   <li>remux/mixed：用 ffprobe 关键帧边界探测得到真实分片边界；探测尚未完成时
+     *       降级透传 ffmpeg 实时 EVENT 清单，探测完成后下次请求即切回完整 VOD。</li>
+     * </ul></p>
      */
     public String getManifestContent(Long mediaFileId, PlayMode mode) {
         Path manifest = getManifest(mediaFileId, mode);
+        String key = mode.name() + "/" + mediaFileId;
+        TranscodeSession session = sessions.get(key);
+        MediaFile mediaFile = mediaFileService.getMediaFileById(mediaFileId);
+        boolean hasDuration = mediaFile != null && mediaFile.getDuration() != null && mediaFile.getDuration() > 0;
+
         if (mode == PlayMode.TRANSCODE) {
-            MediaFile mediaFile = mediaFileService.getMediaFileById(mediaFileId);
-            if (mediaFile != null && mediaFile.getDuration() != null && mediaFile.getDuration() > 0) {
-                return synthesizePlaylist(mediaFile, mode, manifest);
+            if (hasDuration) {
+                return synthesizeTranscodePlaylist(mediaFile, manifest, session == null ? 0 : session.anchorIdx);
             }
+            return eventizePlaylist(manifest);
+        }
+
+        List<Double> boundaries = session == null ? null : session.boundaries;
+        if (hasDuration && boundaries != null && !boundaries.isEmpty()) {
+            return synthesizeCopyPlaylist(mediaFile, mode, boundaries);
         }
         return eventizePlaylist(manifest);
     }
 
     /**
-     * 依据源时长合成完整 VOD 清单（含 ENDLIST）。
-     * 仅用于 transcode 模式：已产出的分片沿用真实 EXTINF，未产出的按分片时长估算，
-     * 最后一段按剩余时长补齐，保证清单总时长与源时长精确一致。
+     * 依据源时长合成完整 VOD 清单（含 ENDLIST），用于 transcode 模式。
+     * 已产出分片沿用真实 EXTINF，未产出按分片时长估算，最后一段按剩余时长补齐，
+     * 保证清单总时长与源时长精确一致。anchorIdx 之后的分片由当前（可能已重锚的）
+     * ffmpeg 进程产出，其 EXTINF 从 ffmpeg 实时清单按偏移映射。
      */
-    private String synthesizePlaylist(MediaFile mediaFile, PlayMode mode, Path manifest) {
+    private String synthesizeTranscodePlaylist(MediaFile mediaFile, Path manifest, int anchorIdx) {
         double durationSec = mediaFile.getDuration() / 1000.0;
         int segSec = Math.max(2, segmentSeconds);
         List<Double> produced = parseProducedDurations(manifest);
-        int producedCount = produced.size();
+        int producedStart = anchorIdx;
+        int producedEnd = anchorIdx + produced.size();
         // 预估段数；若已产出分片超过预估（源流实际时长略长于元数据），以实际为准，避免遗漏末尾真实分片
-        int total = (int) Math.max(1, Math.max(Math.ceil(durationSec / segSec), producedCount));
+        int total = (int) Math.max(1, Math.max(Math.ceil(durationSec / segSec), producedEnd));
 
         double maxDur = segSec;
         for (double d : produced) {
@@ -407,12 +570,12 @@ public class MediaTranscodeService {
         sb.append("#EXT-X-PLAYLIST-TYPE:VOD\n");
         sb.append("#EXT-X-INDEPENDENT-SEGMENTS\n");
 
-        String base = mode.name().toLowerCase(Locale.ROOT) + "/segments/";
+        String base = modeNamePath(PlayMode.TRANSCODE) + "/segments/";
         double accumulated = 0;
         for (int i = 0; i < total; i++) {
             double dur;
-            if (i < producedCount) {
-                dur = produced.get(i);
+            if (i >= producedStart && i < producedEnd) {
+                dur = produced.get(i - producedStart);
             } else if (i == total - 1) {
                 // 最后一段按剩余时长补齐，使清单总时长与源时长精确一致
                 dur = Math.max(0.1, durationSec - accumulated);
@@ -428,10 +591,41 @@ public class MediaTranscodeService {
     }
 
     /**
+     * 依据关键帧边界序列合成完整 VOD 清单（含 ENDLIST），用于 remux/mixed 模式。
+     * boundaries 为各分片的起始时间（秒），分片时长 = 下一边界 - 本边界，最后一段到源时长。
+     */
+    private String synthesizeCopyPlaylist(MediaFile mediaFile, PlayMode mode, List<Double> boundaries) {
+        double durationSec = mediaFile.getDuration() / 1000.0;
+        int n = boundaries.size();
+        double maxDur = Math.max(2, segmentSeconds);
+        for (int i = 0; i < n; i++) {
+            double end = (i < n - 1) ? boundaries.get(i + 1) : durationSec;
+            maxDur = Math.max(maxDur, Math.max(0.1, end - boundaries.get(i)));
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("#EXTM3U\n");
+        sb.append("#EXT-X-VERSION:6\n");
+        sb.append("#EXT-X-TARGETDURATION:").append((long) Math.ceil(maxDur)).append("\n");
+        sb.append("#EXT-X-MEDIA-SEQUENCE:0\n");
+        sb.append("#EXT-X-PLAYLIST-TYPE:VOD\n");
+        sb.append("#EXT-X-INDEPENDENT-SEGMENTS\n");
+
+        String base = modeNamePath(mode) + "/segments/";
+        for (int i = 0; i < n; i++) {
+            double end = (i < n - 1) ? boundaries.get(i + 1) : durationSec;
+            double dur = Math.max(0.1, end - boundaries.get(i));
+            sb.append(String.format(Locale.ROOT, "#EXTINF:%.6f,\n", dur));
+            sb.append(base).append(String.format(Locale.ROOT, "seg_%05d.ts", i)).append("\n");
+        }
+        sb.append("#EXT-X-ENDLIST\n");
+        return sb.toString();
+    }
+
+    /**
      * 将 ffmpeg 实时清单转换为 EVENT 类型的增长清单透传：
-     * 保留真实 EXTINF 与分片引用（-hls_base_url 已指向本模式的分片接口），
-     * 补充 #EXT-X-PLAYLIST-TYPE:EVENT 使 hls.js 持续刷新清单、总时长随分片产出逐步精确到位；
-     * ffmpeg 完成时写入的 ENDLIST 原样保留，hls.js 据此停止增长并正常触发播放结束。
+     * 保留真实 EXTINF 与分片引用，补充 #EXT-X-PLAYLIST-TYPE:EVENT 使 hls.js 持续刷新清单、
+     * 总时长随分片产出逐步精确到位；ffmpeg 完成时写入的 ENDLIST 原样保留。
      */
     private String eventizePlaylist(Path manifest) {
         List<String> lines;
@@ -476,7 +670,8 @@ public class MediaTranscodeService {
 
     /**
      * 解析会话目录内的分片文件（等待其就绪），防止路径穿越。
-     * 转码进行中分片是逐步落盘的，拖动到未生成区域时需等待其产生。
+     * 若请求的分片与当前产出前沿差距过大（判定为用户拖动跳转），
+     * 触发 ffmpeg 从目标位置重锚（即跳即转），而不是从开头线性追赶。
      *
      * @return 分片绝对路径；等待超时或越界返回 null
      */
@@ -492,11 +687,18 @@ public class MediaTranscodeService {
         if (!resolved.startsWith(segmentsDir.normalize())) {
             return null;
         }
+        String key = mode.name() + "/" + mediaFileId;
+        int requestedIdx = parseSegmentIndex(segmentName);
         long deadline = System.currentTimeMillis() + waitTimeoutMs;
         while (System.currentTimeMillis() < deadline) {
             if (Files.isRegularFile(resolved)) {
+                TranscodeSession s = sessions.get(key);
+                if (s != null) {
+                    s.lastAccess = System.currentTimeMillis();
+                }
                 return resolved;
             }
+            maybeReanchor(mediaFileId, mode, key, segmentsDir, requestedIdx);
             try {
                 Thread.sleep(200);
             } catch (InterruptedException e) {
@@ -507,12 +709,72 @@ public class MediaTranscodeService {
         return null;
     }
 
+    /**
+     * 判断缺失分片是否构成跳转（与当前产出前沿差距超过阈值），是则重锚 ffmpeg。
+     * 阈值默认 120s，正常缓冲预取（几十秒内）不会误触发。
+     */
+    private void maybeReanchor(Long mediaFileId, PlayMode mode, String key, Path segmentsDir, int requestedIdx) {
+        if (requestedIdx < 0) {
+            return;
+        }
+        TranscodeSession session = sessions.get(key);
+        if (session == null || session.failed || !session.process.isAlive()) {
+            return;
+        }
+        // remux/mixed 在关键帧边界未就绪（EVENT 降级）时不重锚：重锚会破坏 EVENT 清单的
+        // 分片序号连续性；此时 -c copy 从开头产出本身很快，等待即可。
+        if (session.mode != PlayMode.TRANSCODE
+                && (session.boundaries == null || session.boundaries.isEmpty())) {
+            return;
+        }
+        int frontier = maxProducedSegment(segmentsDir);
+        double requestedTime = segmentStartTimeSec(session, requestedIdx);
+        double frontierTime = frontier >= 0 ? segmentStartTimeSec(session, frontier) : 0;
+        boolean nearFrontier = Math.abs(requestedIdx - frontier) <= 2;
+        if (nearFrontier || Math.abs(requestedTime - frontierTime) <= reanchorThresholdSeconds) {
+            return;
+        }
+        reanchorSession(session, mediaFileId, requestedIdx);
+    }
+
+    /**
+     * 重锚：杀掉当前 ffmpeg，用 -ss 输入流定位到目标时间并 -start_number 对齐分片序号，
+     * 从目标位置重新起转，实现拖动即播。
+     */
+    private void reanchorSession(TranscodeSession session, Long mediaFileId, int anchorIdx) {
+        synchronized (this) {
+            if (session.failed || !session.process.isAlive()) {
+                return;
+            }
+            if (session.anchorIdx == anchorIdx) {
+                return;
+            }
+            double ss = segmentStartTimeSec(session, anchorIdx);
+            session.anchorIdx = anchorIdx;
+            session.generation++;
+            killProcess(session.process);
+            if (startFfmpegProcess(session, mediaFileId)) {
+                log.info("转码会话跳转重锚：mediaId={} mode={} anchorIdx={} ss={}s",
+                        mediaFileId, session.mode.name().toLowerCase(), anchorIdx,
+                        String.format(Locale.ROOT, "%.1f", ss));
+            } else {
+                session.failed = true;
+                log.error("跳转重锚失败：mediaId={} anchorIdx={}", mediaFileId, anchorIdx);
+            }
+        }
+    }
+
     public Path sessionDir(Long mediaFileId, PlayMode mode) {
-        return Paths.get(transcodeOutputDir, mode.name().toLowerCase(Locale.ROOT), String.valueOf(mediaFileId));
+        return Paths.get(transcodeOutputDir, modeNamePath(mode), String.valueOf(mediaFileId));
+    }
+
+    private String modeNamePath(PlayMode mode) {
+        return mode.name().toLowerCase(Locale.ROOT);
     }
 
     /**
      * 启动 ffmpeg 会话。进程后台运行，持续把分片写入会话目录。
+     * remux/mixed 模式额外后台探测关键帧边界，用于合成完整 VOD 清单。
      */
     private TranscodeSession startSession(Long mediaFileId, PlayMode mode) {
         try {
@@ -530,20 +792,17 @@ public class MediaTranscodeService {
                 return null;
             }
 
-            Path manifest = dir.resolve("index.m3u8");
             Path segmentsDir = dir.resolve("segments");
             Files.createDirectories(segmentsDir);
             Path segmentPattern = segmentsDir.resolve("seg_%05d.ts");
 
-            ProcessBuilder pb = new ProcessBuilder(buildFfmpegCommand(mode, input, segmentPattern, manifest));
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            TranscodeSession session = new TranscodeSession(mode, dir, process, null);
-            Thread drainThread = new Thread(() -> drainProcessOutput(process, mediaFileId, mode, session), "transcode-drain-" + mediaFileId);
-            drainThread.setDaemon(true);
-            session.drainThread = drainThread;
-            drainThread.start();
+            TranscodeSession session = new TranscodeSession(mode, dir, input, segmentPattern);
+            if (!startFfmpegProcess(session, mediaFileId)) {
+                return null;
+            }
+            if (mode != PlayMode.TRANSCODE) {
+                scheduleBoundaryProbe(session, mediaFileId, input);
+            }
 
             log.info("启动 ffmpeg 转码会话：mediaId={} mode={} dir={}", mediaFileId, mode, dir);
             return session;
@@ -553,14 +812,56 @@ public class MediaTranscodeService {
         }
     }
 
-    private java.util.List<String> buildFfmpegCommand(PlayMode mode, Path input, Path segmentPattern, Path manifest) {
-        String hlsTime = String.valueOf(Math.max(2, segmentSeconds));
+    /**
+     * 启动（或重锚后重启）当前会话的 ffmpeg 进程，并挂载新的 drain 线程。
+     */
+    private boolean startFfmpegProcess(TranscodeSession session, Long mediaFileId) {
+        try {
+            Path manifest = session.dir.resolve("index.m3u8");
+            ProcessBuilder pb = new ProcessBuilder(buildFfmpegCommand(session, manifest));
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            session.process = process;
+            int gen = session.generation;
+            Thread drainThread = new Thread(
+                    () -> drainProcessOutput(process, mediaFileId, session, gen),
+                    "transcode-drain-" + mediaFileId);
+            drainThread.setDaemon(true);
+            session.drainThread = drainThread;
+            drainThread.start();
+            return true;
+        } catch (IOException e) {
+            log.error("启动 ffmpeg 进程失败：mediaId={} mode={}", mediaFileId, session.mode, e);
+            return false;
+        }
+    }
+
+    private java.util.List<String> buildFfmpegCommand(TranscodeSession session, Path manifest) {
+        PlayMode mode = session.mode;
+        Path input = session.input;
+        Path segmentPattern = session.segmentPattern;
+        int anchorIdx = session.anchorIdx;
+        int segSec = Math.max(2, segmentSeconds);
+
         java.util.List<String> cmd = new java.util.ArrayList<>();
         cmd.add("ffmpeg");
         cmd.add("-hide_banner");
         cmd.add("-loglevel");
         cmd.add("error");
+        // 禁止读取 stdin，避免非交互环境下 ffmpeg 阻塞等待输入导致首分片迟迟不产出
+        cmd.add("-nostdin");
         cmd.add("-y");
+        if (mode == PlayMode.TRANSCODE && activeEncoder().kind == EncoderKind.VAAPI) {
+            cmd.add("-init_hw_device");
+            cmd.add("vaapi=va:" + vaapiDevice);
+            cmd.add("-filter_hw_device");
+            cmd.add("va");
+        }
+        if (anchorIdx > 0) {
+            // 输入流定位（放在 -i 前），毫秒级快进，配合 -start_number 对齐分片序号
+            cmd.add("-ss");
+            cmd.add(String.format(Locale.ROOT, "%.3f", segmentStartTimeSec(session, anchorIdx)));
+        }
         cmd.add("-i");
         cmd.add(input.toString());
         cmd.add("-map");
@@ -575,64 +876,164 @@ public class MediaTranscodeService {
             // 混合模式：视频原样封装进 TS（-c:v copy），仅音频转码为 AAC，避免视频重编码
             cmd.add("-c:v");
             cmd.add("copy");
-            cmd.add("-c:a");
-            cmd.add("aac");
-            cmd.add("-b:a");
-            cmd.add("192k");
-            cmd.add("-ac");
-            cmd.add("2");
+            addAacAudioArgs(cmd);
         } else {
-            // 统一转码为 H.264 (yuv420p, 主档次) + AAC，最多 1080p 以降低 CPU 开销。
-            // HDR 素材未做 tone-mapping，会以 10bit->8bit 转换呈现（v1 限制，后续可用 zscale 优化）。
-            cmd.add("-c:v");
-            cmd.add("libx264");
-            cmd.add("-preset");
-            cmd.add("veryfast");
-            cmd.add("-crf");
-            cmd.add("23");
-            cmd.add("-maxrate");
-            cmd.add("6M");
-            cmd.add("-bufsize");
-            cmd.add("12M");
-            cmd.add("-pix_fmt");
-            cmd.add("yuv420p");
-            cmd.add("-profile:v");
-            cmd.add("main");
-            cmd.add("-level");
-            cmd.add("4.1");
-            cmd.add("-vf");
-            cmd.add("scale=min(1920\\,iw):-2");
-            // 强制每 segmentSeconds 一个关键帧，保证分片边界与"源时长/分片时长"预估精确对齐
-            cmd.add("-force_key_frames");
-            cmd.add("expr:gte(t,n_forced*" + Math.max(2, segmentSeconds) + ")");
-            cmd.add("-c:a");
-            cmd.add("aac");
-            cmd.add("-b:a");
-            cmd.add("192k");
-            cmd.add("-ac");
-            cmd.add("2");
-            cmd.add("-threads");
-            cmd.add("0");
+            addTranscodeVideoArgs(cmd, activeEncoder(), segSec);
+            addAacAudioArgs(cmd);
         }
 
         cmd.add("-f");
         cmd.add("hls");
         cmd.add("-hls_time");
-        cmd.add(hlsTime);
+        cmd.add(String.valueOf(segSec));
         cmd.add("-hls_list_size");
         cmd.add("0");
         cmd.add("-hls_flags");
         cmd.add("independent_segments");
+        if (anchorIdx > 0) {
+            cmd.add("-start_number");
+            cmd.add(String.valueOf(anchorIdx));
+        }
         // 让 m3u8 中的分片引用指向 mode 专属子路径，浏览器据此请求到对应的分片接口
         cmd.add("-hls_base_url");
-        cmd.add(mode.name().toLowerCase(Locale.ROOT) + "/segments/");
+        cmd.add(modeNamePath(mode) + "/segments/");
         cmd.add("-hls_segment_filename");
         cmd.add(segmentPattern.toString());
         cmd.add(manifest.toString());
         return cmd;
     }
 
-    private void drainProcessOutput(Process process, Long mediaFileId, PlayMode mode, TranscodeSession session) {
+    private void addAacAudioArgs(java.util.List<String> cmd) {
+        cmd.add("-c:a");
+        cmd.add("aac");
+        cmd.add("-b:a");
+        cmd.add("192k");
+        cmd.add("-ac");
+        cmd.add("2");
+    }
+
+    /**
+     * 按编码器类型追加转码视频参数。libx264 回退方案限制线程数，避免吃满宿主 CPU。
+     */
+    private void addTranscodeVideoArgs(java.util.List<String> cmd, EncoderProfile enc, int segSec) {
+        int width = Math.max(320, maxTranscodeWidth);
+        switch (enc.kind) {
+            case QSV:
+                cmd.add("-c:v");
+                cmd.add("h264_qsv");
+                cmd.add("-preset");
+                cmd.add("veryfast");
+                cmd.add("-global_quality");
+                cmd.add("23");
+                cmd.add("-pix_fmt");
+                cmd.add("nv12");
+                cmd.add("-vf");
+                cmd.add(String.format("scale=min(%d\\,iw):-2", width));
+                addForceKeyFrames(cmd, segSec);
+                break;
+            case NVENC:
+                cmd.add("-c:v");
+                cmd.add("h264_nvenc");
+                cmd.add("-preset");
+                cmd.add("p5");
+                cmd.add("-rc");
+                cmd.add("vbr");
+                cmd.add("-cq");
+                cmd.add("23");
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+                cmd.add("-profile:v");
+                cmd.add("main");
+                cmd.add("-level");
+                cmd.add("4.1");
+                cmd.add("-vf");
+                cmd.add(String.format("scale=min(%d\\,iw):-2", width));
+                addForceKeyFrames(cmd, segSec);
+                break;
+            case VAAPI:
+                cmd.add("-c:v");
+                cmd.add("h264_vaapi");
+                cmd.add("-global_quality");
+                cmd.add("23");
+                cmd.add("-vf");
+                cmd.add(String.format("format=nv12,hwupload,scale_vaapi=%d:-2", width));
+                break;
+            case AMF:
+                cmd.add("-c:v");
+                cmd.add("h264_amf");
+                cmd.add("-usage");
+                cmd.add("transcoding");
+                cmd.add("-quality");
+                cmd.add("speed");
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+                cmd.add("-vf");
+                cmd.add(String.format("scale=min(%d\\,iw):-2", width));
+                addForceKeyFrames(cmd, segSec);
+                break;
+            case VIDEOTOOLBOX:
+                cmd.add("-c:v");
+                cmd.add("h264_videotoolbox");
+                cmd.add("-q:v");
+                cmd.add("60");
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+                cmd.add("-vf");
+                cmd.add(String.format("scale=min(%d\\,iw):-2", width));
+                addForceKeyFrames(cmd, segSec);
+                break;
+            default:
+                // libx264：统一转码为 H.264 (yuv420p, 主档次) + AAC，限定线程数防止 CPU 全核吃满
+                cmd.add("-c:v");
+                cmd.add("libx264");
+                cmd.add("-preset");
+                cmd.add("veryfast");
+                cmd.add("-crf");
+                cmd.add("23");
+                cmd.add("-maxrate");
+                cmd.add("6M");
+                cmd.add("-bufsize");
+                cmd.add("12M");
+                cmd.add("-pix_fmt");
+                cmd.add("yuv420p");
+                cmd.add("-profile:v");
+                cmd.add("main");
+                cmd.add("-level");
+                cmd.add("4.1");
+                cmd.add("-vf");
+                cmd.add(String.format("scale=min(%d\\,iw):-2", width));
+                addForceKeyFrames(cmd, segSec);
+                cmd.add("-threads");
+                cmd.add(String.valueOf(Math.max(1, ffmpegThreads)));
+                break;
+        }
+    }
+
+    /**
+     * 强制每 segSec 一个关键帧，保证分片边界与"源时长/分片时长"预估精确对齐。
+     * VAAPI 编码器不保证支持，故省略。
+     */
+    private void addForceKeyFrames(java.util.List<String> cmd, int segSec) {
+        cmd.add("-force_key_frames");
+        cmd.add("expr:gte(t,n_forced*" + segSec + ")");
+    }
+
+    /**
+     * 计算指定分片序号在时间轴上的起始时间（秒）。
+     * transcode 按分片时长等分；remux/mixed 有关键帧边界时用真实边界，否则退化为等分估算。
+     */
+    private double segmentStartTimeSec(TranscodeSession session, int idx) {
+        int segSec = Math.max(2, segmentSeconds);
+        if (session.mode != PlayMode.TRANSCODE) {
+            List<Double> b = session.boundaries;
+            if (b != null && !b.isEmpty() && idx >= 0 && idx < b.size()) {
+                return b.get(idx);
+            }
+        }
+        return idx * (double) segSec;
+    }
+
+    private void drainProcessOutput(Process process, Long mediaFileId, TranscodeSession session, int gen) {
         try {
             byte[] buffer = new byte[4096];
             int read;
@@ -640,7 +1041,7 @@ public class MediaTranscodeService {
                 if (read > 0) {
                     String line = new String(buffer, 0, read).trim();
                     if (!line.isEmpty()) {
-                        log.warn("[transcode:{}/{}] {}", mediaFileId, mode.name().toLowerCase(), line);
+                        log.warn("[transcode:{}/{}] {}", mediaFileId, session.mode.name().toLowerCase(), line);
                     }
                 }
             }
@@ -648,15 +1049,156 @@ public class MediaTranscodeService {
         } finally {
             try {
                 int exitCode = process.waitFor();
-                session.exitCode = exitCode;
-                if (exitCode != 0) {
-                    session.failed = true;
-                    log.warn("转码进程退出：mediaId={} mode={} exitCode={}", mediaFileId, mode.name().toLowerCase(), exitCode);
+                // 仅当前代进程退出才更新会话状态，避免旧进程被重锚杀掉后覆盖新进程状态
+                if (gen == session.generation) {
+                    session.exitCode = exitCode;
+                    if (exitCode != 0) {
+                        session.failed = true;
+                        log.warn("转码进程退出：mediaId={} mode={} exitCode={}",
+                                mediaFileId, session.mode.name().toLowerCase(), exitCode);
+                    }
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                session.failed = true;
+                if (gen == session.generation) {
+                    session.failed = true;
+                }
             }
+        }
+    }
+
+    /**
+     * remux/mixed 模式后台探测源视频关键帧时间，模拟 ffmpeg -hls_time 的分片边界，
+     * 用于合成完整 VOD 清单。结果按 mediaFileId 缓存。
+     */
+    private void scheduleBoundaryProbe(TranscodeSession session, Long mediaFileId, Path input) {
+        List<Double> cached = boundaryCache.get(mediaFileId);
+        if (cached != null && !cached.isEmpty()) {
+            session.boundaries = cached;
+            return;
+        }
+        Thread t = new Thread(() -> {
+            try {
+                List<Double> boundaries = probeKeyframeBoundaries(input);
+                if (boundaries != null && !boundaries.isEmpty()) {
+                    session.boundaries = boundaries;
+                    if (boundaryCache.size() > 128) {
+                        boundaryCache.clear();
+                    }
+                    boundaryCache.put(mediaFileId, boundaries);
+                    log.info("关键帧边界探测完成：mediaId={} segments={}", mediaFileId, boundaries.size());
+                }
+            } catch (Exception e) {
+                log.warn("关键帧边界探测失败：mediaId={} msg={}", mediaFileId, e.getMessage());
+            }
+        }, "transcode-boundary-probe-" + mediaFileId);
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /**
+     * 用 ffprobe 提取视频关键帧 pts，模拟 -c copy + -hls_time 的切分规则，
+     * 返回各分片起始时间（秒）。
+     */
+    private List<Double> probeKeyframeBoundaries(Path input) {
+        List<Double> keyframes = new ArrayList<>();
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "error",
+                    "-select_streams", "v:0",
+                    "-show_entries", "frame=key_frame,pts_time",
+                    "-of", "csv=p=0",
+                    input.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    sb.append(line).append('\n');
+                }
+            }
+            boolean finished = p.waitFor(Math.max(60, probeTimeoutSeconds * 4), TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return null;
+            }
+            if (p.exitValue() != 0) {
+                return null;
+            }
+            for (String line : sb.toString().split("\n")) {
+                int comma = line.indexOf(',');
+                if (comma <= 0) {
+                    continue;
+                }
+                if ("1".equals(line.substring(0, comma).trim())) {
+                    try {
+                        // ffprobe csv 行形如 "1,12.340000,"，pts 后有尾部逗号，需剔除后再解析
+                        String pts = line.substring(comma + 1).trim();
+                        int extra = pts.indexOf(',');
+                        if (extra >= 0) {
+                            pts = pts.substring(0, extra);
+                        }
+                        keyframes.add(Double.parseDouble(pts));
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.warn("ffprobe 关键帧探测失败：{}", e.getMessage());
+            return null;
+        }
+        if (keyframes.isEmpty()) {
+            return null;
+        }
+        return simulateSegmentStarts(keyframes);
+    }
+
+    /**
+     * 依据关键帧时间模拟 hls 切分：每个分片在下一个 >= 起始+分片时长的关键帧处截止。
+     */
+    private List<Double> simulateSegmentStarts(List<Double> keyframes) {
+        keyframes.sort(null);
+        double segSec = Math.max(2, segmentSeconds);
+        List<Double> starts = new ArrayList<>();
+        double start = 0;
+        starts.add(start);
+        for (double kf : keyframes) {
+            if (kf > start + segSec - 1e-3) {
+                starts.add(kf);
+                start = kf;
+            }
+        }
+        return starts;
+    }
+
+    /**
+     * 统计会话目录内已产出分片的最大序号（-1 表示尚无）。
+     */
+    private int maxProducedSegment(Path segmentsDir) {
+        try (Stream<Path> stream = Files.list(segmentsDir)) {
+            OptionalInt max = stream
+                    .filter(p -> p.getFileName().toString().startsWith("seg_"))
+                    .mapToInt(p -> parseSegmentIndex(p.getFileName().toString()))
+                    .max();
+            return max.orElse(-1);
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    private int parseSegmentIndex(String name) {
+        try {
+            int dot = name.lastIndexOf('.');
+            if (dot <= 4 || !name.startsWith("seg_")) {
+                return -1;
+            }
+            return Integer.parseInt(name.substring(4, dot));
+        } catch (Exception e) {
+            return -1;
         }
     }
 
@@ -680,19 +1222,23 @@ public class MediaTranscodeService {
     }
 
     private void killSession(TranscodeSession session) {
+        killProcess(session.process);
+        session.failed = true;
+        deleteRecursively(session.dir);
+    }
+
+    private void killProcess(Process process) {
         try {
-            if (session.process.isAlive()) {
-                session.process.destroy();
-                if (!session.process.waitFor(3, TimeUnit.SECONDS)) {
-                    session.process.destroyForcibly();
+            if (process.isAlive()) {
+                process.destroy();
+                if (!process.waitFor(3, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
                 }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            session.process.destroyForcibly();
+            process.destroyForcibly();
         }
-        session.failed = true;
-        deleteRecursively(session.dir);
     }
 
     private void deleteRecursively(Path dir) {
