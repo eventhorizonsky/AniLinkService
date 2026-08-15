@@ -15,6 +15,7 @@
     "artplayer-plugin-vtt-thumbnail": "^1.1.0",
     "axios": "^1.7.9",
     "dompurify": "^3.4.13",
+    "hls.js": "^1.7.0",
     "libass-wasm": "^4.1.0",
     "marked": "^18.0.9",
     "qrcode": "^1.5.4",

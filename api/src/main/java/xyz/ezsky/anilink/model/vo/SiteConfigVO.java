@@ -119,6 +119,9 @@ public class SiteConfigVO {
     @Schema(description = "是否生成播放进度缩略图", example = "false")
     private Boolean thumbnailPlaybackEnabled;
 
+    @Schema(description = "Web 播放器是否启用服务端转码/秒转（HLS）", example = "true")
+    private Boolean webTranscodeEnabled;
+
     public String getDandanBaseUrl() {
         return dandanBaseUrl;
     }

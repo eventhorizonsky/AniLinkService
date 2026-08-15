@@ -30,7 +30,8 @@ const form = ref({
   smtpFromName: '',
   smtpSslEnabled: true,
   smtpStarttlsEnabled: false,
-  thumbnailPlaybackEnabled: false
+  thumbnailPlaybackEnabled: false,
+  webTranscodeEnabled: true
 })
 
 // Bangumi 镜像
@@ -85,6 +86,7 @@ const fetchConfig = async () => {
         smtpStarttlsEnabled: !!res.data.smtpStarttlsEnabled,
         smtpPasswordConfigured: !!res.data.smtpPasswordConfigured,
         thumbnailPlaybackEnabled: !!res.data.thumbnailPlaybackEnabled,
+        webTranscodeEnabled: res.data.webTranscodeEnabled !== false,
         bangumiMirrorBaseUrl: res.data.bangumiMirrorBaseUrl || '',
         bangumiNextMirrorBaseUrl: res.data.bangumiNextMirrorBaseUrl || ''
       }
@@ -126,6 +128,7 @@ const saveConfig = async () => {
       smtpSslEnabled: form.value.smtpSslEnabled,
       smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
       thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
+      webTranscodeEnabled: form.value.webTranscodeEnabled,
       bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null,
       bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
     })
@@ -261,6 +264,15 @@ onMounted(() => {
                 color="primary"
                 inset
                 hint="开启后，新扫描的媒体文件将在元数据提取阶段生成 VTT 雪碧图缩略图。已有文件需要重新触发元数据提取才会生成。"
+                persistent-hint
+              />
+
+              <v-switch
+                v-model="form.webTranscodeEnabled"
+                label="浏览器不支持编码时自动转码/秒转"
+                color="primary"
+                inset
+                hint="浏览器无法播放的编码（如 HEVC、FLAC/AC3/DTS 音频等）会自动通过服务端转码为 H.264/AAC（HLS）播放。"
                 persistent-hint
               />
             </v-window-item>

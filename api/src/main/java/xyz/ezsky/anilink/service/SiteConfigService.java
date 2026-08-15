@@ -68,6 +68,7 @@ public class SiteConfigService {
     private static final String MAIL_SEND_DAILY_LIMIT_PER_EMAIL = "mail_send_daily_limit_per_email";
     private static final String REGISTER_DAILY_LIMIT_PER_IP = "register_daily_limit_per_ip";
     private static final String THUMBNAIL_PLAYBACK_ENABLED = "thumbnail_playback_enabled";
+    private static final String WEB_TRANSCODE_ENABLED = "web_transcode_enabled";
     private static final String SCHEDULED_TASK_ENABLED_PREFIX = "scheduled_task_enabled.";
     private static final String DEFAULT_DANDAN_BASE_URL = "https://api.dandanplay.net";
 
@@ -145,6 +146,7 @@ public class SiteConfigService {
         vo.setSmtpPasswordConfigured(smtpPassword != null && !smtpPassword.isBlank());
 
         vo.setThumbnailPlaybackEnabled(isThumbnailPlaybackEnabled());
+        vo.setWebTranscodeEnabled(isWebTranscodeEnabled());
         
         return vo;
     }
@@ -361,6 +363,9 @@ public class SiteConfigService {
         if (request.getThumbnailPlaybackEnabled() != null) {
             saveOrUpdateConfig(THUMBNAIL_PLAYBACK_ENABLED, String.valueOf(request.getThumbnailPlaybackEnabled()), "生成播放缩略图开关");
         }
+        if (request.getWebTranscodeEnabled() != null) {
+            saveOrUpdateConfig(WEB_TRANSCODE_ENABLED, String.valueOf(request.getWebTranscodeEnabled()), "Web 播放器转码/秒转开关");
+        }
     }
 
     public boolean isRegisterEnabled() {
@@ -475,6 +480,14 @@ public class SiteConfigService {
 
     public boolean isThumbnailPlaybackEnabled() {
         return getBooleanConfig(THUMBNAIL_PLAYBACK_ENABLED, false);
+    }
+
+    /**
+     * Web 播放器是否启用服务端转码/秒转封装（HLS）。
+     * 开启后，浏览器不支持的编码（如 HEVC/FLAC/AC3）会自动转码为 H.264/AAC。
+     */
+    public boolean isWebTranscodeEnabled() {
+        return getBooleanConfig(WEB_TRANSCODE_ENABLED, true);
     }
 
     private boolean getBooleanConfig(String key, boolean defaultValue) {

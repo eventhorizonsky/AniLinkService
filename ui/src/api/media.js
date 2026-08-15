@@ -38,6 +38,9 @@ export const getMetadataProgress = (params) =>
 export const getMatchProgress = (params) =>
   axios.get(`${API_BASE}/media-files/queue/match-progress`, { params }).then((r) => r.data)
 
+export const getMediaPlayInfo = (fileId) =>
+  axios.get(`${API_BASE}/media-files/${fileId}/play-info`).then((r) => r.data)
+
 // ---- 安装向导阶段的媒体库接口（/init 前缀） ----
 
 export const getInitLibraries = () => axios.get(`${API_BASE}/init/media-library`).then((r) => r.data)

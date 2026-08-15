@@ -4,9 +4,12 @@ import { computed, ref } from 'vue'
 import Artplayer from 'artplayer'
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
+import Hls from 'hls.js'
 import { showAppMessage } from '../utils/ui-feedback'
 import { API_BASE, ACCENT_COLOR } from '../utils/constants'
 import { truncateText } from '../utils/episodes'
+import { getMediaPlayInfo } from '../api/media'
+import { resolvePlayMode, canPlayMime } from '../utils/playback'
 
 const MOBILE_VIEWPORT_MAX_WIDTH = 768
 const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
@@ -60,6 +63,8 @@ export function usePlayerCore({
 }) {
   let playerRecreateSeq = 0
   let _mobileTapHandler = null
+  let _hlsInstance = null
+  let _playbackWarnShown = false
   const isDesktopViewport = ref(true)
 
   const showDdplayButton = computed(() => {
@@ -133,6 +138,55 @@ export function usePlayerCore({
     window.location.href = ddplayLink.value
   }
 
+  /**
+   * 根据 play-info 响应决策播放源。
+   * - 有可靠播放方式（direct/remux/mixed/transcode）时按浏览器能力选择；
+   * - 无法可靠播放时（如服务端转码已关闭），仍回退直出原始流，仅通过 warn 提示
+   *   引导用户在播放异常时使用弹弹play，而不是直接失败或跳转。
+   */
+  const resolvePlaySource = (playInfoRes) => {
+    const info = playInfoRes?.code === 200 ? playInfoRes.data : null
+    if (info) {
+      const resolved = resolvePlayMode(info)
+      if (resolved.mode) {
+        return resolved
+      }
+      return {
+        mode: 'direct',
+        url: info.streamUrl || `${API_BASE}/media-files/stream/${getVideoId()}`,
+        isHls: false,
+        degraded: true,
+      }
+    }
+    return {
+      mode: 'direct',
+      url: `${API_BASE}/media-files/stream/${getVideoId()}`,
+      isHls: false,
+    }
+  }
+
+  /**
+   * 降级播放时的 warn 提醒（每个播放实例最多一次）：
+   * - transcode：视频被重编码，画质/音质可能下降
+   * - mixed：仅音频被重编码，音质可能下降
+   * - degraded（直出但浏览器可能不支持）：引导使用弹弹play
+   */
+  const warnDegradedPlayback = (playSource) => {
+    if (_playbackWarnShown || !playSource) return
+    let message = ''
+    if (playSource.mode === 'transcode') {
+      message = '当前视频编码浏览器不支持，已由服务端转码播放，画质/音质可能有所下降'
+    } else if (playSource.mode === 'mixed') {
+      message = '当前音频编码浏览器不支持，音频已由服务端转码播放，音质可能有所下降'
+    } else if (playSource.degraded) {
+      message = '浏览器可能无法正常播放该视频编码，如播放异常可尝试通过弹弹play播放'
+    }
+    if (message) {
+      _playbackWarnShown = true
+      showAppMessage(message, 'warning')
+    }
+  }
+
   const getCurrentPlayableEpisodeIndex = () => {
     const currentEpisodeKey = String(getEpisodeId() || '')
     return getPlayableEpisodes().findIndex((ep) => String(ep.episodeId) === currentEpisodeKey)
@@ -167,7 +221,54 @@ export function usePlayerCore({
     return list[nextIndex]
   }
 
+  const destroyHls = () => {
+    if (_hlsInstance) {
+      try {
+        _hlsInstance.destroy()
+      } catch (error) {
+        console.warn('销毁 HLS 实例失败:', error)
+      }
+      _hlsInstance = null
+    }
+  }
+
+  /**
+   * 为视频元素加载 HLS 转码/秒转流（优先 MSE + hls.js，iOS 回退原生 HLS）。
+   */
+  const attachHlsSource = (url) => {
+    const video = art.value?.video
+    if (!video) {
+      return
+    }
+    if (Hls && typeof Hls.isSupported === 'function' && Hls.isSupported()) {
+      const hls = new Hls({ enableWorker: true })
+      _hlsInstance = hls
+      hls.loadSource(url)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data || !data.fatal) {
+          return
+        }
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hls.startLoad()
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hls.recoverMediaError()
+        } else {
+          console.error('HLS 播放错误:', data)
+          destroyHls()
+          if (art.value?.notice) {
+            art.value.notice.show = '播放失败，可尝试通过弹弹play等外部播放器播放'
+          }
+        }
+      })
+    } else if (canPlayMime('application/vnd.apple.mpegurl')) {
+      video.src = url
+    }
+  }
+
   const destroyPlayerInstance = () => {
+    destroyHls()
+
     if (_mobileTapHandler) {
       const video = art.value?.video
       if (video) video.removeEventListener('click', _mobileTapHandler, true)
@@ -335,8 +436,11 @@ export function usePlayerCore({
       const restoreFullscreenWeb = Boolean(prevArt && prevArt.fullscreenWeb)
       const restoreFullscreen = !restoreFullscreenWeb && Boolean(prevArt && prevArt.fullscreen)
 
-      // 优先获取播放器必需数据：字幕；弹幕改为异步注入，避免阻塞首帧播放
-      const subtitles = await subtitle.fetchSubtitles(targetVideoId)
+      // 优先获取播放器必需数据：字幕 + 播放信息（用于能力决策）；弹幕改为异步注入
+      const [playInfoRes, subtitles] = await Promise.all([
+        getMediaPlayInfo(targetVideoId).catch(() => null),
+        subtitle.fetchSubtitles(targetVideoId),
+      ])
       const routeSelectedTrack = subtitles.find((item) => String(item?.id || '') === String(route.query.subtitleId || '')) || null
       const subtitlesForLibass = subtitles.filter(subtitle.isLibassSubtitleTrack)
       const subtitlesForNative = subtitles.filter(subtitle.isNativeArtplayerSubtitleTrack)
@@ -360,6 +464,11 @@ export function usePlayerCore({
 
       destroyPlayerInstance()
 
+      // 依据浏览器能力决定播放方式（直出 / 秒转封装 / 音频转码 / 全转码）。
+      // 无法可靠播放时也会回退直出原始流（degraded），仅提示引导使用弹弹play。
+      const playSource = resolvePlaySource(playInfoRes)
+      _playbackWarnShown = false
+
       const danmakuOptions = danmaku.buildDanmakuOptions([], mobile)
       const subtitlePlugin = useNativeSubtitle
         ? null
@@ -370,7 +479,7 @@ export function usePlayerCore({
       // 初始化 Artplayer
       art.value = new Artplayer({
         container: artRef.value,
-        url: `${API_BASE}/media-files/stream/${targetVideoId}`,
+        url: playSource.isHls ? '' : playSource.url,
         poster: '',
         volume: 0.5,
         isLive: false,
@@ -435,6 +544,11 @@ export function usePlayerCore({
         return
       }
 
+      // 转码/秒转流走 HLS（MSE/hls.js 或 iOS 原生）
+      if (playSource.isHls) {
+        attachHlsSource(playSource.url)
+      }
+
       // 监听播放器事件
       art.value.on('ready', async () => {
         placeEpisodeControlBeforeScreenshot()
@@ -491,6 +605,8 @@ export function usePlayerCore({
         progress.startProgressSaveTimer()
         // 追番"想看" → 自动升级为"在看"
         upgradeFollowWishToWatching(getAnimeId())
+        // 降级播放（转码/直出但可能不支持）时给出 warn 提醒
+        warnDegradedPlayback(playSource)
       })
 
       art.value.on('pause', () => {
