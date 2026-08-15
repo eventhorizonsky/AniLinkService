@@ -209,13 +209,18 @@ public class MediaTranscodeService {
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
+                log.warn("ffmpeg 探测超时（>5s），判定不可用");
                 return false;
             }
-            return process.exitValue() == 0;
+            boolean available = process.exitValue() == 0;
+            log.info("ffmpeg 探测结果：available={} exitCode={}", available, process.exitValue());
+            return available;
         } catch (IOException e) {
+            log.warn("ffmpeg 探测失败（进程启动异常）：{}", e.getMessage());
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            log.warn("ffmpeg 探测被中断");
             return false;
         }
     }
