@@ -628,7 +628,8 @@ const sizeOptions = [20, 50, 100]
   margin: 0;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 8px;
-  background: rgb(var(--v-theme-surface-variant));
+  background: rgb(var(--v-theme-surface-light));
+  color: rgb(var(--v-theme-on-surface));
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
