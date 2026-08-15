@@ -360,56 +360,97 @@ public class MediaTranscodeService {
     /**
      * 获取供浏览器播放的 HLS 清单内容。
      *
-     * <p>ffmpeg 的清单是随分片产出逐步增长的，期间没有 ENDLIST，浏览器无法一次性获得总时长，
-     * 导致进度条/时长随加载逐步增长。这里利用 ffprobe 已知的源时长合成一份带 ENDLIST 的
-     * VOD 清单：分片条目按 媒体时长/分片时长 预铺完整，已产出的分片沿用其真实 EXTINF 时长，
-     * 未产出的按估算补齐。浏览器因此一开始就知道总时长，可正常拖动 seek（分片接口会等待分片就绪）。</p>
+     * <p>transcode 模式：视频关键帧被强制对齐到分片边界（-force_key_frames），分片时长可以精确预铺，
+     * 因此按源时长合成一份带 ENDLIST 的完整 VOD 清单，浏览器一开始就能得到准确总时长，可正常拖动 seek。</p>
+     *
+     * <p>remux/mixed 模式：分片按源文件关键帧自然切分（-c copy），分片时长与数量无法提前预测，
+     * 按固定分片时长估算会得到错误的总时长，且会引用不存在的分片（进度条总时长虚高、拖到末尾
+     * 等待 404/提前结束）。因此直接透传 ffmpeg 实时清单（EVENT 类型，随分片产出增长），
+     * EXTINF 与总时长始终为真实值。</p>
      */
     public String getManifestContent(Long mediaFileId, PlayMode mode) {
         Path manifest = getManifest(mediaFileId, mode);
-        MediaFile mediaFile = mediaFileService.getMediaFileById(mediaFileId);
-        if (mediaFile == null || mediaFile.getDuration() == null || mediaFile.getDuration() <= 0) {
-            // 时长未知（元数据未提取），退回 ffmpeg 原始渐进式清单
-            try {
-                return Files.readString(manifest, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                throw new IllegalStateException("读取转码清单失败");
+        if (mode == PlayMode.TRANSCODE) {
+            MediaFile mediaFile = mediaFileService.getMediaFileById(mediaFileId);
+            if (mediaFile != null && mediaFile.getDuration() != null && mediaFile.getDuration() > 0) {
+                return synthesizePlaylist(mediaFile, mode, manifest);
             }
         }
-        return synthesizePlaylist(mediaFile, mode, manifest);
+        return eventizePlaylist(manifest);
     }
 
     /**
      * 依据源时长合成完整 VOD 清单（含 ENDLIST）。
+     * 仅用于 transcode 模式：已产出的分片沿用真实 EXTINF，未产出的按分片时长估算，
+     * 最后一段按剩余时长补齐，保证清单总时长与源时长精确一致。
      */
     private String synthesizePlaylist(MediaFile mediaFile, PlayMode mode, Path manifest) {
         double durationSec = mediaFile.getDuration() / 1000.0;
         int segSec = Math.max(2, segmentSeconds);
-        int total = (int) Math.max(1, Math.ceil(durationSec / segSec));
         List<Double> produced = parseProducedDurations(manifest);
+        int producedCount = produced.size();
+        // 预估段数；若已产出分片超过预估（源流实际时长略长于元数据），以实际为准，避免遗漏末尾真实分片
+        int total = (int) Math.max(1, Math.max(Math.ceil(durationSec / segSec), producedCount));
+
+        double maxDur = segSec;
+        for (double d : produced) {
+            if (d > maxDur) {
+                maxDur = d;
+            }
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("#EXTM3U\n");
         sb.append("#EXT-X-VERSION:6\n");
-        sb.append("#EXT-X-TARGETDURATION:").append(segSec).append("\n");
+        sb.append("#EXT-X-TARGETDURATION:").append((long) Math.ceil(maxDur)).append("\n");
         sb.append("#EXT-X-MEDIA-SEQUENCE:0\n");
         sb.append("#EXT-X-PLAYLIST-TYPE:VOD\n");
         sb.append("#EXT-X-INDEPENDENT-SEGMENTS\n");
 
         String base = mode.name().toLowerCase(Locale.ROOT) + "/segments/";
+        double accumulated = 0;
         for (int i = 0; i < total; i++) {
             double dur;
-            if (i < produced.size()) {
+            if (i < producedCount) {
                 dur = produced.get(i);
             } else if (i == total - 1) {
-                dur = Math.max(0.1, durationSec - (total - 1) * segSec);
+                // 最后一段按剩余时长补齐，使清单总时长与源时长精确一致
+                dur = Math.max(0.1, durationSec - accumulated);
             } else {
                 dur = segSec;
             }
+            accumulated += dur;
             sb.append(String.format(Locale.ROOT, "#EXTINF:%.6f,\n", dur));
             sb.append(base).append(String.format(Locale.ROOT, "seg_%05d.ts", i)).append("\n");
         }
         sb.append("#EXT-X-ENDLIST\n");
+        return sb.toString();
+    }
+
+    /**
+     * 将 ffmpeg 实时清单转换为 EVENT 类型的增长清单透传：
+     * 保留真实 EXTINF 与分片引用（-hls_base_url 已指向本模式的分片接口），
+     * 补充 #EXT-X-PLAYLIST-TYPE:EVENT 使 hls.js 持续刷新清单、总时长随分片产出逐步精确到位；
+     * ffmpeg 完成时写入的 ENDLIST 原样保留，hls.js 据此停止增长并正常触发播放结束。
+     */
+    private String eventizePlaylist(Path manifest) {
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(manifest, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException("读取转码清单失败");
+        }
+        StringBuilder sb = new StringBuilder();
+        boolean typeSet = false;
+        for (String line : lines) {
+            if (!typeSet && line.startsWith("#EXTM3U")) {
+                sb.append(line).append('\n');
+                sb.append("#EXT-X-PLAYLIST-TYPE:EVENT\n");
+                typeSet = true;
+                continue;
+            }
+            sb.append(line).append('\n');
+        }
         return sb.toString();
     }
 

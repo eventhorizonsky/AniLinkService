@@ -85,7 +85,7 @@ public class MediaPlayController {
         return ApiResponseVO.success(builder.build());
     }
 
-    @Operation(summary = "获取转码/秒转 HLS 清单", description = "按需启动 ffmpeg 会话并返回 m3u8 清单；清单为按源时长合成的完整 VOD 清单（含 ENDLIST），浏览器可一次性获得总时长。首次请求会等待首个分片就绪")
+    @Operation(summary = "获取转码/秒转 HLS 清单", description = "按需启动 ffmpeg 会话并返回 m3u8 清单；transcode 模式为按源时长合成的完整 VOD 清单（含 ENDLIST），remux/mixed 模式为随分片产出增长的 EVENT 清单，总时长均为真实值。首次请求会等待首个分片就绪")
     @GetMapping("/{id}/transcode/index.m3u8")
     public ResponseEntity<?> getTranscodeManifest(
             @Parameter(description = "媒体文件ID")
