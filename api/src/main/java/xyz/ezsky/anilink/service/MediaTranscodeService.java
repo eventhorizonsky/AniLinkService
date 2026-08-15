@@ -22,8 +22,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
@@ -111,6 +114,12 @@ public class MediaTranscodeService {
     private MediaFileService mediaFileService;
 
     private final Map<String, TranscodeSession> sessions = new ConcurrentHashMap<>();
+
+    /** 单飞串行化：key → 正在启动中的会话（含 Future），确保同 key 并发请求只有一个线程在拉 ffmpeg */
+    private final Map<String, CompletableFuture<TranscodeSession>> pendingStarts = new ConcurrentHashMap<>();
+    /** 并发上限的原子计数：已启动但尚未确认运行中的会话数（用于锁外启动时精确统计） */
+    private final AtomicInteger inFlightStarts = new AtomicInteger();
+
     private volatile Boolean ffmpegAvailable;
     /** ffmpeg 探测失败时间戳，用于失败后间隔重试，避免一次冷启动超时永久禁用转码 */
     private volatile long ffmpegProbeFailedAt = Long.MIN_VALUE;
@@ -247,6 +256,8 @@ public class MediaTranscodeService {
         final Path dir;
         final Path input;
         final Path segmentPattern;
+        /** 源媒体时长（秒），会话启动时从元数据读取；供清单合成使用，避免每次请求查库 */
+        final double durationSec;
         volatile Process process;
         volatile Thread drainThread;
         volatile long lastAccess = System.currentTimeMillis();
@@ -259,11 +270,12 @@ public class MediaTranscodeService {
         /** remux/mixed 关键帧边界（秒，各分片起始时间）；null=尚未探测/不可用 */
         volatile List<Double> boundaries;
 
-        TranscodeSession(PlayMode mode, Path dir, Path input, Path segmentPattern) {
+        TranscodeSession(PlayMode mode, Path dir, Path input, Path segmentPattern, double durationSec) {
             this.mode = mode;
             this.dir = dir;
             this.input = input;
             this.segmentPattern = segmentPattern;
+            this.durationSec = durationSec;
         }
     }
 
@@ -458,33 +470,90 @@ public class MediaTranscodeService {
 
     /**
      * 获取（必要时启动/重启）转码会话。
-     * 已存在但进程异常退出的会话会被清理重建，避免复用陈旧清单导致分片永久缺失。
+     * 死会话的检测与清理统一移入单飞启动任务内执行，保证同一 key 同一时刻至多一个线程
+     * 在清理旧会话/启动新会话，避免并发请求误删正在写入的新会话目录导致分片永久缺失。
      */
     private TranscodeSession acquireSession(String key, Long mediaFileId, PlayMode mode) {
-        synchronized (this) {
-            TranscodeSession session = sessions.get(key);
-            if (session != null && isSessionDead(session)) {
-                log.warn("转码会话已异常退出，清理并重建：{}", key);
-                sessions.remove(key);
-                killSession(session);
-                session = null;
+        // 快速路径：现有可用会话直接复用（无锁），播放热路径不再触碰全局锁与数据库
+        TranscodeSession session = sessions.get(key);
+        if (session != null && !isSessionDead(session)) {
+            return session;
+        }
+        // 单飞（single-flight）：同一 key 的并发请求只允许一个线程真正执行清理+启动逻辑，
+        // 其余线程等待同一 Future，避免同 key 竞态双启动导致两个 ffmpeg 进程写同一目录。
+        CompletableFuture<TranscodeSession> future = pendingStarts.computeIfAbsent(key, k -> startSessionAsync(key, mediaFileId, mode));
+        try {
+            TranscodeSession result = future.get();
+            if (result == null) {
+                throw new IllegalStateException("转码会话启动失败");
             }
-            if (session == null) {
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("转码会话启动被中断", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new IllegalStateException("转码会话启动失败", cause);
+        }
+    }
+
+    /**
+     * 单飞启动任务：由 computeIfAbsent 的创建者线程执行（其余线程等待同一 Future）。
+     * 完成（成功/失败）后移除 pendingStarts 占位，后续请求可重新进入快速路径或重建新会话。
+     * 永不抛出异常：任何失败都通过 Future 的异常完成传递给等待者。
+     */
+    private CompletableFuture<TranscodeSession> startSessionAsync(String key, Long mediaFileId, PlayMode mode) {
+        CompletableFuture<TranscodeSession> future = new CompletableFuture<>();
+        boolean reserved = false;
+        try {
+            // 并发上限校验 + 死会话清理 + 启动占位计数，仅短暂持锁；进程启动放在锁外避免请求相互阻塞
+            synchronized (this) {
+                TranscodeSession existing = sessions.get(key);
+                if (existing != null && !isSessionDead(existing)) {
+                    // 快速路径读取后已有其他线程完成重建，直接复用，不再重复启动
+                    future.complete(existing);
+                    return future;
+                }
+                if (existing != null) {
+                    log.warn("转码会话已异常退出，清理并重建：{}", key);
+                    sessions.remove(key, existing);
+                    killSession(existing);
+                }
                 long runningCount = sessions.values().stream()
                         .filter(s -> s.process.isAlive())
-                        .count();
+                        .count() + inFlightStarts.get();
                 if (runningCount >= maxConcurrent) {
                     throw new IllegalStateException("转码任务并发已达上限(" + maxConcurrent + ")，请稍后再试");
                 }
-                session = startSession(mediaFileId, mode);
-                if (session != null) {
-                    sessions.put(key, session);
-                }
+                inFlightStarts.incrementAndGet();
+                reserved = true;
             }
-            if (session == null) {
-                throw new IllegalStateException("转码会话启动失败");
+            // 进程启动（含首次 DB 读取源文件信息）在锁外执行
+            TranscodeSession created = startSession(mediaFileId, mode);
+            if (created == null) {
+                future.complete(null);
+                return future;
             }
-            return session;
+            TranscodeSession existing = sessions.putIfAbsent(key, created);
+            if (existing != null) {
+                // 极端竞态兜底：已有会话，仅销毁新进程，不删共享目录（同一目录可能已被复用）
+                killProcess(created.process);
+                future.complete(existing);
+                return future;
+            }
+            future.complete(created);
+            return future;
+        } catch (Throwable t) {
+            future.completeExceptionally(t);
+            return future;
+        } finally {
+            if (reserved) {
+                inFlightStarts.decrementAndGet();
+            }
+            pendingStarts.remove(key, future);
         }
     }
 
@@ -523,19 +592,18 @@ public class MediaTranscodeService {
         Path manifest = getManifest(mediaFileId, mode);
         String key = mode.name() + "/" + mediaFileId;
         TranscodeSession session = sessions.get(key);
-        MediaFile mediaFile = mediaFileService.getMediaFileById(mediaFileId);
-        boolean hasDuration = mediaFile != null && mediaFile.getDuration() != null && mediaFile.getDuration() > 0;
+        double durationSec = session == null ? 0 : session.durationSec;
 
         if (mode == PlayMode.TRANSCODE) {
-            if (hasDuration) {
-                return synthesizeTranscodePlaylist(mediaFile, manifest, session == null ? 0 : session.anchorIdx);
+            if (durationSec > 0) {
+                return synthesizeTranscodePlaylist(durationSec, manifest, session == null ? 0 : session.anchorIdx);
             }
             return eventizePlaylist(manifest);
         }
 
         List<Double> boundaries = session == null ? null : session.boundaries;
-        if (hasDuration && boundaries != null && !boundaries.isEmpty()) {
-            return synthesizeCopyPlaylist(mediaFile, mode, boundaries);
+        if (durationSec > 0 && boundaries != null && !boundaries.isEmpty()) {
+            return synthesizeCopyPlaylist(durationSec, mode, boundaries);
         }
         return eventizePlaylist(manifest);
     }
@@ -546,8 +614,7 @@ public class MediaTranscodeService {
      * 保证清单总时长与源时长精确一致。anchorIdx 之后的分片由当前（可能已重锚的）
      * ffmpeg 进程产出，其 EXTINF 从 ffmpeg 实时清单按偏移映射。
      */
-    private String synthesizeTranscodePlaylist(MediaFile mediaFile, Path manifest, int anchorIdx) {
-        double durationSec = mediaFile.getDuration() / 1000.0;
+    private String synthesizeTranscodePlaylist(double durationSec, Path manifest, int anchorIdx) {
         int segSec = Math.max(2, segmentSeconds);
         List<Double> produced = parseProducedDurations(manifest);
         int producedStart = anchorIdx;
@@ -594,8 +661,7 @@ public class MediaTranscodeService {
      * 依据关键帧边界序列合成完整 VOD 清单（含 ENDLIST），用于 remux/mixed 模式。
      * boundaries 为各分片的起始时间（秒），分片时长 = 下一边界 - 本边界，最后一段到源时长。
      */
-    private String synthesizeCopyPlaylist(MediaFile mediaFile, PlayMode mode, List<Double> boundaries) {
-        double durationSec = mediaFile.getDuration() / 1000.0;
+    private String synthesizeCopyPlaylist(double durationSec, PlayMode mode, List<Double> boundaries) {
         int n = boundaries.size();
         double maxDur = Math.max(2, segmentSeconds);
         for (int i = 0; i < n; i++) {
@@ -796,7 +862,8 @@ public class MediaTranscodeService {
             Files.createDirectories(segmentsDir);
             Path segmentPattern = segmentsDir.resolve("seg_%05d.ts");
 
-            TranscodeSession session = new TranscodeSession(mode, dir, input, segmentPattern);
+            double durationSec = mediaFile.getDuration() == null ? 0 : mediaFile.getDuration() / 1000.0;
+            TranscodeSession session = new TranscodeSession(mode, dir, input, segmentPattern, durationSec);
             if (!startFfmpegProcess(session, mediaFileId)) {
                 return null;
             }

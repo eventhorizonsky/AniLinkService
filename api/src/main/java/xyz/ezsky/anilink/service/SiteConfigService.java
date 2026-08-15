@@ -75,6 +75,8 @@ public class SiteConfigService {
     // 简单内存缓存，避免每次请求都访问数据库
     private volatile String cachedDandanAppId;
     private volatile String cachedDandanAppSecret;
+    /** 转码开关缓存：播放热路径每次请求都会读取，必须缓存避免扫描期连接池饥饿导致卡死 */
+    private volatile Boolean cachedWebTranscodeEnabled;
     
     /**
      * 站点配置中的对外访问 URL（用于 MCP、远程访问等拼接链接；可能为空）
@@ -487,7 +489,13 @@ public class SiteConfigService {
      * 开启后，浏览器不支持的编码（如 HEVC/FLAC/AC3）会自动转码为 H.264/AAC。
      */
     public boolean isWebTranscodeEnabled() {
-        return getBooleanConfig(WEB_TRANSCODE_ENABLED, true);
+        Boolean cached = cachedWebTranscodeEnabled;
+        if (cached != null) {
+            return cached;
+        }
+        boolean value = getBooleanConfig(WEB_TRANSCODE_ENABLED, true);
+        cachedWebTranscodeEnabled = value;
+        return value;
     }
 
     private boolean getBooleanConfig(String key, boolean defaultValue) {
@@ -537,6 +545,9 @@ public class SiteConfigService {
      * 保存或更新配置
      */
     private void saveOrUpdateConfig(String key, String value, String description) {
+        if (WEB_TRANSCODE_ENABLED.equals(key)) {
+            cachedWebTranscodeEnabled = null;
+        }
         Optional<SiteConfig> configOpt = siteConfigRepository.findByConfigKey(key);
         
         if (configOpt.isPresent()) {
