@@ -1,5 +1,6 @@
 package xyz.ezsky.anilink.service;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -81,6 +82,27 @@ public class MediaTranscodeService {
 
     private final Map<String, TranscodeSession> sessions = new ConcurrentHashMap<>();
     private volatile Boolean ffmpegAvailable;
+    /** ffmpeg 探测失败时间戳，用于失败后间隔重试，避免一次冷启动超时永久禁用转码 */
+    private volatile long ffmpegProbeFailedAt = Long.MIN_VALUE;
+
+    @Value("${media.transcode.probe-timeout-seconds:30}")
+    private long probeTimeoutSeconds;
+
+    /**
+     * 启动时后台预热 ffmpeg 探测，避免首个播放请求被慢速冷启动阻塞。
+     */
+    @PostConstruct
+    public void warmupFfmpegProbe() {
+        Thread warmup = new Thread(() -> {
+            try {
+                isFfmpegAvailable();
+            } catch (Exception e) {
+                log.warn("ffmpeg 预热探测异常：{}", e.getMessage());
+            }
+        }, "transcode-ffmpeg-probe-warmup");
+        warmup.setDaemon(true);
+        warmup.start();
+    }
 
     /**
      * 转码/秒转会话
@@ -188,28 +210,44 @@ public class MediaTranscodeService {
     }
 
     /**
-     * 探测 ffmpeg 是否可用（结果缓存）。
+     * 探测 ffmpeg 是否可用（成功结果缓存）。
+     * 失败不长期缓存：间隔一定时间后自动重试，避免冷启动慢速环境（如 NAS/QEMU）
+     * 一次超时后永久禁用转码。
      */
     public boolean isFfmpegAvailable() {
-        if (ffmpegAvailable == null) {
-            synchronized (this) {
-                if (ffmpegAvailable == null) {
-                    ffmpegAvailable = probeFfmpeg();
-                }
-            }
+        if (ffmpegAvailable != null) {
+            return ffmpegAvailable;
         }
-        return ffmpegAvailable;
+        if (ffmpegProbeFailedAt != Long.MIN_VALUE
+                && System.currentTimeMillis() - ffmpegProbeFailedAt < FFMPEG_PROBE_RETRY_MS) {
+            return false;
+        }
+        synchronized (this) {
+            if (ffmpegAvailable != null) {
+                return ffmpegAvailable;
+            }
+            boolean result = probeFfmpeg();
+            if (result) {
+                ffmpegAvailable = true;
+                ffmpegProbeFailedAt = Long.MIN_VALUE;
+            } else {
+                ffmpegProbeFailedAt = System.currentTimeMillis();
+            }
+            return result;
+        }
     }
+
+    private static final long FFMPEG_PROBE_RETRY_MS = 10 * 60 * 1000L;
 
     private boolean probeFfmpeg() {
         try {
             Process process = new ProcessBuilder("ffmpeg", "-version")
                     .redirectErrorStream(true)
                     .start();
-            boolean finished = process.waitFor(5, TimeUnit.SECONDS);
+            boolean finished = process.waitFor(Math.max(5, probeTimeoutSeconds), TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                log.warn("ffmpeg 探测超时（>5s），判定不可用");
+                log.warn("ffmpeg 探测超时（>{}s），判定不可用", probeTimeoutSeconds);
                 return false;
             }
             boolean available = process.exitValue() == 0;
