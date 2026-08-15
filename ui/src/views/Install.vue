@@ -5,8 +5,8 @@ import InstallStep1 from '../components/InstallStep1.vue'
 import InstallStep2 from '../components/InstallStep2.vue'
 import InstallStep3 from '../components/InstallStep3.vue'
 import { initSiteConfig } from '../api/site'
+import { DEFAULT_DANDAN_BASE_URL } from '../utils/constants'
 
-const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 const router = useRouter()
 
 const currentStep = ref(1)

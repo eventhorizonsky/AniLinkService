@@ -51,6 +51,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { UiFeedbackEvents } from './utils/ui-feedback'
 import { getSiteConfig } from './api/site'
+import { readInstalled, writeInstalled, writeSiteConfig } from './utils/siteConfig'
 
 const router = useRouter()
 const checkingInstall = ref(true)
@@ -77,18 +78,14 @@ const checkInstallStatus = async () => {
     const isInstalled = res?.data?.installed === true
 
     if (isInstalled) {
-      localStorage.setItem('installed', 'true')
-      try {
-        localStorage.setItem('siteConfig', JSON.stringify(res.data))
-      } catch (e) {
-        console.error('保存配置失败:', e)
-      }
+      writeInstalled(true)
+      writeSiteConfig(res.data)
     } else {
-      localStorage.removeItem('installed')
+      writeInstalled(false)
     }
   } catch (error) {
     console.error('检查安装状态失败:', error)
-    localStorage.removeItem('installed')
+    writeInstalled(false)
   } finally {
     checkingInstall.value = false
   }
@@ -134,6 +131,11 @@ onMounted(async () => {
   }
 
   // 检查本地缓存的状态
+  if (readInstalled()) {
+    checkingInstall.value = false
+    return
+  }
+  // 兼容旧缓存为字符串 'false' 时也直接跳过服务器请求
   const stored = localStorage.getItem('installed')
   if (stored !== null) {
     checkingInstall.value = false

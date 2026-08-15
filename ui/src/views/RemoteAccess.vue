@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { showAppMessage } from '../utils/ui-feedback'
+import { copyText } from '../utils/clipboard'
 import { getRemoteCredential, regenerateRemoteCredential } from '../api/remoteAccess'
 
 const loading = ref(false)
@@ -109,24 +110,16 @@ const regenerateToken = async () => {
 }
 
 const copyPayload = async () => {
+  copyingPayload.value = true
   try {
-    copyingPayload.value = true
-    await navigator.clipboard.writeText(qrPayload.value)
-    showAppMessage('二维码原始数据已复制', 'success')
-  } catch (error) {
-    showAppMessage('复制失败，请手动复制', 'error')
+    await copyText(qrPayload.value, '二维码原始数据已复制')
   } finally {
     copyingPayload.value = false
   }
 }
 
 const copyToken = async () => {
-  try {
-    await navigator.clipboard.writeText(credential.value.remoteAccessToken || '')
-    showAppMessage('远程密钥已复制', 'success')
-  } catch (e) {
-    showAppMessage('复制失败', 'error')
-  }
+  await copyText(credential.value.remoteAccessToken || '', '远程密钥已复制')
 }
 
 watch(qrPayload, () => {

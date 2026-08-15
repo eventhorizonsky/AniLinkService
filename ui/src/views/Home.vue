@@ -5,7 +5,7 @@ import { getTrendingHot, getTrendingNewAnime } from '../api/anime'
 import { getActiveFollows } from '../api/follows'
 import { followStatusLabel } from '../utils/followStatus'
 import { DEFAULT_POSTER } from '../utils/constants'
-import { formatScore } from '../utils/format'
+import { formatScore, formatCompactNumber } from '../utils/format'
 import { useAuth } from '../composables/useAuth'
 import AnimeCard from '../components/AnimeCard.vue'
 
@@ -101,14 +101,7 @@ watch(() => followList.value.length, () => {
 })
 
 // ===================== Formatting =====================
-const fmtHeat = (v) => {
-  if (v == null || v === '') return ''
-  const n = Number(v)
-  if (Number.isNaN(n)) return String(v)
-  if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + '亿'
-  if (n >= 1e4) return (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万'
-  return String(n)
-}
+const fmtHeat = (v) => formatCompactNumber(v, '')
 const genreLabel = (a, kind) => {
   if (kind === 'hot') return '本周热播'
   if (kind === 'new') return '热门新番'

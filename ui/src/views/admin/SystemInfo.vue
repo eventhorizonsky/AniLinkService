@@ -1,13 +1,15 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { askAppConfirm, showAppMessage } from '../../utils/ui-feedback'
 import { getSystemDashboard, getSystemInfo, triggerLibraryRematch } from '../../api/system'
+import { formatUptime, formatUptimeShort } from '../../utils/format'
 
 const loading = ref(false)
 const rematching = ref(false)
 const stats = ref(null)
 const systemInfo = ref(null)
 const updatedAt = ref('')
+let refreshTimer = null
 
 const fetchDashboard = async () => {
   loading.value = true
@@ -65,8 +67,9 @@ const triggerRematch = async () => {
     const res = await triggerLibraryRematch()
     if (res?.code === 200) {
       showAppMessage(res?.msg || '已触发重新识别任务', 'success')
-      // 稍后刷新，等待任务更新统计
-      setTimeout(() => fetchDashboard(), 3000)
+      // 稍后刷新，等待任务更新统计（保存句柄以便卸载时清理）
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => fetchDashboard(), 3000)
     } else {
       showAppMessage(res?.msg || '触发失败', 'error')
     }
@@ -97,30 +100,6 @@ const splitBytes = (bytes) => {
     if (v < 1024) break
   }
   return { value: v >= 100 ? v.toFixed(0) : v.toFixed(1), unit: u }
-}
-
-const formatUptime = (seconds) => {
-  if (seconds == null) return '-'
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  let text = ''
-  if (days > 0) text += `${days} 天 `
-  if (hours > 0 || days > 0) text += `${hours} 小时 `
-  text += `${minutes} 分钟`
-  return text
-}
-
-const formatUptimeShort = (seconds) => {
-  if (seconds == null) return '-'
-  const d = Math.floor(seconds / 86400)
-  const h = Math.floor((seconds % 86400) / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (d > 0) return `${d}d ${h}h`
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
-  return `${s}s`
 }
 
 const hasUnmatched = computed(() => Number(stats.value?.unmatchedCount) > 0)
@@ -180,6 +159,11 @@ const osText = computed(() => {
 
 onMounted(() => {
   refreshAll()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(refreshTimer)
+  refreshTimer = null
 })
 </script>
 

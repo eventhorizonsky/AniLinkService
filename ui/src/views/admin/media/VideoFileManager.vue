@@ -1,14 +1,14 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
-import { formatFileSize } from '../../../utils/format'
+import { formatFileSize, formatDurationHuman } from '../../../utils/format'
 import { getMatchStatusMeta } from '../../../utils/mediaMatchStatus'
 import { getLibraries, getMediaFiles, removeMediaFile, reprocessMediaFileMetadata } from '../../../api/media'
+import { useServerPagination } from '../../../composables/useServerPagination'
 
 const mediaFiles = ref([])
-const loading = ref(false)
 const detailDialog = ref(false)
 const selectedLibraryId = ref(null)
 const searchKeyword = ref('')
@@ -19,14 +19,58 @@ const rematchDialog = ref(false)
 const rematchTargetFile = ref(null)
 const subtitleDialog = ref(false)
 const selectedFileForSubtitle = ref(null)
+const selectedFile = ref(null)
+let refreshTimer = null
 
-const pagination = ref({
-  page: 1,
-  itemsPerPage: 10,
-  totalItems: 1
+const {
+  page,
+  pageSize,
+  totalElements,
+  pageCount,
+  loading,
+  onOptionsChange,
+  fetchPage
+} = useServerPagination({
+  pageSize: 10,
+  fetchFn: async (query) => {
+    try {
+      const params = {
+        page: query.page,
+        pageSize: query.pageSize
+      }
+      if (selectedLibraryId.value) {
+        params.libraryId = selectedLibraryId.value
+      }
+      if (searchKeyword.value.trim()) {
+        params.keyword = searchKeyword.value.trim()
+      }
+      if (matchedFilter.value !== null) {
+        params.matched = matchedFilter.value
+      }
+
+      const res = await getMediaFiles(params)
+      if (res?.code === 200 && res?.data) {
+        mediaFiles.value = res.data.content || []
+      }
+      return res
+    } catch (error) {
+      console.error('获取媒体文件失败:', error)
+      return null
+    }
+  }
 })
 
-const selectedFile = ref(null)
+watch([page, pageSize], () => {
+  fetchPage()
+})
+
+const reloadFromFirstPage = () => {
+  if (page.value === 1) {
+    fetchPage()
+  } else {
+    page.value = 1
+  }
+}
 
 const headers = [
   { title: '文件名', key: 'fileName', width: '30%' },
@@ -50,37 +94,7 @@ const fetchLibraries = async () => {
   }
 }
 
-// 获取媒体文件列表
-const fetchMediaFiles = async (pageNum = 1) => {
-  loading.value = true
-  try {
-    const params = {
-      page: pageNum - 1,  // 后端page从0开始
-      pageSize: pagination.value.itemsPerPage
-    }
-    if (selectedLibraryId.value) {
-      params.libraryId = selectedLibraryId.value
-    }
-    if (searchKeyword.value.trim()) {
-      params.keyword = searchKeyword.value.trim()
-    }
-    if (matchedFilter.value !== null) {
-      params.matched = matchedFilter.value
-    }
-
-    const res = await getMediaFiles(params)
-    if (res?.code === 200 && res?.data) {
-      mediaFiles.value = res.data.content || []
-      pagination.value.totalItems = res.data.totalElements || 0
-      pagination.value.page = pageNum
-    }
-  } catch (error) {
-    console.error('获取媒体文件失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
+// 打开重新匹配弹窗
 const openRematchDialog = (file) => {
   rematchTargetFile.value = file
   rematchDialog.value = true
@@ -92,7 +106,7 @@ const closeRematchDialog = () => {
 }
 
 const handleRematchApplied = async () => {
-  await fetchMediaFiles(pagination.value.page)
+  await fetchPage()
 }
 
 const openSubtitleManager = (file) => {
@@ -127,8 +141,7 @@ const deleteFile = async (fileId, deletePhysicalFile = false) => {
     const res = await removeMediaFile(fileId, { deleteFile: deletePhysicalFile })
     if (res?.code === 200) {
       showAppMessage('删除成功', 'success')
-      pagination.value.page = 1
-      await fetchMediaFiles(1)
+      reloadFromFirstPage()
     } else {
       showAppMessage(res?.msg || '删除失败', 'error')
     }
@@ -160,9 +173,10 @@ const reprocessMetadata = async (libraryId) => {
     const res = await reprocessMediaFileMetadata(libraryId)
     if (res?.code === 200) {
       showAppMessage('已提交重新获取任务', 'success')
-      // 延迟刷新文件列表，等待后台任务状态更新
-      setTimeout(() => {
-        fetchMediaFiles(1)
+      // 延迟刷新文件列表，等待后台任务状态更新（保存句柄以便卸载时清理）
+      clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => {
+        reloadFromFirstPage()
       }, 5000)
     } else {
       showAppMessage(res?.msg || '提交任务失败', 'error')
@@ -173,19 +187,10 @@ const reprocessMetadata = async (libraryId) => {
     reprocessingLibraryId.value = null
   }
 }
-
-// 格式化时长（此处为 “2h 3m 4s” 风格，与 format.js 的 H:MM:SS 不同，保留）
-const formatDuration = (ms) => {
-  if (!ms) return '-'
-  const seconds = Math.floor(ms / 1000)
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${secs}s`
-  }
-  return `${minutes}m ${secs}s`
-}
+onBeforeUnmount(() => {
+  clearTimeout(refreshTimer)
+  refreshTimer = null
+})
 
 // 获取分辨率
 const getResolution = (file) => {
@@ -197,44 +202,23 @@ const getResolution = (file) => {
 
 // 库选择变化
 const handleLibraryChange = () => {
-  pagination.value.page = 1
-  fetchMediaFiles(1)
+  reloadFromFirstPage()
 }
 
 const handleFilterSearch = () => {
-  pagination.value.page = 1
-  fetchMediaFiles(1)
+  reloadFromFirstPage()
 }
 
 const resetFilters = () => {
   searchKeyword.value = ''
   matchedFilter.value = null
   selectedLibraryId.value = null
-  pagination.value.page = 1
-  fetchMediaFiles(1)
-}
-
-// 页码或每页大小变化
-const onTableOptionsChange = (options) => {
-  const page = options.page || 1
-  const pageSize = options.itemsPerPage || 20
-  
-  // 如果每页大小改变，重置到第一页
-  if (pageSize !== pagination.value.itemsPerPage) {
-    pagination.value.itemsPerPage = pageSize
-    fetchMediaFiles(1)
-  } else {
-    // 只改变页码
-    pagination.value.page = page
-    pagination.value.itemsPerPage = pageSize
-    fetchMediaFiles(page)
-  }
+  reloadFromFirstPage()
 }
 
 onMounted(() => {
-  pagination.value.page = 1
   fetchLibraries()
-  fetchMediaFiles(1)
+  fetchPage()
 })
 </script>
 
@@ -243,7 +227,7 @@ onMounted(() => {
     <!-- 操作工具栏 -->
     <v-card class="mb-4">
       <v-card-title class="d-flex align-center ga-2">
-        <i class="mdi mdi-file-video-outline" style="color: #c45d2b;"></i>
+        <i class="mdi mdi-file-video-outline" style="color: var(--al-accent);"></i>
         文件搜索
       </v-card-title>
       <v-card-text class="pa-4">
@@ -319,11 +303,12 @@ onMounted(() => {
           :headers="headers"
           :items="mediaFiles"
           :loading="loading"
-          :items-per-page="pagination.itemsPerPage"
-          :items-length="pagination.totalItems"
+          v-model:page="page"
+          v-model:items-per-page="pageSize"
+          :items-length="totalElements"
           density="compact"
           class="elevation-0"
-          @update:options="onTableOptionsChange"
+          @update:options="onOptionsChange"
         >
 
           <template v-slot:item.size="{ item }">
@@ -479,13 +464,12 @@ onMounted(() => {
           </v-card>
 
           <div
-            v-if="pagination.totalItems > pagination.itemsPerPage"
+            v-if="totalElements > pageSize"
             class="d-flex justify-center mt-2"
           >
             <v-pagination
-              v-model="pagination.page"
-              :length="Math.max(1, Math.ceil(pagination.totalItems / pagination.itemsPerPage))"
-              @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
+              v-model="page"
+              :length="pageCount"
             />
           </div>
         </template>
@@ -531,7 +515,7 @@ onMounted(() => {
                 </v-list-item>
                 <v-list-item>
                   <v-list-item-title class="text-caption text-grey">时长</v-list-item-title>
-                  <v-list-item-subtitle>{{ formatDuration(selectedFile.duration) }}</v-list-item-subtitle>
+                  <v-list-item-subtitle>{{ formatDurationHuman(selectedFile.duration) }}</v-list-item-subtitle>
                 </v-list-item>
                 <v-list-item>
                   <v-list-item-title class="text-caption text-grey">MD5 哈希</v-list-item-title>

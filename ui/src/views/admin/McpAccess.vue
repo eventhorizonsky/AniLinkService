@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { copyText as copyTextUtil } from '../../utils/clipboard'
 import { getMcpConfig, regenerateMcpConfig } from '../../api/system'
 
 const loading = ref(false)
@@ -26,15 +27,7 @@ const fetchConfig = async () => {
   }
 }
 
-const copyText = async (text, label) => {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    showAppMessage(`${label} 已复制`)
-  } catch {
-    showAppMessage('复制失败，请手动选择文本复制')
-  }
-}
+const copyText = (text, label) => copyTextUtil(text, `${label} 已复制`)
 
 const doRegenerate = async () => {
   confirmRegen.value = false

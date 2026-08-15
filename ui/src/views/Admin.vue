@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, defineAsyncComponent, provide } from 'vue'
+import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
@@ -103,8 +103,6 @@ const handleSelectMenu = (id) => {
   selectedItem.value = id
   if (isMobile.value) drawer.value = false
 }
-
-provide('navigateTo', handleSelectMenu)
 
 onMounted(() => {
   checkLoginStatus()

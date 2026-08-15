@@ -1,18 +1,75 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
 import { formatFileSize } from '../../../utils/format'
 import { getSubtitleList, setSubtitleOffset, deleteSubtitle, getSubtitleDownloadUrl } from '../../../api/subtitle'
+import { useServerPagination } from '../../../composables/useServerPagination'
 
 const subtitles = ref([])
-const loading = ref(false)
 const searchKeyword = ref('')
 const sourceType = ref(null)
-const pagination = ref({
-  page: 1,
-  itemsPerPage: 10,
-  totalItems: 0
+
+const {
+  page,
+  pageSize,
+  totalElements,
+  pageCount,
+  loading,
+  onOptionsChange,
+  fetchPage
+} = useServerPagination({
+  pageSize: 10,
+  fetchFn: async (query) => {
+    try {
+      const params = {
+        page: query.page,
+        pageSize: query.pageSize
+      }
+      if (searchKeyword.value.trim()) {
+        params.keyword = searchKeyword.value.trim()
+      }
+      if (sourceType.value) {
+        params.sourceType = sourceType.value
+      }
+
+      const res = await getSubtitleList(params)
+      if (res?.code === 200 && res?.data) {
+        subtitles.value = res.data.content || []
+
+        const current = Number(res.data.currentPage || 0) + 1
+        if (current !== page.value) {
+          page.value = current
+        }
+      }
+      return res
+    } catch (error) {
+      showAppMessage('获取字幕列表失败: ' + (error.response?.data?.msg || error.message), 'error')
+      return null
+    }
+  }
 })
+
+watch([page, pageSize], () => {
+  fetchPage()
+})
+
+const reloadFromFirstPage = () => {
+  if (page.value === 1) {
+    fetchPage()
+  } else {
+    page.value = 1
+  }
+}
+
+const handleSearch = () => {
+  reloadFromFirstPage()
+}
+
+const resetFilters = () => {
+  searchKeyword.value = ''
+  sourceType.value = null
+  reloadFromFirstPage()
+}
 
 const offsetDialog = ref(false)
 const selectedSubtitle = ref(null)
@@ -27,58 +84,6 @@ const headers = [
   { title: '偏移', key: 'timeOffset', width: '8%' },
   { title: '操作', key: 'actions', width: '16%', sortable: false }
 ]
-
-const fetchSubtitles = async (pageNum = pagination.value.page) => {
-  loading.value = true
-  try {
-    const params = {
-      page: pageNum - 1,
-      pageSize: pagination.value.itemsPerPage
-    }
-    if (searchKeyword.value.trim()) {
-      params.keyword = searchKeyword.value.trim()
-    }
-    if (sourceType.value) {
-      params.sourceType = sourceType.value
-    }
-
-    const res = await getSubtitleList(params)
-    if (res?.code === 200 && res?.data) {
-      subtitles.value = res.data.content || []
-      pagination.value.page = (res.data.currentPage || 0) + 1
-      pagination.value.totalItems = res.data.totalElements || 0
-    }
-  } catch (error) {
-    showAppMessage('获取字幕列表失败: ' + (error.response?.data?.msg || error.message), 'error')
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleSearch = () => {
-  pagination.value.page = 1
-  fetchSubtitles(1)
-}
-
-const resetFilters = () => {
-  searchKeyword.value = ''
-  sourceType.value = null
-  pagination.value.page = 1
-  fetchSubtitles(1)
-}
-
-const onTableOptionsChange = (options) => {
-  const page = options.page || 1
-  const pageSize = options.itemsPerPage || 10
-  if (pageSize !== pagination.value.itemsPerPage) {
-    pagination.value.itemsPerPage = pageSize
-    pagination.value.page = 1
-    fetchSubtitles(1)
-    return
-  }
-  pagination.value.page = page
-  fetchSubtitles(page)
-}
 
 const handleDownload = (subtitle) => {
   window.open(getSubtitleDownloadUrl(subtitle.id), '_blank')
@@ -99,7 +104,7 @@ const submitOffset = async () => {
     if (res?.code === 200) {
       showAppMessage('偏移量更新成功', 'success')
       offsetDialog.value = false
-      await fetchSubtitles(pagination.value.page)
+      await fetchPage()
     } else {
       showAppMessage(res?.msg || '偏移量更新失败', 'error')
     }
@@ -122,7 +127,7 @@ const handleDelete = async (subtitle) => {
     const res = await deleteSubtitle(subtitle.id)
     if (res?.code === 200) {
       showAppMessage('删除成功', 'success')
-      await fetchSubtitles(pagination.value.page)
+      await fetchPage()
     } else {
       showAppMessage(res?.msg || '删除失败', 'error')
     }
@@ -150,7 +155,7 @@ const sourceTypeColor = (value) => {
 }
 
 onMounted(() => {
-  fetchSubtitles(1)
+  fetchPage()
 })
 </script>
 
@@ -158,7 +163,7 @@ onMounted(() => {
   <div>
     <v-card class="mb-4">
       <v-card-title class="d-flex align-center ga-2">
-        <i class="mdi mdi-subtitles-outline" style="color: #c45d2b;"></i>
+        <i class="mdi mdi-subtitles-outline" style="color: var(--al-accent);"></i>
         字幕搜索
       </v-card-title>
       <v-card-text class="pa-4">
@@ -208,11 +213,12 @@ onMounted(() => {
           :headers="headers"
           :items="subtitles"
           :loading="loading"
-          :items-per-page="pagination.itemsPerPage"
-          :items-length="pagination.totalItems"
+          v-model:page="page"
+          v-model:items-per-page="pageSize"
+          :items-length="totalElements"
           density="compact"
           class="elevation-0"
-          @update:options="onTableOptionsChange"
+          @update:options="onOptionsChange"
         >
           <template #item.fileName="{ item }">
             <div>
@@ -305,13 +311,12 @@ onMounted(() => {
           </v-card>
 
           <div
-            v-if="pagination.totalItems > pagination.itemsPerPage"
+            v-if="totalElements > pageSize"
             class="d-flex justify-center mt-2"
           >
             <v-pagination
-              v-model="pagination.page"
-              :length="Math.max(1, Math.ceil(pagination.totalItems / pagination.itemsPerPage))"
-              @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
+              v-model="page"
+              :length="pageCount"
             />
           </div>
         </template>

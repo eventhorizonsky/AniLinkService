@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { showAppMessage } from '../../../utils/ui-feedback'
+import { formatDateTime } from '../../../utils/format'
 import { getTrackerList, getTrackerStatus, refreshTrackerList as apiRefreshTrackerList, testResourceConnection } from '../../../api/download'
 import { getSiteConfig, saveSiteConfig } from '../../../api/site'
 
@@ -104,23 +105,7 @@ const refreshTrackerList = async () => {
   }
 }
 
-const formatTrackerListTime = (value) => {
-  if (!value) {
-    return '-'
-  }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  })
-}
+const formatTrackerListTime = (value) => formatDateTime(value, '-')
 
 const rules = {
   positiveInt: (value) => !value || Number(value) >= 1 || '必须大于等于 1',

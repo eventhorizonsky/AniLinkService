@@ -128,9 +128,69 @@ export function formatScore(v) {
 }
 
 /**
+ * 大数字紧凑显示（中文单位）：12000 → "1.2万"，3e8 → "3亿"。
+ * 此前在 Home.vue 中局部实现（fmtHeat）。
+ */
+export function formatCompactNumber(v, fallback = '') {
+  if (v == null || v === '') return fallback
+  const n = Number(v)
+  if (Number.isNaN(n)) return String(v)
+  if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + '亿'
+  if (n >= 1e4) return (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万'
+  return String(n)
+}
+
+/**
  * 弹幕颜色整数 → 十六进制色值字符串（如 #FF8800）。
  */
 export function formatDanmakuColor(color, fallback = '#FFFFFF') {
   if (color == null) return fallback
   return '#' + color.toString(16).padStart(6, '0').toUpperCase()
+}
+
+/**
+ * 运行时长（秒）→ "X 天 X 小时 X 分钟"。
+ * 此前 SystemInfo.vue / InstallStep1.vue 各自实现了一份。
+ */
+export function formatUptime(seconds) {
+  if (seconds == null) return '-'
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  let text = ''
+  if (days > 0) text += `${days} 天 `
+  if (hours > 0 || days > 0) text += `${hours} 小时 `
+  text += `${minutes} 分钟`
+  return text
+}
+
+/**
+ * 运行时长（秒）→ 紧凑格式 "1d 2h 3m"（短展示用）。
+ */
+export function formatUptimeShort(seconds) {
+  if (seconds == null) return '-'
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
+/**
+ * 时长（毫秒）→ "1h 2m 3s" 风格（人类可读）。
+ * 此前 VideoFileManager.vue / ScheduledTasks.vue 各自实现了一份。
+ */
+export function formatDurationHuman(ms) {
+  if (!ms) return '-'
+  const seconds = Math.floor(Number(ms) / 1000)
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${secs}s`
+  }
+  return `${minutes}m ${secs}s`
 }

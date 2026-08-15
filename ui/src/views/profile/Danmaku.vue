@@ -6,7 +6,7 @@ import PaginationBar from '../../components/PaginationBar.vue'
 import { usePagination } from '../../composables/usePagination'
 import { DEFAULT_POSTER } from '../../utils/constants'
 import { DANMAKU_MODE_LABELS } from '../../utils/danmakuMode'
-import { formatDateTime } from '../../utils/format'
+import { formatDateTime, formatDanmakuColor } from '../../utils/format'
 
 const router = useRouter()
 const list = ref([])
@@ -17,7 +17,7 @@ const total = ref(0)
 const danmakuHex = (record) => {
   const c = Number(record?.color)
   if (!Number.isFinite(c) || c <= 0) return ''
-  return '#' + c.toString(16).padStart(6, '0')
+  return formatDanmakuColor(c, '')
 }
 
 const fetchData = async () => {

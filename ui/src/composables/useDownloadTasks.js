@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, onScopeDispose } from 'vue'
 import { showAppMessage } from '../utils/ui-feedback'
 import { API_BASE } from '../utils/constants'
 import { useAuth } from './useAuth'
@@ -105,6 +105,9 @@ export function useDownloadTasks() {
     bindingDialog.value = false
     currentBinding.value = null
   }
+
+  // 组件卸载时兜底断开 SSE，避免依赖调用方手动 disconnect
+  onScopeDispose(disconnectProgressStream)
 
   return {
     tasks,

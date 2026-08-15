@@ -2,6 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { hasRoleLevel } from '../utils/constants'
 import { useAuth } from '../composables/useAuth'
 import { getSiteConfig } from '../api/site'
+import {
+  readInstalled,
+  writeInstalled,
+  readSiteConfig,
+  writeSiteConfig,
+  remoteAccessEnabled,
+  remoteAccessTokenRequired,
+} from '../utils/siteConfig'
 
 const routes = [
   {
@@ -13,7 +21,7 @@ const routes = [
     path: '/admin',
     name: 'Admin',
     component: () => import('../views/Admin.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, roles: ['admin', 'super-admin'] }
   },
   {
     path: '/',
@@ -113,38 +121,38 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  let installed = localStorage.getItem('installed')
+  let installed = readInstalled()
   const { token, userInfo } = useAuth()
   let siteConfig = null
 
   // 仅在本地状态缺失时从接口获取，避免每次导航都请求 siteConfig
-  if (installed == null) {
+  if (localStorage.getItem('installed') == null) {
     try {
       const res = await getSiteConfig()
       const isInstalled = res?.data?.installed === true
       siteConfig = res?.data || null
-      installed = isInstalled ? 'true' : 'false'
+      installed = isInstalled
       if (isInstalled) {
-        localStorage.setItem('installed', 'true')
-        localStorage.setItem('siteConfig', JSON.stringify(siteConfig || {}))
+        writeInstalled(true)
+        writeSiteConfig(siteConfig)
       } else {
-        localStorage.removeItem('installed')
+        writeInstalled(false)
       }
     } catch (err) {
       console.error('获取安装状态失败:', err)
       // 默认认为未安装，清理 localStorage
-      localStorage.removeItem('installed')
-      installed = 'false'
+      writeInstalled(false)
+      installed = false
     }
   }
 
   // 如果已安装，访问安装页跳转到首页
-  if (installed === 'true' && to.path === '/install') {
+  if (installed && to.path === '/install') {
     return next('/')
   }
 
   // 如果未安装，跳转到安装页
-  if (installed !== 'true' && to.path !== '/install') {
+  if (!installed && to.path !== '/install') {
     return next('/install')
   }
 
@@ -153,30 +161,26 @@ router.beforeEach(async (to, from, next) => {
     return next('/')
   }
 
+  // 检查需要特定角色的路由（如管理后台），普通用户无权访问
+  if (to.meta.roles && !hasRoleLevel(userInfo.value || {}, to.meta.roles[0])) {
+    return next('/')
+  }
+
   if (to.name === 'RemoteAccess') {
     if (!siteConfig) {
-      try {
-        siteConfig = JSON.parse(localStorage.getItem('siteConfig') || '{}')
-      } catch (e) {
-        siteConfig = {}
-      }
+      siteConfig = readSiteConfig()
     }
 
-    const enabledRaw = siteConfig?.remoteAccessEnabled
-    const tokenRequiredRaw = siteConfig?.remoteAccessTokenRequired
-    const requiredRoleRaw = siteConfig?.remoteAccessRequiredRole
-    const enabled = enabledRaw === true || enabledRaw === 'true'
-    const tokenRequired = tokenRequiredRaw === true || tokenRequiredRaw === 'true'
-    if (!enabled) {
+    if (!remoteAccessEnabled(siteConfig)) {
       return next('/')
     }
 
-    if (tokenRequired) {
+    if (remoteAccessTokenRequired(siteConfig)) {
       if (!token.value) {
         return next('/')
       }
 
-      const allowed = hasRoleLevel(userInfo.value || {}, requiredRoleRaw)
+      const allowed = hasRoleLevel(userInfo.value || {}, siteConfig?.remoteAccessRequiredRole)
 
       if (!allowed) {
         return next('/')

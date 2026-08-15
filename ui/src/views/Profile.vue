@@ -7,6 +7,7 @@ import { getPlayHistory } from '../api/playHistory'
 import { getMyDanmakuRecords } from '../api/danmaku'
 import { getUnreadCount } from '../api/messages'
 import { useAuth } from '../composables/useAuth'
+import { ACCENT_COLOR } from '../utils/constants'
 
 const router = useRouter()
 const { userInfo, setUserInfo } = useAuth()
@@ -23,7 +24,7 @@ const roleLabel = computed(() => {
 })
 
 const statCards = computed(() => [
-  { label: '追番', icon: 'mdi-bookmark-multiple', value: stats.value.follows, to: '/profile/follows', color: '#c45d2b' },
+  { label: '追番', icon: 'mdi-bookmark-multiple', value: stats.value.follows, to: '/profile/follows', color: ACCENT_COLOR },
   { label: '观看历史', icon: 'mdi-history', value: stats.value.history, to: '/profile/history', color: '#1e7b6b' },
   { label: '弹幕', icon: 'mdi-comment-text-multiple', value: stats.value.danmaku, to: '/profile/danmaku', color: '#8b5cf6' },
   { label: '未读消息', icon: 'mdi-bell-outline', value: stats.value.unread, to: '/profile/messages', color: '#ef4444' }

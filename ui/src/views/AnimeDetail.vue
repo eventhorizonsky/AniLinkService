@@ -108,109 +108,21 @@
 
         <!-- 评论区内容 -->
         <div v-if="activeSection === 'comments' && bangumiSubjectId" class="detail-comments-section">
-          <div v-if="showBangumiCollectionCard" class="bangumi-collection-card">
-            <div class="bangumi-collection-header">
-              <div>
-                <h3>Bangumi 评分与评论</h3>
-                <p>
-                  将评分与短评同步到
-                  <a :href="bangumiSubjectUrl" target="_blank" rel="noopener noreferrer">{{ bangumiSubjectUrl }}</a>
-                </p>
-              </div>
-              <div class="bangumi-header-actions">
-                <button
-                  v-if="!bgmCollectionEditMode && bgmCollectionExists"
-                  class="bangumi-edit-btn"
-                  :disabled="bgmCollectionLoading || bgmCollectionSaving"
-                  @click="bgmCollectionEditMode = true"
-                >编辑</button>
-                <button
-                  v-if="bgmCollectionExists"
-                  class="bangumi-refresh-btn"
-                  :disabled="bgmCollectionLoading || bgmCollectionSaving"
-                  @click="fetchBangumiCollection()"
-                >刷新状态</button>
-              </div>
-            </div>
-
-            <div v-if="bgmCollectionLoading" class="bangumi-collection-loading">
-              <span class="bangumi-loading-spinner"></span>
-              正在读取你的 Bangumi 评分与短评...
-            </div>
-
-            <!-- 未收藏且非编辑态：极简空状态 -->
-            <div v-else-if="!bgmCollectionExists && !bgmCollectionEditMode" class="bangumi-not-collected">
-              <span class="bangumi-not-collected-label">暂未评分</span>
-              <button class="bangumi-start-btn" @click="bgmCollectionEditMode = true">开始评分</button>
-          </div>
-
-            <!-- 有收藏数据或处于编辑态：完整表单 -->
-            <template v-else>
-              <div class="bangumi-collection-form">
-                <label>
-                  <span>收藏状态</span>
-                  <template v-if="bgmCollectionEditMode">
-                    <select v-model.number="bgmCollectionForm.type" :disabled="bgmCollectionLoading || bgmCollectionSaving">
-                      <option :value="2">看过</option>
-                      <option :value="3">在看</option>
-                      <option :value="4">搁置</option>
-                      <option :value="5">抛弃</option>
-                    </select>
-                  </template>
-                  <template v-else>
-                    <div class="bangumi-static-field">{{ collectionTypeText(bgmCollectionForm.type) }}</div>
-                  </template>
-                </label>
-
-                <label>
-                  <span>评分</span>
-                  <div class="bangumi-stars-wrap" :class="{ editable: bgmCollectionEditMode }">
-                    <button
-                      v-for="n in 10"
-                      :key="n"
-                      class="bangumi-star-btn"
-                      :class="{ active: n <= (bgmCollectionForm.rate || 0) }"
-                      :disabled="!bgmCollectionEditMode || bgmCollectionLoading || bgmCollectionSaving"
-                      @click="setBangumiRate(n)"
-                    >★</button>
-                    <span class="bangumi-rate-value">{{ collectionRateText(bgmCollectionForm.rate) }}</span>
-                  </div>
-                </label>
-              </div>
-
-              <label class="bangumi-comment-field">
-                <span>短评</span>
-                <template v-if="bgmCollectionEditMode">
-                  <textarea
-                    v-model="bgmCollectionForm.comment"
-                    rows="4"
-                    maxlength="380"
-                    placeholder="写下你对这部作品的评价，会同步到 Bangumi。"
-                  ></textarea>
-                </template>
-                <template v-else>
-                  <div class="bangumi-comment-display">{{ bgmCollectionForm.comment?.trim() || '暂未填写短评' }}</div>
-                </template>
-              </label>
-
-              <div class="bangumi-collection-actions">
-                <template v-if="bgmCollectionEditMode">
-                  <button
-                    class="bangumi-save-btn"
-                    :disabled="bgmCollectionSaving || bgmCollectionLoading"
-                    @click="submitBangumiCollection"
-                  >
-                    {{ bgmCollectionSaving ? '提交中...' : '保存到 Bangumi' }}
-                  </button>
-                  <button
-                    class="bangumi-cancel-btn"
-                    :disabled="bgmCollectionSaving || bgmCollectionLoading"
-                    @click="cancelBangumiEdit"
-                  >取消编辑</button>
-                </template>
-              </div>
-            </template>
-          </div>
+          <BangumiCollectionCard
+            v-if="showBangumiCollectionCard"
+            :subject-id="bangumiSubjectId"
+            :subject-url="bangumiSubjectUrl"
+            :collection-form="bgmCollectionForm"
+            :edit-mode="bgmCollectionEditMode"
+            :exists="bgmCollectionExists"
+            :loading="bgmCollectionLoading"
+            :saving="bgmCollectionSaving"
+            @update:edit-mode="bgmCollectionEditMode = $event"
+            @update:collection-form="bgmCollectionForm = $event"
+            @refresh="fetchBangumiCollection"
+            @save="submitBangumiCollection"
+            @cancel="cancelBangumiEdit"
+          />
 
           <div v-else-if="showBangumiBindHint" class="bangumi-bind-hint-card">
             已登录。绑定 Bangumi 账号后，可在这里同步评分和短评。
@@ -219,13 +131,13 @@
 
           <p class="comments-source-hint">
             评论来自
-            <a href="https://bgm.tv/" target="_blank" rel="noopener noreferrer">https://bgm.tv/</a>
+            <a :href="BANGUMI_BASE_URL" target="_blank" rel="noopener noreferrer">{{ BANGUMI_BASE_URL }}</a>
             ，查看原页面：
             <a :href="bangumiSubjectUrl" target="_blank" rel="noopener noreferrer">{{ bangumiSubjectUrl }}</a>
           </p>
           <BangumiComments
             :subject-id="bangumiSubjectId"
-            @unavailable="commentsAvailable = false; activeSection = 'episodes'"
+            @unavailable="handleCommentsUnavailable"
           />
         </div>
 
@@ -263,14 +175,16 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showAppMessage } from '../utils/ui-feedback';
-import { getAnimeRawJson, getAnimeRawJsonBySubject, getAnimeEpisodes } from '../api/anime';
+import { getAnimeRawJson, getAnimeRawJsonBySubject } from '../api/anime';
 import { getPlayResume } from '../api/playHistory';
 import { getCurrentUser } from '../api/auth';
 import { getSubjectCollection, saveSubjectCollection } from '../api/bangumi';
 import { useAuth } from '../composables/useAuth';
+import { useAnimeData } from '../composables/useAnimeData';
 import { useAnimeDerived } from '../composables/useAnimeDerived';
 import { useFollow } from '../composables/useFollow';
 import { useResourceSelection } from '../composables/useResourceSelection';
+import { BANGUMI_BASE_URL } from '../utils/constants';
 import {
   isFuture,
   filterMainEpisodes,
@@ -286,16 +200,12 @@ import RelatedWorksCarousel from '../components/anime/RelatedWorksCarousel.vue';
 import MetadataCard from '../components/anime/MetadataCard.vue';
 import FooterLinks from '../components/anime/FooterLinks.vue';
 import BangumiComments from '../components/anime/BangumiComments.vue';
+import BangumiCollectionCard from '../components/anime/BangumiCollectionCard.vue';
 import AnimeLastWatchSection from '../components/anime/AnimeLastWatchSection.vue';
 import ResourceSelectDialog from '../components/anime/ResourceSelectDialog.vue';
 
 // Props
 const props = defineProps({
-  animeId: {
-    type: [String, Number],
-    required: false,
-    default: null
-  },
   bgmMode: {
     type: Boolean,
     default: false
@@ -303,10 +213,6 @@ const props = defineProps({
 });
 
 // State
-const animeData = ref(null);
-const existingEpisodes = ref([]);
-const loading = ref(true);
-const error = ref(null);
 const isSummaryExpanded = ref(false);
 const route = useRoute();
 const router = useRouter();
@@ -338,51 +244,30 @@ const resumeLoading = ref(false);
 const resolvedAnimeId = ref(null);
 
 // Fetch Data
-const fetchAnimeData = async () => {
-  try {
-    loading.value = true;
-    error.value = null;
-
-    // 根据模式决定调用哪个 API
-    let targetAnimeId = resolvedAnimeId.value || route.params.animeId;
-    const result = props.bgmMode && route.params.subjectId
-      ? await getAnimeRawJsonBySubject(route.params.subjectId)
-      : await getAnimeRawJson(targetAnimeId);
-
-    if (result.code === 200 && result.data && result.data.bangumi) {
-      animeData.value = result.data.bangumi;
-      // bgmMode 下从响应中提取 animeId 用于后续接口调用
-      if (props.bgmMode && result.data.bangumi.animeId) {
-        targetAnimeId = result.data.bangumi.animeId;
-      }
-      resolvedAnimeId.value = targetAnimeId;
-      // 检查是否已追番
-      checkFollowStatus(targetAnimeId);
-    } else {
-      throw new Error('Unexpected response structure');
+const { animeData, existingEpisodes, loading, error, fetchAnimeData, fetchSeq } = useAnimeData({
+  getAnimeId: () => resolvedAnimeId.value || route.params.animeId,
+  fetchAnime: () => (props.bgmMode && route.params.subjectId
+    ? getAnimeRawJsonBySubject(route.params.subjectId)
+    : getAnimeRawJson(resolvedAnimeId.value || route.params.animeId)),
+  initialLoading: true,
+  onDataLoaded: (animeId) => {
+    // bgmMode 下从响应中提取 animeId 用于后续接口调用
+    let targetAnimeId = animeId;
+    if (props.bgmMode && animeData.value?.animeId) {
+      targetAnimeId = animeData.value.animeId;
     }
-
-    try {
-      const episodesResult = await getAnimeEpisodes(targetAnimeId, { page: 1, pageSize: 9999 });
-      if (episodesResult.code === 200 && episodesResult.data && Array.isArray(episodesResult.data.content)) {
-        existingEpisodes.value = episodesResult.data.content;
-      } else {
-        existingEpisodes.value = [];
-      }
-    } catch {
-      existingEpisodes.value = [];
-    }
-  } catch (err) {
-    animeData.value = null;
-    existingEpisodes.value = [];
-    error.value = err.message;
-  } finally {
-    loading.value = false;
+    resolvedAnimeId.value = targetAnimeId;
+    // 检查是否已追番
+    checkFollowStatus(targetAnimeId);
+    return targetAnimeId;
+  },
+  onAfterFetch: () => {
     fetchAnimeResume();
-  }
-};
+  },
+});
 
 const fetchAnimeResume = async () => {
+  const seq = fetchSeq.value
   if (!token.value) {
     animeResume.value = null;
     resumeLoading.value = false;
@@ -391,15 +276,17 @@ const fetchAnimeResume = async () => {
   resumeLoading.value = true;
   try {
     const body = await getPlayResume(resolvedAnimeId.value);
+    if (seq !== fetchSeq.value) return
     if (body?.code === 200) {
       animeResume.value = body.data ?? null;
     } else {
       animeResume.value = null;
     }
   } catch (e) {
+    if (seq !== fetchSeq.value) return
     animeResume.value = null;
   } finally {
-    resumeLoading.value = false;
+    if (seq === fetchSeq.value) resumeLoading.value = false;
   }
 };
 
@@ -454,7 +341,7 @@ const bangumiSubjectUrl = computed(() => {
   if (url && /\/subject\/\d+/.test(String(url))) {
     return String(url);
   }
-  return bangumiSubjectId.value ? `https://bgm.tv/subject/${bangumiSubjectId.value}` : 'https://bgm.tv/';
+  return bangumiSubjectId.value ? `${BANGUMI_BASE_URL}subject/${bangumiSubjectId.value}` : BANGUMI_BASE_URL;
 });
 
 const showCommentsTab = computed(() => bangumiSubjectId.value !== null && commentsAvailable.value);
@@ -540,6 +427,11 @@ watch(
 );
 
 // Event Handlers
+const handleCommentsUnavailable = () => {
+  commentsAvailable.value = false;
+  activeSection.value = 'episodes';
+};
+
 const loadCurrentUserInfo = () => {
   currentUserInfo.value = userInfo.value;
 };
@@ -564,14 +456,18 @@ const refreshCurrentUserInfo = async () => {
   loadCurrentUserInfo();
 };
 
+let bangumiCollectionSeq = 0
 const fetchBangumiCollection = async () => {
   if (!showBangumiCollectionCard.value || !bangumiSubjectId.value) {
     return;
   }
 
+  const seq = ++bangumiCollectionSeq
+  const subjectId = bangumiSubjectId.value
   bgmCollectionLoading.value = true;
   try {
-    const response = await getSubjectCollection(bangumiSubjectId.value);
+    const response = await getSubjectCollection(subjectId);
+    if (seq !== bangumiCollectionSeq) return
     if (response?.code === 200 && response?.data) {
       bgmCollectionForm.value = {
         type: Number(response.data.type || 3),
@@ -583,13 +479,16 @@ const fetchBangumiCollection = async () => {
     }
 
     if (response?.code === 404) {
+      if (seq !== bangumiCollectionSeq) return
       bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
       bgmCollectionExists.value = false;
       return;
     }
 
+    if (seq !== bangumiCollectionSeq) return
     showAppMessage(response?.msg || '读取 Bangumi 收藏状态失败', 'error');
   } catch (error) {
+    if (seq !== bangumiCollectionSeq) return
     if (error.response?.data?.code === 404) {
       bgmCollectionForm.value = { type: 3, rate: 0, comment: '' };
       bgmCollectionExists.value = false;
@@ -597,7 +496,7 @@ const fetchBangumiCollection = async () => {
     }
     showAppMessage(error.response?.data?.msg || '读取 Bangumi 收藏状态失败', 'error');
   } finally {
-    bgmCollectionLoading.value = false;
+    if (seq === bangumiCollectionSeq) bgmCollectionLoading.value = false;
   }
 };
 
@@ -629,29 +528,9 @@ const submitBangumiCollection = async () => {
   }
 };
 
-const setBangumiRate = (score) => {
-  if (!bgmCollectionEditMode.value) {
-    return;
-  }
-  bgmCollectionForm.value.rate = Number(score);
-};
-
 const cancelBangumiEdit = async () => {
   bgmCollectionEditMode.value = false;
   await fetchBangumiCollection();
-};
-
-const collectionTypeText = (type) => {
-  const map = { 1: '想看', 2: '看过', 3: '在看', 4: '搁置', 5: '抛弃' };
-  return map[type] || '在看';
-};
-
-const collectionRateText = (rate) => {
-  const score = Number(rate || 0);
-  if (score <= 0) {
-    return '暂未评分';
-  }
-  return `${score}/10`;
 };
 
 const continueFromHistory = () => {
@@ -788,267 +667,24 @@ const watchNextEpisode = () => {
   padding: 16px 20px;
 }
 
-.bangumi-collection-card,
 .bangumi-bind-hint-card {
   background: var(--al-bg-watch);
   border: 1px solid var(--al-border-warm-2);
   border-radius: 18px;
   padding: 18px 20px;
-  margin: 0 0 20px;
-}
-
-.bangumi-collection-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.bangumi-header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.bangumi-collection-header h3 {
-  margin: 0 0 6px;
-  color: var(--al-text-strong);
-  font-size: 1.02rem;
-}
-
-.bangumi-collection-header p,
-.bangumi-bind-hint-card {
   margin: 0;
   color: var(--al-text-secondary);
   font-size: 0.92rem;
   line-height: 1.6;
 }
 
-.bangumi-collection-header a,
 .bangumi-bind-hint-card a {
   color: var(--al-accent);
   text-decoration: none;
 }
 
-.bangumi-collection-header a:hover,
 .bangumi-bind-hint-card a:hover {
   text-decoration: underline;
-}
-
-.bangumi-refresh-btn,
-.bangumi-edit-btn,
-.bangumi-save-btn {
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  height: 40px;
-  padding: 0 16px;
-  font-weight: 600;
-}
-
-.bangumi-edit-btn {
-  background: var(--al-bg);
-  color: var(--al-text-secondary);
-  border: 1px solid var(--al-border-soft-4);
-}
-
-.bangumi-refresh-btn {
-  background: var(--al-bg-beige-2);
-  color: var(--al-text-brown-21);
-}
-
-.bangumi-save-btn {
-  background: var(--al-accent);
-  color: var(--al-text-on-accent);
-}
-
-.bangumi-refresh-btn:disabled,
-.bangumi-save-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.bangumi-collection-error {
-  margin: 0 0 12px;
-  color: var(--al-danger-coral-2);
-  font-size: 0.9rem;
-}
-
-.bangumi-collection-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.bangumi-collection-form label,
-.bangumi-comment-field {
-  display: grid;
-  gap: 8px;
-}
-
-.bangumi-collection-form span,
-.bangumi-comment-field span {
-  color: var(--al-text-brown-21);
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.bangumi-collection-form select,
-.bangumi-comment-field textarea {
-  width: 100%;
-  border: 1px solid var(--al-border-soft-5);
-  border-radius: 12px;
-  background: var(--al-bg);
-  padding: 10px 12px;
-  font-size: 0.92rem;
-  color: var(--al-text-strong);
-}
-
-.bangumi-static-field {
-  border: 1px solid var(--al-border-soft-3);
-  border-radius: 12px;
-  background: var(--al-bg-panel);
-  padding: 10px 12px;
-  color: var(--al-text-brown-21);
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-}
-
-.bangumi-comment-display {
-  width: 100%;
-  border: 1px solid var(--al-border-soft-3);
-  border-radius: 12px;
-  background: var(--al-bg-panel);
-  padding: 10px 12px;
-  font-size: 0.92rem;
-  color: var(--al-text-brown-21);
-  line-height: 1.65;
-  min-height: 100px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.bangumi-collection-loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--al-text-muted);
-  font-size: 0.88rem;
-  margin: 0 0 12px;
-}
-
-.bangumi-loading-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--al-border-soft-3);
-  border-top-color: var(--al-accent);
-  border-radius: 50%;
-  animation: bangumi-spin 0.9s linear infinite;
-}
-
-@keyframes bangumi-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.bangumi-stars-wrap {
-  border: 1px solid var(--al-border-soft-3);
-  border-radius: 12px;
-  background: var(--al-bg-panel);
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-wrap: wrap;
-}
-
-.bangumi-stars-wrap.editable {
-  background: var(--al-bg);
-}
-
-.bangumi-star-btn {
-  border: none;
-  background: transparent;
-  color: var(--al-gray-text);
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-}
-
-.bangumi-star-btn.active {
-  color: var(--al-star-3);
-}
-
-.bangumi-star-btn:disabled {
-  cursor: default;
-}
-
-.bangumi-rate-value {
-  margin-left: 8px;
-  color: var(--al-text-secondary);
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-
-.bangumi-comment-field textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.bangumi-collection-actions {
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.bangumi-cancel-btn {
-  border: 1px solid var(--al-border-soft-4);
-  border-radius: 12px;
-  background: var(--al-bg);
-  color: var(--al-text-brown-21);
-  cursor: pointer;
-  height: 40px;
-  padding: 0 16px;
-  font-weight: 600;
-}
-
-.bangumi-not-collected {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 28px 0 20px;
-}
-
-.bangumi-not-collected-label {
-  color: var(--al-text-muted);
-  font-size: 1rem;
-}
-
-.bangumi-start-btn {
-  border: 1.5px solid var(--al-accent);
-  background: none;
-  color: var(--al-accent);
-  border-radius: 20px;
-  padding: 7px 28px;
-  font-size: 0.92rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.bangumi-start-btn:hover {
-  background: var(--al-accent);
-  color: var(--al-text-on-accent);
-}
-
-.bangumi-inline-hint {
-  color: var(--al-text-muted);
-  font-size: 0.86rem;
 }
 
 .comments-source-hint {
@@ -1084,20 +720,6 @@ const watchNextEpisode = () => {
   }
 
   .anime-sidebar {
-    width: 100%;
-  }
-
-  .bangumi-collection-form {
-    grid-template-columns: 1fr;
-  }
-
-  .bangumi-collection-header,
-  .bangumi-collection-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .bangumi-header-actions {
     width: 100%;
   }
 }

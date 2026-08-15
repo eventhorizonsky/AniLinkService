@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAnimeList, getSeasonList, getSeasonAnime, searchDandanAnimes } from '../api/anime'
 import { formatAnimeType } from '../utils/animeType'
+import { formatScore } from '../utils/format'
 import { useIsMobile } from '../composables/useIsMobile'
 import AnimeCard from '../components/AnimeCard.vue'
 
@@ -24,17 +25,21 @@ const libHasMore = ref(false)
 const libScrollEl = ref(null)
 const libPageSize = 24
 
+// 请求序号，防止快速切换关键词时过期响应覆盖新数据
+let libFetchSeq = 0
+
 const libHasResult = computed(() => libList.value.length > 0)
 
 const fetchLibrary = async (append = false) => {
   if (append) libLoadingMore.value = true
   else { libLoading.value = true; libError.value = '' }
 
+  const seq = ++libFetchSeq
   try {
     const params = { page: libPage.value, pageSize: libPageSize }
     if (libKeyword.value.trim()) params.keyword = libKeyword.value.trim()
     const res = await getAnimeList(params)
-    if (res?.code !== 200) throw new Error(res?.msg || '请求失败')
+    if (seq !== libFetchSeq) return
     const data = res?.data
     const items = Array.isArray(data?.content) ? data.content : []
     if (append) libList.value.push(...items)
@@ -43,11 +48,14 @@ const fetchLibrary = async (append = false) => {
     const totalPages = Number(data?.totalPages || 0)
     libHasMore.value = libPage.value < totalPages
   } catch (e) {
+    if (seq !== libFetchSeq) return
     libError.value = e?.response?.data?.msg || e?.message || '加载失败'
     if (!append) { libList.value = []; libTotal.value = 0; libHasMore.value = false }
   } finally {
-    if (append) libLoadingMore.value = false
-    else libLoading.value = false
+    if (seq === libFetchSeq) {
+      if (append) libLoadingMore.value = false
+      else libLoading.value = false
+    }
   }
 }
 
@@ -83,9 +91,13 @@ const dbMonths = computed(() => {
   return dbSeasons.value.filter(s => s.year === dbYear.value).map(s => s.month).sort((a, b) => a - b)
 })
 
+let seasonFetchSeq = 0
+
 const fetchSeasons = async () => {
+  const seq = ++seasonFetchSeq
   try {
     const res = await getSeasonList()
+    if (seq !== seasonFetchSeq) return
     const data = res
     if (Array.isArray(data?.seasons)) dbSeasons.value = data.seasons
     else if (Array.isArray(data)) dbSeasons.value = data
@@ -93,52 +105,69 @@ const fetchSeasons = async () => {
       const latest = dbSeasons.value.reduce((a, b) =>
         b.year > a.year || (b.year === a.year && b.month > a.month) ? b : a)
       dbYear.value = latest.year; dbMonth.value = latest.month
-      await fetchSeasonAnime()
+      await fetchSeasonAnime(seq)
     }
-  } catch (e) { dbError.value = '获取季度列表失败'; console.error(e) }
+  } catch (e) {
+    if (seq !== seasonFetchSeq) return
+    dbError.value = '获取季度列表失败'; console.error(e)
+  }
 }
 
-const fetchSeasonAnime = async () => {
+const fetchSeasonAnime = async (expectedSeq = seasonFetchSeq) => {
   if (dbYear.value == null || dbMonth.value == null) return
+  const seq = ++seasonFetchSeq
   dbLoading.value = true; dbError.value = ''
   try {
     const res = await getSeasonAnime(dbYear.value, dbMonth.value)
+    if (seq !== seasonFetchSeq) return
     const data = res
     if (Array.isArray(data?.bangumiList)) dbList.value = data.bangumiList
     else if (Array.isArray(data)) dbList.value = data
     else dbList.value = []
-  } catch (e) { dbError.value = '获取季度番剧失败'; dbList.value = [] }
-  finally { dbLoading.value = false }
+  } catch (e) {
+    if (seq !== seasonFetchSeq) return
+    dbError.value = '获取季度番剧失败'; dbList.value = []
+  }
+  finally { if (seq === seasonFetchSeq) dbLoading.value = false }
 }
 
 const selectSeason = async (year, month) => { dbYear.value = year; dbMonth.value = month; await fetchSeasonAnime() }
-const toAnime = (id) => { if (id) router.push(`/anime/${id}`) }
 
 // ===================== Database Search (弹弹番剧库) =====================
 const dbKeyword = ref('')
 const dbSearching = ref(false)
 const dbSearchResults = ref([])
 const dbSearched = ref(false)
+const dbSearchError = ref('')
+
+let dbSearchSeq = 0
 
 const dbSearch = async () => {
   const kw = dbKeyword.value.trim()
   if (kw.length < 2) {
+    dbSearchSeq++
     dbSearched.value = true
     dbSearchResults.value = []
+    dbSearchError.value = ''
     return
   }
+  const seq = ++dbSearchSeq
   dbSearching.value = true
   dbSearched.value = true
+  dbSearchError.value = ''
   try {
     const res = await searchDandanAnimes(kw)
+    if (seq !== dbSearchSeq) return
     const raw = res?.data
     const listRaw = raw?.animes || raw?.data?.animes || []
     dbSearchResults.value = Array.isArray(listRaw) ? listRaw : []
   } catch (e) {
+    if (seq !== dbSearchSeq) return
     console.error('搜索弹弹番剧失败:', e)
     dbSearchResults.value = []
+    dbSearchError.value = e?.response?.data?.msg || '搜索失败，请稍后重试'
   } finally {
-    dbSearching.value = false
+    if (seq === dbSearchSeq) dbSearching.value = false
   }
 }
 
@@ -146,6 +175,7 @@ const dbClearSearch = () => {
   dbKeyword.value = ''
   dbSearchResults.value = []
   dbSearched.value = false
+  dbSearchError.value = ''
 }
 
 // Season label
@@ -311,13 +341,19 @@ onBeforeUnmount(() => {
             hover
           >
             <template #badges>
-              <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
+              <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ formatScore(a.rating) }}</span>
             </template>
             <template #meta>
               <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
               <span v-else-if="a.year" class="genre">{{ a.year }}</span>
             </template>
           </AnimeCard>
+        </div>
+
+        <div v-else-if="dbKeyword && dbSearchError" class="empty-block error">
+          <i class="mdi mdi-alert-circle empty-icon"></i>
+          <p class="empty-title">搜索失败</p>
+          <p class="empty-hint">{{ dbSearchError }}</p>
         </div>
 
         <div v-else-if="dbKeyword" class="empty-block">
@@ -350,7 +386,7 @@ onBeforeUnmount(() => {
               hover
             >
               <template #badges>
-                <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
+                <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ formatScore(a.rating) }}</span>
               </template>
             </AnimeCard>
           </div>

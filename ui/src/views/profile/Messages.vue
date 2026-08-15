@@ -1,13 +1,12 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { getMessages, getMessagesByType, markMessageRead, markAllMessagesRead, removeMessage as apiRemoveMessage } from '../../api/messages'
+import { getMessages, getMessagesByType, removeMessage as apiRemoveMessage } from '../../api/messages'
 import PaginationBar from '../../components/PaginationBar.vue'
 import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import { usePagination } from '../../composables/usePagination'
+import { useMessageActions } from '../../composables/useMessageActions'
 import { formatMonthDayTime } from '../../utils/format'
 
-const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
@@ -49,34 +48,11 @@ const applyFilter = (value) => {
   fetchData()
 }
 
-const openMessage = async (msg) => {
-  if (!msg.isRead) {
-    try { await markMessageRead(msg.id) } catch (e) { /* ignore */ }
-    msg.isRead = true
-  }
-  if (msg.type === 'episode_update' && msg.videoId) {
-    const routeData = router.resolve({
-      name: 'Player',
-      params: { videoId: String(msg.videoId) },
-      query: {
-        animeId: msg.animeId ? String(msg.animeId) : undefined,
-        episodeId: msg.episodeId ? String(msg.episodeId) : undefined
-      }
-    })
-    window.open(routeData.href, '_blank')
-  } else if (msg.animeId) {
-    router.push(`/anime/${msg.animeId}`)
-  }
-}
+const { openMessage, markAllRead } = useMessageActions()
 
-const markAllRead = async () => {
-  try {
-    const res = await markAllMessagesRead()
-    if (res?.code === 200 || res?.code === 0) {
-      showAppMessage('已全部标记为已读', 'success')
-      await fetchData()
-    } else showAppMessage(res?.msg || '一键已读失败', 'error')
-  } catch (e) { showAppMessage('一键已读失败，请稍后重试', 'error') }
+const markAllReadLocal = async () => {
+  const ok = await markAllRead()
+  if (ok) await fetchData()
 }
 
 const removeMessage = async (id) => {
@@ -102,7 +78,7 @@ onMounted(fetchData)
       <h2><i class="mdi mdi-bell-outline"></i> 消息中心</h2>
       <div class="page-head-actions">
         <span v-if="unreadCount > 0" class="unread-summary">{{ unreadCount }} 条未读</span>
-        <button class="btn btn-ghost" :disabled="unreadCount === 0" @click="markAllRead">
+        <button class="btn btn-ghost" :disabled="unreadCount === 0" @click="markAllReadLocal">
           <i class="mdi mdi-check-all"></i> 一键已读
         </button>
       </div>

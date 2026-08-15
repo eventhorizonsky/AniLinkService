@@ -37,7 +37,6 @@ const loading = ref(false)
 const page = ref(1)
 const size = ref(20)
 const selection = ref([])
-const deletingTarget = ref(null)
 
 const filterStatus = ref('all')
 const filterKeyword = ref('')
@@ -174,19 +173,20 @@ const handleRetry = async (task) => {
   if (ok) scheduleRefresh()
 }
 
-const openDeleteDialog = (task) => {
-  deletingTarget.value = task
-}
-
-const confirmDelete = async () => {
-  const task = deletingTarget.value
+const openDeleteDialog = async (task) => {
   if (!task) return
+  const confirmed = await askAppConfirm({
+    title: '删除下载任务',
+    message: `确认删除任务「${task.title}」？对应暂存文件将一并清理，媒体库中已入库的文件不受影响。`,
+    confirmText: '删除',
+    color: 'error'
+  })
+  if (!confirmed) return
   const ok = await props.actions.deleteTask?.(task)
   if (ok) {
     selection.value = selection.value.filter((id) => id !== task.id)
     scheduleRefresh()
   }
-  deletingTarget.value = null
 }
 
 const onFilterChange = ({ status, keyword }) => {
@@ -303,31 +303,6 @@ onBeforeUnmount(() => {
       @batch-delete="handleBatchDelete"
       @binding="(taskId) => props.actions.openBinding?.(taskId)"
     />
-
-    <v-dialog
-      :model-value="!!deletingTarget"
-      max-width="480"
-      @update:model-value="(value) => { if (!value) deletingTarget = null }"
-    >
-      <v-card v-if="deletingTarget">
-        <v-card-title>
-          <v-icon start color="error">mdi-delete-alert-outline</v-icon>
-          删除下载任务
-        </v-card-title>
-        <v-card-text>
-          <div class="mb-2">确认删除任务「{{ deletingTarget.title }}」？</div>
-          <div class="text-body-2 text-medium-emphasis">对应暂存文件将一并清理，媒体库中已入库的文件不受影响。</div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="deletingTarget = null">取消</v-btn>
-          <v-btn color="error" @click="confirmDelete">
-            <v-icon start size="small">mdi-delete</v-icon>
-            删除
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </div>
 </template>
 

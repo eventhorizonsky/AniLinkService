@@ -1,317 +1,69 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { askAppConfirm, showAppMessage } from '../../../utils/ui-feedback'
-import { getLibraries, getLibraryPaths, createLibrary, removeLibrary, rematchLibrary as apiRematchLibrary, reprocessMediaFileMetadata, getMetadataProgress, getMatchProgress } from '../../../api/media'
+import { useMediaLibrary } from '../../../composables/useMediaLibrary'
+import {
+  getLibraries,
+  getLibraryPaths,
+  createLibrary,
+  removeLibrary,
+  rematchLibrary as apiRematchLibrary,
+  reprocessMediaFileMetadata,
+  getMetadataProgress,
+  getMatchProgress
+} from '../../../api/media'
 
-const mediaLibraries = ref([])
-const loading = ref(false)
-const dialog = ref(false)
-const errorMessage = ref('')
-const scanning = ref(false)
-const pathTree = ref([])
-const loadingPaths = ref(false)
-const showPathTree = ref(false)
-const rootPath = ref('/')
-
-// 进度追踪相关
-const progressData = ref({})
-const showProgress = ref({})
-const pollIntervals = ref({})
-
-const getLibraryMatchProcessedCount = (libraryId) => {
-  const match = progressData.value[libraryId]?.match
-  if (!match) return 0
-  return Number(match.matched || 0) + Number(match.noMatch || 0)
-}
-
-// 获取进度数据（确保响应式）
-const getProgressData = (libraryId) => {
-  return progressData.value[libraryId]
-}
-
-const newLibrary = ref({
-  name: '',
-  path: ''
-})
-
-// 获取元数据进度
-const fetchMetadataProgress = async (libraryId) => {
-  try {
-    const res = await getMetadataProgress({ libraryId })
-    if (res?.code === 200) {
-      // 确保库的进度对象初始化
-      if (!progressData.value[libraryId]) {
-        progressData.value[libraryId] = { metadata: null, match: null }
-      }
-      // 直接赋值(Vue 3 的响应式自动处理)
-      progressData.value[libraryId].metadata = res.data
+const {
+  mediaLibraries,
+  loading,
+  dialog,
+  errorMessage,
+  scanning,
+  pathTree,
+  loadingPaths,
+  showPathTree,
+  newLibrary,
+  progressData,
+  showProgress,
+  handleNodeSelect,
+  addLibrary,
+  deleteLibrary,
+  scanLibrary,
+  rematchLibrary,
+  scanAll,
+  openAddDialog,
+  closeDialog,
+  togglePathTree,
+  onPathSelect,
+  toggleProgressDisplay,
+  getLibraryMatchProcessedCount
+} = useMediaLibrary({
+  api: {
+    getLibraries,
+    getPaths: getLibraryPaths,
+    createLibrary,
+    removeLibrary,
+    scanLibrary: reprocessMediaFileMetadata,
+    rematchLibrary: apiRematchLibrary,
+    fetchProgress: async (libraryId) => {
+      const out = {}
+      const meta = await getMetadataProgress({ libraryId }).catch(() => null)
+      if (meta?.code === 200) out.metadata = meta.data
+      const match = await getMatchProgress({ libraryId }).catch(() => null)
+      if (match?.code === 200) out.match = match.data
+      return out
     }
-  } catch (error) {
-    console.error('获取元数据进度失败:', error)
-  }
-}
-
-// 获取弹幕匹配进度
-const fetchMatchProgress = async (libraryId) => {
-  try {
-    const res = await getMatchProgress({ libraryId })
-    if (res?.code === 200) {
-      // 确保库的进度对象初始化
-      if (!progressData.value[libraryId]) {
-        progressData.value[libraryId] = { metadata: null, match: null }
-      }
-      // 直接赋值(Vue 3 的响应式自动处理)
-      progressData.value[libraryId].match = res.data
+  },
+  texts: {
+    scanSuccess: (res) => res.msg || '重新获取元数据已触发',
+    scanError: (error) => '重新获取元数据失败：' + (error.response?.data?.msg || '请稍后重试'),
+    scanAllSuccess: () => '所有媒体库的元数据重新获取已提交',
+    scanAllError: (error) => '提交任务失败：' + (error.response?.data?.msg || '请稍后重试'),
+    rematchSuccess: (res) => res.msg || '弹幕重新匹配已触发',
+    rematchError: (error) => '重新匹配失败：' + (error.response?.data?.msg || '请稍后重试'),
+    scanAllConfirm: {
+      title: '批量重新获取元数据',
+      message: '确定要重新获取所有媒体库的元数据吗？'
     }
-  } catch (error) {
-    console.error('获取匹配进度失败:', error)
   }
-}
-
-// 启动进度轮询
-const startProgressPolling = (libraryId) => {
-  // 停止已有的轮询
-  if (pollIntervals.value[libraryId]) {
-    clearInterval(pollIntervals.value[libraryId])
-  }
-  
-  showProgress.value[libraryId] = true
-  
-  // 立刻获取一次进度
-  fetchMetadataProgress(libraryId)
-  fetchMatchProgress(libraryId)
-  
-  // 每5秒轮询一次
-  const interval = setInterval(() => {
-    fetchMetadataProgress(libraryId)
-    fetchMatchProgress(libraryId)
-  }, 5000)
-  
-  pollIntervals.value[libraryId] = interval
-}
-
-// 停止进度轮询
-const stopProgressPolling = (libraryId) => {
-  const interval = pollIntervals.value[libraryId]
-  if (interval) {
-    clearInterval(interval)
-    delete pollIntervals.value[libraryId]
-  }
-  showProgress.value[libraryId] = false
-}
-
-// 切换进度显示
-const toggleProgressDisplay = (libraryId) => {
-  const currentState = showProgress.value[libraryId] || false
-  showProgress.value[libraryId] = !currentState
-  
-  if (!currentState) {
-    // 展开时，如果没有轮询就启动轮询
-    if (!pollIntervals.value[libraryId]) {
-      startProgressPolling(libraryId)
-    }
-  } else {
-    // 收起时，停止轮询
-    stopProgressPolling(libraryId)
-  }
-}
-
-const fetchLibraries = async () => {
-  loading.value = true
-  try {
-    const res = await getLibraries()
-    if (res?.code === 200) {
-      mediaLibraries.value = res.data || []
-    }
-  } catch (error) {
-    console.error('获取媒体库失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-const fetchPaths = async (path = rootPath.value) => {
-  loadingPaths.value = true
-  try {
-    const res = await getLibraryPaths(path)
-    if (res?.code === 200) {
-      const items = res.data || []
-      pathTree.value = items.map(item => ({
-        id: item.path,
-        title: item.name,
-        children: []
-      }))
-    }
-  } catch (error) {
-    console.error('获取路径失败:', error)
-  } finally {
-    loadingPaths.value = false
-  }
-}
-
-const handleNodeSelect = async (item) => {
-  loadingPaths.value = true
-  try {
-    const res = await getLibraryPaths(item.id)
-    if (res?.code === 200) {
-      const items = res.data || []
-      if (items.length > 0) {
-        item.children = items.map(child => ({
-          id: child.path,
-          title: child.name,
-          children: []
-        }))
-      }
-    }
-  } catch (error) {
-    console.error('获取子路径失败:', error)
-  } finally {
-    loadingPaths.value = false
-  }
-}
-
-const addLibrary = async () => {
-  if (!newLibrary.value.name || !newLibrary.value.path) {
-    errorMessage.value = '请填写媒体库名称和路径'
-    return
-  }
-
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    const res = await createLibrary(newLibrary.value)
-    if (res?.code === 200) {
-      dialog.value = false
-      newLibrary.value = { name: '', path: '' }
-      showPathTree.value = false
-      await fetchLibraries()
-    } else {
-      errorMessage.value = res?.msg || '添加媒体库失败'
-    }
-  } catch (error) {
-    errorMessage.value = error.response?.data?.msg || '添加媒体库失败，请稍后重试'
-  } finally {
-    loading.value = false
-  }
-}
-
-const deleteLibrary = async (id) => {
-  const confirmed = await askAppConfirm({
-    title: '删除媒体库',
-    message: '确定要删除这个媒体库吗？',
-    color: 'error'
-  })
-  if (!confirmed) return
-
-  try {
-    const res = await removeLibrary(id)
-    if (res?.code === 200) {
-      await fetchLibraries()
-    }
-  } catch (error) {
-    showAppMessage('删除失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  }
-}
-
-const scanLibrary = async (id) => {
-  scanning.value = true
-  try {
-    const res = await reprocessMediaFileMetadata(id)
-    if (res?.code === 200) {
-      showAppMessage(res.msg || '重新获取元数据已触发', 'success')
-      await fetchLibraries()
-      // 启动进度轮询
-      startProgressPolling(id)
-    }
-  } catch (error) {
-    showAppMessage('重新获取元数据失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  } finally {
-    scanning.value = false
-  }
-}
-
-const rematchLibrary = async (id) => {
-  scanning.value = true
-  try {
-    const res = await apiRematchLibrary(id)
-    if (res?.code === 200) {
-      showAppMessage(res.msg || '弹幕重新匹配已触发', 'success')
-      await fetchLibraries()
-      // 启动进度轮询
-      startProgressPolling(id)
-    }
-  } catch (error) {
-    showAppMessage('重新匹配失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  } finally {
-    scanning.value = false
-  }
-}
-
-const scanAll = async () => {
-  const confirmed = await askAppConfirm({
-    title: '批量重新获取元数据',
-    message: '确定要重新获取所有媒体库的元数据吗？',
-    color: 'warning'
-  })
-  if (!confirmed) return
-
-  scanning.value = true
-  try {
-    // 逐个为所有库提交重新获取元数据的任务
-    for (const lib of mediaLibraries.value) {
-      await reprocessMediaFileMetadata(lib.id)
-    }
-    showAppMessage('所有媒体库的元数据重新获取已提交', 'success')
-    await fetchLibraries()
-    // 为所有库启动进度轮询
-    mediaLibraries.value.forEach(lib => {
-      startProgressPolling(lib.id)
-    })
-  } catch (error) {
-    showAppMessage('提交任务失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  } finally {
-    scanning.value = false
-  }
-}
-
-const openAddDialog = () => {
-  errorMessage.value = ''
-  showPathTree.value = false
-  newLibrary.value = { name: '', path: '' }
-  dialog.value = true
-}
-
-const closeDialog = () => {
-  dialog.value = false
-  errorMessage.value = ''
-  showPathTree.value = false
-  pathTree.value = []
-}
-
-const togglePathTree = () => {
-  if (!showPathTree.value) {
-    fetchPaths(rootPath.value)
-  }
-  showPathTree.value = !showPathTree.value
-}
-
-const onPathSelect = (selected) => {
-  if (selected && selected.length > 0) {
-    newLibrary.value.path = selected[0]
-    showPathTree.value = false
-  }
-}
-
-onMounted(() => {
-  fetchLibraries()
-})
-
-onUnmounted(() => {
-  // 清除所有轮询interval
-  Object.values(pollIntervals.value).forEach((interval) => {
-    clearInterval(interval)
-  })
-  pollIntervals.value = {}
 })
 </script>
 

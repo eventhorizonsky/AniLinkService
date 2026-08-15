@@ -3,8 +3,8 @@ import { ref, onMounted } from 'vue'
 import { showAppMessage } from '../../utils/ui-feedback'
 import { getUserRoles } from '../../api/system'
 import { getSiteConfig, saveSiteConfig, sendTestEmail as apiSendTestEmail } from '../../api/site'
-
-const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
+import { updateSiteConfig } from '../../utils/siteConfig'
+import { DEFAULT_DANDAN_BASE_URL } from '../../utils/constants'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -110,31 +110,29 @@ const saveConfig = async () => {
       siteName: form.value.siteName,
       siteDescription: form.value.siteDescription,
       siteUrl: form.value.siteUrl,
-        dandanAppId: form.value.dandanAppId,
-        dandanAppSecret: form.value.dandanAppSecret || null,
-        dandanBaseUrl: form.value.dandanBaseUrl,
-        authRegisterEnabled: form.value.authRegisterEnabled,
-        remoteAccessEnabled: form.value.remoteAccessEnabled,
-        remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
-        remoteAccessRequiredRole: form.value.remoteAccessRequiredRole,
-        smtpHost: form.value.smtpHost,
-        smtpPort: form.value.smtpPort,
-        smtpUsername: form.value.smtpUsername,
-        smtpPassword: form.value.smtpPassword || null,
-        smtpFromEmail: form.value.smtpFromEmail,
-        smtpFromName: form.value.smtpFromName,
-        smtpSslEnabled: form.value.smtpSslEnabled,
-        smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
-        thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
-        bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null,
-        bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
+      dandanAppId: form.value.dandanAppId,
+      dandanAppSecret: form.value.dandanAppSecret || null,
+      dandanBaseUrl: form.value.dandanBaseUrl,
+      authRegisterEnabled: form.value.authRegisterEnabled,
+      remoteAccessEnabled: form.value.remoteAccessEnabled,
+      remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
+      remoteAccessRequiredRole: form.value.remoteAccessRequiredRole,
+      smtpHost: form.value.smtpHost,
+      smtpPort: form.value.smtpPort,
+      smtpUsername: form.value.smtpUsername,
+      smtpPassword: form.value.smtpPassword || null,
+      smtpFromEmail: form.value.smtpFromEmail,
+      smtpFromName: form.value.smtpFromName,
+      smtpSslEnabled: form.value.smtpSslEnabled,
+      smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
+      thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
+      bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null,
+      bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
     })
 
     if (res?.code === 200) {
       showAppMessage('保存成功', 'success')
-      const localConfig = JSON.parse(localStorage.getItem('siteConfig') || '{}')
-      localStorage.setItem('siteConfig', JSON.stringify({
-        ...localConfig,
+      updateSiteConfig({
         siteName: form.value.siteName,
         siteDescription: form.value.siteDescription,
         siteUrl: form.value.siteUrl,
@@ -142,7 +140,7 @@ const saveConfig = async () => {
         remoteAccessEnabled: form.value.remoteAccessEnabled,
         remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
         remoteAccessRequiredRole: form.value.remoteAccessRequiredRole
-      }))
+      })
     } else {
       showAppMessage(res?.msg || '保存失败', 'error')
     }

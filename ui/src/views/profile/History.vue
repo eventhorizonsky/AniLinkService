@@ -7,6 +7,7 @@ import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import { usePagination } from '../../composables/usePagination'
 import { DEFAULT_POSTER } from '../../utils/constants'
 import { formatMonthDayTime } from '../../utils/format'
+import { clampProgressPercent, formatPlayProgressText } from '../../utils/playProgress'
 
 const router = useRouter()
 const list = ref([])
@@ -14,7 +15,7 @@ const loading = ref(false)
 const error = ref('')
 const total = ref(0)
 
-const progressPercent = (item) => Math.min(100, Math.max(0, Number(item?.progressPercentage || 0)))
+const progressPercent = (item) => clampProgressPercent(item?.progressPercentage)
 
 const fetchData = async () => {
   loading.value = true; error.value = ''
@@ -75,13 +76,7 @@ const { page, pageSize, totalPages, pages, changePage } = usePagination({
   onPageChange: fetchData,
 })
 
-const progressText = (item) => {
-  const p = Number(item?.progressSeconds || 0)
-  const d = Number(item?.durationSeconds || 0)
-  const percent = Number(item?.progressPercentage || 0)
-  if (!d) return `${p}s`
-  return `${p}s / ${d}s · ${Math.min(100, Math.max(0, percent))}%`
-}
+const progressText = (item) => formatPlayProgressText(item)
 
 onMounted(fetchData)
 </script>

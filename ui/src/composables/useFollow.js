@@ -17,6 +17,9 @@ import {
 export function useFollow() {
   const { token } = useAuth()
 
+  // 请求序号，防过期响应覆盖
+  let checkSeq = 0
+
   const isFollowing = ref(false)
   const followStatus = ref('watching')
   const followLoading = ref(false)
@@ -28,8 +31,11 @@ export function useFollow() {
       return
     }
 
+    // 请求序号，避免快速切换番剧时旧响应覆盖新状态
+    const seq = ++checkSeq
     try {
       const body = await getFollowStatus(animeId)
+      if (seq !== checkSeq) return
       if (body?.code === 200 && body.data) {
         isFollowing.value = true
         followStatus.value = body.data.status || 'watching'
@@ -38,6 +44,7 @@ export function useFollow() {
         followStatus.value = 'wish'
       }
     } catch (e) {
+      if (seq !== checkSeq) return
       console.error('检查追番状态失败:', e)
       isFollowing.value = false
       followStatus.value = 'wish'

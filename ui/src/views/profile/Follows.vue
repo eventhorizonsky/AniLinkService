@@ -2,7 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import PaginationBar from '../../components/PaginationBar.vue'
-import { showAppMessage } from '../../utils/ui-feedback'
+import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import {
   FOLLOW_STATUS_ORDER_MAP as STATUS_ORDER,
   FOLLOW_STATUS_LABEL as STATUS_LABEL,
@@ -28,24 +28,6 @@ const pulling = ref(false)
 // 绑定 / 匹配
 const bindDialog = ref({ show: false, follow: null, keyword: '', results: [], searched: false, searching: false })
 const matchDialog = ref({ show: false, follow: null })
-
-// 页面级确认弹窗（替代 window.confirm）
-const confirmDialog = ref({ show: false, title: '', message: '', confirmText: '确定', resolve: null })
-const showConfirm = (title, message, confirmText = '确定') => {
-  return new Promise((resolve) => {
-    confirmDialog.value = { show: true, title, message, confirmText, resolve }
-  })
-}
-const confirmOk = () => {
-  const r = confirmDialog.value.resolve
-  confirmDialog.value.show = false
-  if (r) r(true)
-}
-const confirmCancel = () => {
-  const r = confirmDialog.value.resolve
-  confirmDialog.value.show = false
-  if (r) r(false)
-}
 
 const statusOptions = [
   { label: '活跃', value: 'active' },
@@ -128,7 +110,7 @@ const setStatus = async (follow, status) => {
 
 const unfollow = async (follow) => {
   menuId.value = null
-  const ok = await showConfirm('取消追番', `确定要取消追番《${follow.animeTitle}》吗？`, '取消追番')
+  const ok = await askAppConfirm({ title: '取消追番', message: `确定要取消追番《${follow.animeTitle}》吗？`, confirmText: '取消追番' })
   if (!ok) return
   try {
     const res = await removeFollow(follow.animeId)
@@ -185,11 +167,11 @@ const autoMatch = async (follow) => {
 }
 
 const pullBangumi = async () => {
-  const ok = await showConfirm(
-    '拉取 Bangumi 追番',
-    '将从 Bangumi 拉取你的所有动画收藏并同步到本地追番列表。以 Bangumi 数据为准，同名番剧的状态将被覆盖。是否继续？',
-    '开始拉取'
-  )
+  const ok = await askAppConfirm({
+    title: '拉取 Bangumi 追番',
+    message: '将从 Bangumi 拉取你的所有动画收藏并同步到本地追番列表。以 Bangumi 数据为准，同名番剧的状态将被覆盖。是否继续？',
+    confirmText: '开始拉取'
+  })
   if (!ok) return
   pulling.value = true
   try {
@@ -350,23 +332,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
         <div class="dialog-body match-loading">
           <i class="mdi mdi-loading mdi-spin"></i>
           <p>正在自动匹配「{{ matchDialog.follow?.animeTitle }}」...</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 确认弹窗 -->
-    <div v-if="confirmDialog.show" class="dialog-overlay" @click.self="confirmCancel">
-      <div class="dialog">
-        <div class="dialog-head">
-          <h3>{{ confirmDialog.title }}</h3>
-          <button class="dialog-close" @click="confirmCancel"><i class="mdi mdi-close"></i></button>
-        </div>
-        <div class="dialog-body">
-          <p class="confirm-message">{{ confirmDialog.message }}</p>
-        </div>
-        <div class="dialog-foot">
-          <button class="btn btn-ghost" @click="confirmCancel">取消</button>
-          <button class="btn btn-primary" @click="confirmOk">{{ confirmDialog.confirmText }}</button>
         </div>
       </div>
     </div>

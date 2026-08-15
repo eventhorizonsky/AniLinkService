@@ -4,44 +4,46 @@ import { showAppMessage } from '../../utils/ui-feedback'
 import { formatDateTime, formatDanmakuColor as danmakuColorHex } from '../../utils/format'
 import { getAdminDanmakuRecords } from '../../api/danmaku'
 import { danmakuModeLabel } from '../../utils/danmakuMode'
+import { useServerPagination } from '../../composables/useServerPagination'
 
-const loading = ref(false)
 const records = ref([])
 const filterUserId = ref('')
 const filterEpisodeId = ref('')
 const filterAnimeId = ref('')
 const filterKeyword = ref('')
-const page = ref(1)
-const pageSize = ref(20)
-const totalElements = ref(0)
-const totalPages = ref(0)
 
-const fetchRecords = async () => {
-  loading.value = true
-  try {
-    const res = await getAdminDanmakuRecords({
-      page: page.value,
-      pageSize: pageSize.value,
-      userId: filterUserId.value || undefined,
-      episodeId: filterEpisodeId.value || undefined,
-      animeId: filterAnimeId.value || undefined,
-      keyword: filterKeyword.value?.trim() || undefined,
-    })
-    if (res?.code === 200 && res?.data) {
-      records.value = res.data.content || []
-      totalElements.value = Number(res.data.totalElements || 0)
-      totalPages.value = Number(res.data.totalPages || 0)
+const {
+  page,
+  totalElements,
+  totalPages,
+  loading,
+  fetchPage
+} = useServerPagination({
+  pageSize: 20,
+  fetchFn: async (query) => {
+    try {
+      const res = await getAdminDanmakuRecords({
+        page: query.page + 1,
+        pageSize: query.pageSize,
+        userId: filterUserId.value || undefined,
+        episodeId: filterEpisodeId.value || undefined,
+        animeId: filterAnimeId.value || undefined,
+        keyword: filterKeyword.value?.trim() || undefined,
+      })
+      if (res?.code === 200 && res?.data) {
+        records.value = res.data.content || []
+      }
+      return res
+    } catch (error) {
+      showAppMessage(error.response?.data?.msg || '获取弹幕记录失败', 'error')
+      return null
     }
-  } catch (error) {
-    showAppMessage(error.response?.data?.msg || '获取弹幕记录失败', 'error')
-  } finally {
-    loading.value = false
   }
-}
+})
 
 const handleSearch = () => {
   page.value = 1
-  fetchRecords()
+  fetchPage()
 }
 
 const handleReset = () => {
@@ -50,16 +52,16 @@ const handleReset = () => {
   filterAnimeId.value = ''
   filterKeyword.value = ''
   page.value = 1
-  fetchRecords()
+  fetchPage()
 }
 
 const handlePageChange = (newPage) => {
   page.value = newPage
-  fetchRecords()
+  fetchPage()
 }
 
 onMounted(() => {
-  fetchRecords()
+  fetchPage()
 })
 </script>
 
@@ -67,7 +69,7 @@ onMounted(() => {
   <div>
     <v-card class="mb-6">
       <v-card-title class="d-flex align-center ga-2">
-        <i class="mdi mdi-comment-text-multiple" style="color: #c45d2b;"></i>
+        <i class="mdi mdi-comment-text-multiple" style="color: var(--al-accent);"></i>
         弹幕管理
       </v-card-title>
       <v-card-text>

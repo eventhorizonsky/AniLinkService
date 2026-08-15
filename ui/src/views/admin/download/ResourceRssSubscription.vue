@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
-import { showAppMessage } from '../../../utils/ui-feedback'
+import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
 import { useIsMobile } from '../../../composables/useIsMobile'
+import { formatDateTime } from '../../../utils/format'
 import { getRssSubscriptions, createRssSubscription, updateRssSubscription, deleteRssSubscription, triggerRssSubscription, getRssLastContent, previewRssSubscription } from '../../../api/download'
 import { getLibraries } from '../../../api/media'
 import { getSiteConfig } from '../../../api/site'
@@ -33,24 +34,7 @@ const previewDialog = ref(false)
 const previewLoading = ref(false)
 const previewResult = ref(null)
 
-const formatLocalDateTime = (value) => {
-  if (!value) {
-    return '-'
-  }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
-}
+const formatLocalDateTime = (value) => formatDateTime(value, '-')
 
 const form = ref({
   name: '',
@@ -147,6 +131,13 @@ const saveSubscription = async () => {
 }
 
 const deleteSubscription = async (row) => {
+  const ok = await askAppConfirm({
+    title: '删除订阅',
+    message: `确定要删除订阅「${row.name || row.rssUrl || ''}」吗？`,
+    confirmText: '删除',
+    color: 'error'
+  })
+  if (!ok) return
   try {
     const res = await deleteRssSubscription(row.id)
     if (res?.code === 200) {

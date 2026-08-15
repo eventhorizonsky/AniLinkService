@@ -2,16 +2,45 @@
 import { computed, onMounted, ref } from 'vue'
 import { showAppMessage } from '../../utils/ui-feedback'
 import { getUserRoles, getUsers, updateUser } from '../../api/system'
+import { useServerPagination } from '../../composables/useServerPagination'
 
-const loading = ref(false)
 const saving = ref(false)
 const users = ref([])
 const roleOptions = ref([])
 const keyword = ref('')
-const page = ref(1)
-const pageSize = ref(10)
-const totalElements = ref(0)
-const totalPages = ref(0)
+
+const {
+  page,
+  pageSize,
+  totalElements,
+  totalPages,
+  loading,
+  fetchPage
+} = useServerPagination({
+  pageSize: 10,
+  fetchFn: async (query) => {
+    try {
+      const res = await getUsers({
+        page: query.page,
+        pageSize: query.pageSize,
+        keyword: keyword.value?.trim() || undefined
+      })
+
+      if (res?.code === 200 && res?.data) {
+        users.value = res.data.content || []
+
+        const current = Number(res.data.currentPage || 0) + 1
+        if (current !== page.value) {
+          page.value = current
+        }
+      }
+      return res
+    } catch (error) {
+      showAppMessage(error.response?.data?.msg || '获取用户列表失败', 'error')
+      return null
+    }
+  }
+})
 
 const editDialog = ref(false)
 const editForm = ref({
@@ -47,47 +76,20 @@ const fetchRoleOptions = async () => {
   }
 }
 
-const fetchUsers = async () => {
-  loading.value = true
-  try {
-    const res = await getUsers({
-      page: page.value - 1,
-      pageSize: pageSize.value,
-      keyword: keyword.value?.trim() || undefined
-    })
-
-    if (res?.code === 200 && res?.data) {
-      const data = res.data
-      users.value = data.content || []
-      totalElements.value = Number(data.totalElements || 0)
-      totalPages.value = Number(data.totalPages || 0)
-
-      const current = Number(data.currentPage || 0) + 1
-      if (current !== page.value) {
-        page.value = current
-      }
-    }
-  } catch (error) {
-    showAppMessage(error.response?.data?.msg || '获取用户列表失败', 'error')
-  } finally {
-    loading.value = false
-  }
-}
-
 const searchUsers = async () => {
   page.value = 1
-  await fetchUsers()
+  await fetchPage()
 }
 
 const resetSearch = async () => {
   keyword.value = ''
   page.value = 1
-  await fetchUsers()
+  await fetchPage()
 }
 
 const onPageChange = async (newPage) => {
   page.value = newPage
-  await fetchUsers()
+  await fetchPage()
 }
 
 const openEditDialog = (user) => {
@@ -125,7 +127,7 @@ const submitEdit = async () => {
     if (res?.code === 200) {
       showAppMessage('用户更新成功', 'success')
       editDialog.value = false
-      await fetchUsers()
+      await fetchPage()
     } else {
       showAppMessage(res?.msg || '用户更新失败', 'error')
     }
@@ -138,7 +140,7 @@ const submitEdit = async () => {
 
 onMounted(async () => {
   await fetchRoleOptions()
-  await fetchUsers()
+  await fetchPage()
 })
 </script>
 
@@ -146,7 +148,7 @@ onMounted(async () => {
   <div>
     <v-card class="mb-4">
       <v-card-title class="d-flex align-center ga-2">
-        <i class="mdi mdi-account-search" style="color: #c45d2b;"></i>
+        <i class="mdi mdi-account-search" style="color: var(--al-accent);"></i>
         用户搜索
       </v-card-title>
       <v-card-text>

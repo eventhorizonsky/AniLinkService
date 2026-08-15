@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getInitSystemInfo } from '../api/site'
+import { formatUptime } from '../utils/format'
 
 const systemInfo = ref(null)
 const loading = ref(true)
@@ -26,17 +27,6 @@ const fetchSystemInfo = async () => {
 const getMemoryUsedPercent = () => {
   if (!systemInfo.value || !systemInfo.value.totalMemoryMB || !systemInfo.value.maxMemoryMB) return 0
   return ((systemInfo.value.totalMemoryMB / systemInfo.value.maxMemoryMB) * 100).toFixed(1)
-}
-
-const formatUptime = (seconds) => {
-  if (!seconds) return '-'
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  if (hours > 24) {
-    const days = Math.floor(hours / 24)
-    return `${days}天 ${hours % 24}小时`
-  }
-  return `${hours}小时 ${minutes}分钟`
 }
 
 onMounted(() => {
