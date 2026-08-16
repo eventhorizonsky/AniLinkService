@@ -120,6 +120,9 @@ public class MediaTranscodeService {
     @Value("${media.transcode.vaapi-device:/dev/dri/renderD128}")
     private String vaapiDevice;
 
+    @Value("${media.transcode.qsv-device:/dev/dri/renderD128}")
+    private String qsvDevice;
+
     @Autowired
     private SiteConfigService siteConfigService;
 
@@ -145,6 +148,10 @@ public class MediaTranscodeService {
     @Value("${media.transcode.probe-timeout-seconds:30}")
     private long probeTimeoutSeconds;
 
+    /** 单个硬件编码器烟测超时（秒）：QSV 等失败时可能挂起，必须限时强杀 */
+    @Value("${media.transcode.encoder-probe-timeout-seconds:8}")
+    private long encoderProbeTimeoutSeconds;
+
     // ==================== 编码器自动选择 ====================
 
     private enum EncoderKind { LIBX264, QSV, NVENC, VAAPI, AMF, VIDEOTOOLBOX }
@@ -162,7 +169,13 @@ public class MediaTranscodeService {
     }
 
     private static final EncoderProfile LIBX264_PROFILE = new EncoderProfile(EncoderKind.LIBX264, "libx264", "libx264");
-    private static final String[] ENCODER_PRIORITY = {"h264_qsv", "h264_nvenc", "h264_vaapi", "h264_amf", "h264_videotoolbox"};
+    /**
+     * 自动选择优先级。仅列出还不够：探测阶段会对逐个候选跑一次限时烟测编码，
+     * 真正能在当前运行环境打开硬件会话的才会进入 {@link #availableEncoders}。
+     * 因此顺序只决定"多个都可用时选谁"；NVENC 给 NVIDIA 环境，VAAPI 给
+     * Intel/AMD 环境（libva+iHD/radeonsi），QSV 给 MFX/oneVPL 可用的 Intel 环境。
+     */
+    private static final String[] ENCODER_PRIORITY = {"h264_nvenc", "h264_vaapi", "h264_qsv", "h264_amf", "h264_videotoolbox"};
     private static final Map<String, EncoderProfile> ENCODER_PROFILES = Map.of(
             "h264_qsv", new EncoderProfile(EncoderKind.QSV, "h264_qsv", "Intel QSV"),
             "h264_nvenc", new EncoderProfile(EncoderKind.NVENC, "h264_nvenc", "NVIDIA NVENC"),
@@ -244,9 +257,153 @@ public class MediaTranscodeService {
         } catch (Exception e) {
             log.warn("ffmpeg 编码器探测失败：{}", e.getMessage());
         }
-        availableEncoders = names;
-        log.info("ffmpeg 可用 H.264 编码器：{}", names.isEmpty() ? "（无，回退 libx264）" : names);
-        return names;
+        // -encoders 只表示"编译进了该编码器"；再对每个候选做限时烟测编码，
+        // 真正能在当前运行环境打开硬件会话的才进入自动选择。
+        Set<String> usable = new HashSet<>();
+        for (String name : ENCODER_PRIORITY) {
+            if (names.contains(name) && isEncoderActuallyUsable(name)) {
+                usable.add(name);
+            }
+        }
+        Set<String> filtered = filterDisabledEncoders(usable);
+        availableEncoders = filtered;
+        log.info("ffmpeg 可用 H.264 编码器：{}", filtered.isEmpty() ? "（无，回退 libx264）" : filtered);
+        return filtered;
+    }
+
+    /**
+     * 烟测单个硬件编码器能否在当前运行环境真正打开会话：
+     * 生成几帧小分辨率测试视频编码到 null 输出，限时等待，超时强杀。
+     * QSV 等失败时可能既不退出也不报错，必须靠超时兜底。
+     */
+    private boolean isEncoderActuallyUsable(String codec) {
+        java.util.List<String> devices = new java.util.ArrayList<>();
+        boolean needDri = "h264_vaapi".equals(codec) || "h264_qsv".equals(codec);
+        if (needDri) {
+            devices = findDriRenderNodes();
+            if (devices.isEmpty()) {
+                log.info("未发现 /dev/dri render 节点，跳过 {} 烟测", codec);
+                return false;
+            }
+        } else {
+            devices.add("");
+        }
+        for (String device : devices) {
+            if (runEncoderProbe(codec, device)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean runEncoderProbe(String codec, String device) {
+        Process p = null;
+        try {
+            java.util.List<String> cmd = buildEncoderProbeCommand(codec, device);
+            p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+            final Process process = p;
+            Thread drain = new Thread(() -> {
+                try {
+                    java.io.InputStream in = process.getInputStream();
+                    byte[] buf = new byte[1024];
+                    while (in.read(buf) != -1) {
+                        // 丢弃烟测输出，避免 pipe 写满阻塞
+                    }
+                } catch (IOException ignored) {
+                }
+            }, "ffmpeg-encoder-probe-drain");
+            drain.setDaemon(true);
+            drain.start();
+            long timeout = Math.max(3, encoderProbeTimeoutSeconds);
+            boolean finished = process.waitFor(timeout, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                log.info("硬件编码器 {} 烟测超时（>{}s），判定不可用", codec, timeout);
+                return false;
+            }
+            boolean ok = process.exitValue() == 0;
+            log.info("硬件编码器 {} 烟测{}", codec, ok ? "通过，加入自动选择" : "失败，判定不可用");
+            return ok;
+        } catch (Exception e) {
+            log.info("硬件编码器 {} 烟测异常：{}", codec, e.getMessage());
+            return false;
+        } finally {
+            if (p != null && p.isAlive()) {
+                p.destroyForcibly();
+            }
+        }
+    }
+
+    /**
+     * 构造编码器烟测命令：lavfi 小分辨率短测试源 + 对应编码器最小参数。
+     */
+    private java.util.List<String> buildEncoderProbeCommand(String codec, String device) {
+        java.util.List<String> cmd = new java.util.ArrayList<>();
+        cmd.add("ffmpeg");
+        cmd.add("-hide_banner");
+        cmd.add("-loglevel");
+        cmd.add("error");
+        cmd.add("-nostdin");
+        if ("h264_vaapi".equals(codec)) {
+            cmd.add("-init_hw_device");
+            cmd.add("vaapi=va:" + device);
+            cmd.add("-filter_hw_device");
+            cmd.add("va");
+        }
+        cmd.add("-f");
+        cmd.add("lavfi");
+        cmd.add("-i");
+        cmd.add("testsrc2=size=256x256:rate=10:duration=0.6");
+        switch (codec) {
+            case "h264_qsv":
+                cmd.add("-qsv_device");
+                cmd.add(device);
+                cmd.add("-c:v"); cmd.add("h264_qsv");
+                cmd.add("-pix_fmt"); cmd.add("nv12");
+                break;
+            case "h264_vaapi":
+                cmd.add("-vf"); cmd.add("format=nv12,hwupload");
+                cmd.add("-c:v"); cmd.add("h264_vaapi");
+                break;
+            case "h264_nvenc":
+                cmd.add("-c:v"); cmd.add("h264_nvenc");
+                cmd.add("-pix_fmt"); cmd.add("yuv420p");
+                break;
+            case "h264_amf":
+                cmd.add("-c:v"); cmd.add("h264_amf");
+                cmd.add("-pix_fmt"); cmd.add("yuv420p");
+                break;
+            case "h264_videotoolbox":
+                cmd.add("-c:v"); cmd.add("h264_videotoolbox");
+                cmd.add("-pix_fmt"); cmd.add("yuv420p");
+                break;
+            default:
+                cmd.add("-c:v"); cmd.add("libx264");
+                cmd.add("-pix_fmt"); cmd.add("yuv420p");
+                break;
+        }
+        cmd.add("-frames:v");
+        cmd.add("5");
+        cmd.add("-f");
+        cmd.add("null");
+        cmd.add("-");
+        return cmd;
+    }
+
+    private java.util.List<String> findDriRenderNodes() {
+        java.util.List<String> nodes = new java.util.ArrayList<>();
+        Path dri = Paths.get("/dev/dri");
+        if (!Files.isDirectory(dri)) {
+            return nodes;
+        }
+        try (Stream<Path> stream = Files.list(dri)) {
+            stream.filter(p -> p.getFileName().toString().startsWith("renderD"))
+                    .map(Path::toString)
+                    .sorted()
+                    .forEach(nodes::add);
+        } catch (IOException ignored) {
+        }
+        return nodes;
     }
 
     /**
@@ -1170,6 +1327,11 @@ public class MediaTranscodeService {
             cmd.add("vaapi=va:" + vaapiDevice);
             cmd.add("-filter_hw_device");
             cmd.add("va");
+        } else if (mode == PlayMode.TRANSCODE && encoder.kind == EncoderKind.QSV) {
+            // QSV 编码会话需要显式指定 Intel 核显 render 节点；自动探测失败时
+            // 会报 MFX session -9（可用但打不开），这里固定 device 消除歧义
+            cmd.add("-qsv_device");
+            cmd.add(qsvDevice);
         }
         if (anchorIdx > 0) {
             // 输入流粗定位（放在 -i 前）：毫秒级快进到目标附近的关键帧，避免从头解码
@@ -1429,7 +1591,60 @@ public class MediaTranscodeService {
             updated.remove(enc.codec);
             availableEncoders = updated;
             activeEncoderProfile = null;
-            log.warn("硬件编码器 {} 不可用，已从自动选择列表移除，后续转码将绕过它", enc.label);
+            persistDisabledEncoder(enc.codec);
+            log.warn("硬件编码器 {} 不可用，已从自动选择列表移除并记录到磁盘，重启后仍会绕过它", enc.label);
+        }
+    }
+
+    private Path disabledEncodersPath() {
+        return Paths.get(transcodeOutputDir, "index", "disabled-hw-encoders.txt");
+    }
+
+    private Set<String> filterDisabledEncoders(Set<String> names) {
+        Set<String> disabled = loadDisabledEncoders();
+        if (disabled.isEmpty()) {
+            return names;
+        }
+        Set<String> filtered = new HashSet<>(names);
+        filtered.removeAll(disabled);
+        return filtered;
+    }
+
+    private Set<String> loadDisabledEncoders() {
+        Set<String> disabled = new HashSet<>();
+        try {
+            Path file = disabledEncodersPath();
+            if (Files.isRegularFile(file)) {
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    String name = line.trim();
+                    if (!name.isEmpty()) {
+                        disabled.add(name);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.warn("读取禁用硬件编码器记录失败：{}", e.getMessage());
+        }
+        return disabled;
+    }
+
+    private void persistDisabledEncoder(String codec) {
+        try {
+            Path file = disabledEncodersPath();
+            if (file.getParent() != null) {
+                Files.createDirectories(file.getParent());
+            }
+            Set<String> disabled = loadDisabledEncoders();
+            disabled.add(codec);
+            List<String> sorted = new ArrayList<>(disabled);
+            sorted.sort(null);
+            StringBuilder sb = new StringBuilder();
+            for (String name : sorted) {
+                sb.append(name).append('\n');
+            }
+            Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("持久化禁用硬件编码器失败：codec={} msg={}", codec, e.getMessage());
         }
     }
 
