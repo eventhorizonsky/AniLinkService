@@ -22,9 +22,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -42,9 +40,9 @@ import java.util.stream.Stream;
  *
  * <p>「即跳即转」能力：
  * <ul>
- *   <li>所有模式都返回带 ENDLIST 的完整 VOD 清单（进度条一开始就是完整时长），
- *       transcode 模式按源时长 + 强制关键帧预铺分片；remux/mixed 模式用 ffprobe
- *       关键帧边界探测精确分片；</li>
+ *   <li>transcode 返回带 ENDLIST 的完整 VOD 清单（进度条一开始就是完整时长），按源时长 +
+ *       强制关键帧预铺分片；remux/mixed 用 ffprobe 关键帧边界探测精确分片（{@code -skip_frame
+ *       nokey} 快速探测），边界就绪后同样返回完整 VOD 清单，就绪前透传 EVENT 清单随产出增长；</li>
  *   <li>拖动到未产出区域时（缺失分片距当前产出前沿超过近前沿余量，或落入向前重锚留下的
  *       未产出空洞），杀掉当前 ffmpeg 重新起转：transcode 用 {@code -ss} 输入流粗定位 +
  *       {@code -ss} 输出精定位（帧精确，消除 A/V 错位）+ {@code -start_number} 对齐分片序号，
@@ -123,8 +121,13 @@ public class MediaTranscodeService {
 
     private final Map<String, TranscodeSession> sessions = new ConcurrentHashMap<>();
 
-    /** 单飞串行化：key → 正在启动中的会话（含 Future），确保同 key 并发请求只有一个线程在拉 ffmpeg */
-    private final Map<String, CompletableFuture<TranscodeSession>> pendingStarts = new ConcurrentHashMap<>();
+    /**
+     * 单飞串行化：key → 启动锁。映射函数只创建空锁对象（瞬时完成），真正的会话启动放在
+     * {@code synchronized(lock)} 内并双重检查。不得用 CHM 的 compute/put 系列承载慢启动逻辑：
+     * 映射执行期间该 key 的 bin 处于 ReservationNode，Java 17+ 上并发请求再访问同 key
+     * 会直接抛 IllegalStateException("Recursive update")（而非等待），导致清单请求 503。
+     */
+    private final Map<String, Object> startLocks = new ConcurrentHashMap<>();
     /** 并发上限的原子计数：已启动但尚未确认运行中的会话数（用于锁外启动时精确统计） */
     private final AtomicInteger inFlightStarts = new AtomicInteger();
 
@@ -489,7 +492,7 @@ public class MediaTranscodeService {
 
     /**
      * 获取（必要时启动/重启）转码会话。
-     * 死会话的检测与清理统一移入单飞启动任务内执行，保证同一 key 同一时刻至多一个线程
+     * 死会话的检测与清理在按 key 的启动锁内执行，保证同一 key 同一时刻至多一个线程
      * 在清理旧会话/启动新会话，避免并发请求误删正在写入的新会话目录导致分片永久缺失。
      */
     private TranscodeSession acquireSession(String key, Long mediaFileId, PlayMode mode) {
@@ -502,85 +505,55 @@ public class MediaTranscodeService {
         if (session != null && !isSessionDead(session)) {
             return session;
         }
-        // 单飞（single-flight）：同一 key 的并发请求只允许一个线程真正执行清理+启动逻辑，
-        // 其余线程等待同一 Future，避免同 key 竞态双启动导致两个 ffmpeg 进程写同一目录。
-        CompletableFuture<TranscodeSession> future = pendingStarts.computeIfAbsent(key, k -> startSessionAsync(key, mediaFileId, mode, initialSeekSec));
+        // 单飞（single-flight）：同一 key 的并发请求只允许一个线程真正执行清理+启动逻辑。
+        // 锁对象由 CHM.computeIfAbsent 创建（映射函数仅 new Object()，瞬时完成，不会触发
+        // CHM 的 ReservationNode/"Recursive update"）；真正的会话启动在 synchronized(lock)
+        // 内进行，其余请求阻塞等待并在拿到锁后双重检查复用结果。
+        Object lock = startLocks.computeIfAbsent(key, k -> new Object());
         try {
-            TranscodeSession result = future.get();
-            if (result == null) {
-                throw new IllegalStateException("转码会话启动失败");
-            }
-            return result;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("转码会话启动被中断", e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new IllegalStateException("转码会话启动失败", cause);
-        }
-    }
-
-    private CompletableFuture<TranscodeSession> startSessionAsync(String key, Long mediaFileId, PlayMode mode) {
-        return startSessionAsync(key, mediaFileId, mode, 0);
-    }
-
-    /**
-     * 单飞启动任务：由 computeIfAbsent 的创建者线程执行（其余线程等待同一 Future）。
-     * 完成（成功/失败）后移除 pendingStarts 占位，后续请求可重新进入快速路径或重建新会话。
-     * 永不抛出异常：任何失败都通过 Future 的异常完成传递给等待者。
-     */
-    private CompletableFuture<TranscodeSession> startSessionAsync(String key, Long mediaFileId, PlayMode mode, double initialSeekSec) {
-        CompletableFuture<TranscodeSession> future = new CompletableFuture<>();
-        boolean reserved = false;
-        try {
-            // 并发上限校验 + 死会话清理 + 启动占位计数，仅短暂持锁；进程启动放在锁外避免请求相互阻塞
-            synchronized (this) {
+            synchronized (lock) {
                 TranscodeSession existing = sessions.get(key);
                 if (existing != null && !isSessionDead(existing)) {
-                    // 快速路径读取后已有其他线程完成重建，直接复用，不再重复启动
-                    future.complete(existing);
-                    return future;
+                    // 等待期间已有其他线程完成重建，直接复用，不再重复启动
+                    return existing;
                 }
-                if (existing != null) {
-                    log.warn("转码会话已异常退出，清理并重建：{}", key);
-                    sessions.remove(key, existing);
-                    killSession(existing);
+                // 并发上限校验 + 死会话清理 + 启动占位计数，仅短暂持全局锁；进程启动不阻塞其他 key 的会话
+                boolean reserved = false;
+                synchronized (this) {
+                    if (existing != null) {
+                        log.warn("转码会话已异常退出，清理并重建：{}", key);
+                        sessions.remove(key, existing);
+                        killSession(existing);
+                    }
+                    long runningCount = sessions.values().stream()
+                            .filter(s -> s.process.isAlive())
+                            .count() + inFlightStarts.get();
+                    if (runningCount >= maxConcurrent) {
+                        throw new IllegalStateException("转码任务并发已达上限(" + maxConcurrent + ")，请稍后再试");
+                    }
+                    inFlightStarts.incrementAndGet();
+                    reserved = true;
                 }
-                long runningCount = sessions.values().stream()
-                        .filter(s -> s.process.isAlive())
-                        .count() + inFlightStarts.get();
-                if (runningCount >= maxConcurrent) {
-                    throw new IllegalStateException("转码任务并发已达上限(" + maxConcurrent + ")，请稍后再试");
+                try {
+                    TranscodeSession created = startSession(mediaFileId, mode, initialSeekSec);
+                    if (created == null) {
+                        throw new IllegalStateException("转码会话启动失败");
+                    }
+                    TranscodeSession raced = sessions.putIfAbsent(key, created);
+                    if (raced != null) {
+                        // 极端竞态兜底：已有会话，仅销毁新进程，不删共享目录（同一目录可能已被复用）
+                        killProcess(created.process);
+                        return raced;
+                    }
+                    return created;
+                } finally {
+                    if (reserved) {
+                        inFlightStarts.decrementAndGet();
+                    }
                 }
-                inFlightStarts.incrementAndGet();
-                reserved = true;
             }
-            // 进程启动（含首次 DB 读取源文件信息）在锁外执行
-            TranscodeSession created = startSession(mediaFileId, mode, initialSeekSec);
-            if (created == null) {
-                future.complete(null);
-                return future;
-            }
-            TranscodeSession existing = sessions.putIfAbsent(key, created);
-            if (existing != null) {
-                // 极端竞态兜底：已有会话，仅销毁新进程，不删共享目录（同一目录可能已被复用）
-                killProcess(created.process);
-                future.complete(existing);
-                return future;
-            }
-            future.complete(created);
-            return future;
-        } catch (Throwable t) {
-            future.completeExceptionally(t);
-            return future;
         } finally {
-            if (reserved) {
-                inFlightStarts.decrementAndGet();
-            }
-            pendingStarts.remove(key, future);
+            startLocks.remove(key, lock);
         }
     }
 
@@ -624,10 +597,11 @@ public class MediaTranscodeService {
      *
      * <p>所有模式尽量返回带 ENDLIST 的完整 VOD 清单，进度条一开始就是完整时长：
      * <ul>
-     *   <li>transcode：分片按源时长 + 强制关键帧预铺（精确对齐）；</li>
-     *   <li>remux/mixed：用 ffprobe 关键帧边界探测得到真实分片边界；探测尚未完成时
-     *       按分片时长等分估算合成完整 VOD，探测完成后下次请求即切回精确清单。
-     *       仅当源时长未知时才降级为 EVENT 清单。</li>
+     *      <li>transcode：分片按源时长 + 强制关键帧预铺（精确对齐），合成完整 VOD；</li>
+     *      <li>remux/mixed：用 ffprobe 关键帧边界探测得到真实分片边界后合成完整 VOD；
+     *          探测尚未完成时透传 ffmpeg 实时 EVENT 清单（仅列已产出分片），探测完成后
+     *          下次请求即切回精确清单。等分预估与实际关键帧切分无关，会引用永不产出的
+     *          尾部 seg 序号导致拖拽 loading，故边界就绪前不再按源时长铺满。</li>
      * </ul></p>
      *
      * @param initialSeekSec 新会话的初始定位秒数（续播/URL 跳转），仅首个请求生效
@@ -648,15 +622,16 @@ public class MediaTranscodeService {
             return synthesizeTranscodePlaylist(durationSec, manifest, anchorIdx);
         }
 
-        // remux/mixed：关键帧边界已就绪时按真实边界精确合成；尚未就绪时按分片时长等分估算，
-        // 均返回带 ENDLIST 的完整 VOD 清单，保证进度条一开始就是完整视频时长。
-        // （此前边界未就绪时返回 EVENT 清单，hls.js 会当作直播流，进度条终点 = 当前转码进度，
-        //  而边界探测需解码整个源视频，在 NAS/弱机上常超时失败，导致始终无法验证即跳即转。）
+        // remux/mixed：关键帧边界已就绪时按真实边界精确合成完整 VOD 清单；
+        // 尚未就绪时透传 ffmpeg 实时 EVENT 清单（仅列已产出分片，随产出增长），
+        // 不按源时长等分铺满——等分预估与实际关键帧切分无关，会引用永不产出的
+        // 尾部 seg 序号导致拖到后半段持续 loading，且弱机/大文件上边界探测常需数秒。
+        // 配合 -skip_frame nokey 快速探测，边界就绪后下次请求即切回精确完整 VOD。
         List<Double> boundaries = session == null ? null : session.boundaries;
         if (boundaries != null && !boundaries.isEmpty()) {
             return synthesizeCopyPlaylist(durationSec, mode, boundaries);
         }
-        return synthesizeEstimatePlaylist(durationSec, mode, manifest, anchorIdx);
+        return eventizePlaylist(manifest);
     }
 
     /**
@@ -670,13 +645,14 @@ public class MediaTranscodeService {
     }
 
     /**
-     * 依据源时长合成完整 VOD 清单（含 ENDLIST），模式无关。
-     * 已产出分片沿用真实 EXTINF，未产出按分片时长估算，最后一段按剩余时长补齐，
-     * 保证清单总时长与源时长精确一致。anchorIdx 之后的分片由当前（可能已重锚的）
-     * ffmpeg 进程产出，其 EXTINF 从 ffmpeg 实时清单按偏移映射。
+     * 依据源时长合成完整 VOD 清单（含 ENDLIST），用于 transcode 模式（已产出分片沿真实
+     * EXTINF，未产出按分片时长等分预估，最后一段按剩余时长补齐，保证清单总时长与源时长
+     * 精确一致）。anchorIdx 之后的分片由当前（可能已重锚的）ffmpeg 进程产出，其 EXTINF
+     * 从 ffmpeg 实时清单按偏移映射。
      *
-     * <p>remux/mixed 模式在关键帧边界尚未就绪时同样使用本方法合成完整 VOD 清单，
-     * 避免 EVENT 降级导致 hls.js 把清单当直播流、进度条终点 = 当前转码进度。</p>
+     * <p>仅适用于 transcode：强制关键帧按 segSec 预铺，分片边界与等分预估严格对齐；
+     * remux/mixed 的 -c copy 切分取决于源关键帧位置，等分预估会与实际分片数不一致，
+     * 故边界就绪前改用 EVENT 清单（见 getManifestContent）。</p>
      */
     private String synthesizeEstimatePlaylist(double durationSec, PlayMode mode, Path manifest, int anchorIdx) {
         int segSec = Math.max(2, segmentSeconds);
@@ -1390,12 +1366,15 @@ public class MediaTranscodeService {
     /**
      * 用 ffprobe 提取视频关键帧 pts，模拟 -c copy + -hls_time 的切分规则，
      * 返回各分片起始时间（秒）。
+     * {@code -skip_frame nokey} 使 ffprobe 只解析关键帧（跳过非关键帧的解码/读取），
+     * 探测速度提升约一个数量级，弱机/大文件上也能在数秒内就绪，缩短 EVENT 降级窗口。
      */
     private List<Double> probeKeyframeBoundaries(Path input) {
         List<Double> keyframes = new ArrayList<>();
         try {
             ProcessBuilder pb = new ProcessBuilder(
                     "ffprobe", "-v", "error",
+                    "-skip_frame", "nokey",
                     "-select_streams", "v:0",
                     "-show_entries", "frame=key_frame,pts_time",
                     "-of", "csv=p=0",
