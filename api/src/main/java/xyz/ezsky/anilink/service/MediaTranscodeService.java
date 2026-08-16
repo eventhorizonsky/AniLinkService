@@ -626,7 +626,8 @@ public class MediaTranscodeService {
      * <ul>
      *   <li>transcode：分片按源时长 + 强制关键帧预铺（精确对齐）；</li>
      *   <li>remux/mixed：用 ffprobe 关键帧边界探测得到真实分片边界；探测尚未完成时
-     *       降级透传 ffmpeg 实时 EVENT 清单，探测完成后下次请求即切回完整 VOD。</li>
+     *       按分片时长等分估算合成完整 VOD，探测完成后下次请求即切回精确清单。
+     *       仅当源时长未知时才降级为 EVENT 清单。</li>
      * </ul></p>
      *
      * @param initialSeekSec 新会话的初始定位秒数（续播/URL 跳转），仅首个请求生效
@@ -637,18 +638,25 @@ public class MediaTranscodeService {
         TranscodeSession session = sessions.get(key);
         double durationSec = session == null ? 0 : session.durationSec;
 
-        if (mode == PlayMode.TRANSCODE) {
-            if (durationSec > 0) {
-                return synthesizeTranscodePlaylist(durationSec, manifest, session == null ? 0 : session.anchorIdx);
-            }
+        if (durationSec <= 0) {
+            // 源时长未知（元数据缺失且兜底探测失败，极少数场景）：退化为 EVENT 清单，总时长随分片产出增长
             return eventizePlaylist(manifest);
         }
 
+        int anchorIdx = session == null ? 0 : session.anchorIdx;
+        if (mode == PlayMode.TRANSCODE) {
+            return synthesizeTranscodePlaylist(durationSec, manifest, anchorIdx);
+        }
+
+        // remux/mixed：关键帧边界已就绪时按真实边界精确合成；尚未就绪时按分片时长等分估算，
+        // 均返回带 ENDLIST 的完整 VOD 清单，保证进度条一开始就是完整视频时长。
+        // （此前边界未就绪时返回 EVENT 清单，hls.js 会当作直播流，进度条终点 = 当前转码进度，
+        //  而边界探测需解码整个源视频，在 NAS/弱机上常超时失败，导致始终无法验证即跳即转。）
         List<Double> boundaries = session == null ? null : session.boundaries;
-        if (durationSec > 0 && boundaries != null && !boundaries.isEmpty()) {
+        if (boundaries != null && !boundaries.isEmpty()) {
             return synthesizeCopyPlaylist(durationSec, mode, boundaries);
         }
-        return eventizePlaylist(manifest);
+        return synthesizeEstimatePlaylist(durationSec, mode, manifest, anchorIdx);
     }
 
     /**
@@ -658,6 +666,19 @@ public class MediaTranscodeService {
      * ffmpeg 进程产出，其 EXTINF 从 ffmpeg 实时清单按偏移映射。
      */
     private String synthesizeTranscodePlaylist(double durationSec, Path manifest, int anchorIdx) {
+        return synthesizeEstimatePlaylist(durationSec, PlayMode.TRANSCODE, manifest, anchorIdx);
+    }
+
+    /**
+     * 依据源时长合成完整 VOD 清单（含 ENDLIST），模式无关。
+     * 已产出分片沿用真实 EXTINF，未产出按分片时长估算，最后一段按剩余时长补齐，
+     * 保证清单总时长与源时长精确一致。anchorIdx 之后的分片由当前（可能已重锚的）
+     * ffmpeg 进程产出，其 EXTINF 从 ffmpeg 实时清单按偏移映射。
+     *
+     * <p>remux/mixed 模式在关键帧边界尚未就绪时同样使用本方法合成完整 VOD 清单，
+     * 避免 EVENT 降级导致 hls.js 把清单当直播流、进度条终点 = 当前转码进度。</p>
+     */
+    private String synthesizeEstimatePlaylist(double durationSec, PlayMode mode, Path manifest, int anchorIdx) {
         int segSec = Math.max(2, segmentSeconds);
         List<Double> produced = parseProducedDurations(manifest);
         int producedStart = anchorIdx;
@@ -680,7 +701,7 @@ public class MediaTranscodeService {
         sb.append("#EXT-X-PLAYLIST-TYPE:VOD\n");
         sb.append("#EXT-X-INDEPENDENT-SEGMENTS\n");
 
-        String base = modeNamePath(PlayMode.TRANSCODE) + "/segments/";
+        String base = modeNamePath(mode) + "/segments/";
         double accumulated = 0;
         for (int i = 0; i < total; i++) {
             double dur;

@@ -544,6 +544,22 @@ public class ResourceDownloadService {
     }
 
     private Path continueTask(Long taskId, ResourceDownloadTask task, ActiveDownloadContext context) throws IOException {
+        // 文件已成功入库（finalPath 有效且仍存在）：跳过重新下载/迁移，避免服务重启恢复
+        // MOVING/SCANNING 状态任务时把暂存文件再次复制入库，生成 _1/_2 等垃圾重复副本。
+        if (task.getFinalPath() != null && !task.getFinalPath().isBlank()
+                && Files.exists(Paths.get(task.getFinalPath()))) {
+            if (task.getStatus() == ResourceDownloadTask.DownloadStatus.MOVING
+                    || task.getStatus() == ResourceDownloadTask.DownloadStatus.SCANNING) {
+                if (task.getStatus() == ResourceDownloadTask.DownloadStatus.MOVING
+                        && task.getTempDir() != null && !task.getTempDir().isBlank()) {
+                    deleteDirectoryQuietly(Paths.get(task.getTempDir()));
+                }
+                updateStatus(taskId, ResourceDownloadTask.DownloadStatus.SCANNING, "文件已入库，开始触发媒体库扫描");
+                triggerScan(taskId);
+                return Paths.get(task.getFinalPath());
+            }
+        }
+
         if (task.getStatus() == ResourceDownloadTask.DownloadStatus.MOVING) {
             Path movedPath = moveToLibrary(taskId, true);
             updateStatus(taskId, ResourceDownloadTask.DownloadStatus.SCANNING, "文件迁移完成，开始触发媒体库扫描");
@@ -1082,6 +1098,17 @@ public class ResourceDownloadService {
         ResourceDownloadTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new IllegalArgumentException("下载任务不存在"));
 
+        // 幂等：本次任务已完成入库且目标文件仍在磁盘 → 直接复用既有结果，
+        // 避免服务重启恢复做种/迁移状态任务时把同一文件再次复制入库生成 _1/_2 副本。
+        if (task.getFinalPath() != null && !task.getFinalPath().isBlank()
+                && Files.isRegularFile(Paths.get(task.getFinalPath()))) {
+            log.info("任务已入库，跳过重复迁移：taskId={} finalPath={}", taskId, task.getFinalPath());
+            if (removeSourceFiles && task.getTempDir() != null && !task.getTempDir().isBlank()) {
+                deleteDirectoryQuietly(Paths.get(task.getTempDir()));
+            }
+            return Paths.get(task.getFinalPath());
+        }
+
         Path tempDir = Paths.get(task.getTempDir());
         if (!Files.exists(tempDir)) {
             throw new IllegalStateException("暂存目录不存在: " + tempDir);
@@ -1108,11 +1135,19 @@ public class ResourceDownloadService {
             Path relative = tempDir.relativize(source);
             Path desiredTarget = targetLibrary.resolve(relative);
             Files.createDirectories(desiredTarget.getParent());
-            Path target = uniquePath(desiredTarget);
-            if (removeSourceFiles) {
-                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            Path target;
+            // 目标已存在且大小一致 → 判定为同一文件已入库（如服务重启后做种任务重新入库，
+            // 或 RSS 用不同磁链重复下载同集资源）。直接复用现有文件，避免 uniquePath
+            // 追加 _1/_2 等垃圾重复副本被媒体库重新录入。
+            if (Files.isRegularFile(desiredTarget) && sameFileSize(source, desiredTarget)) {
+                target = desiredTarget;
             } else {
-                linkOrCopy(source, target);
+                target = uniquePath(desiredTarget);
+                if (removeSourceFiles) {
+                    Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    linkOrCopy(source, target);
+                }
             }
             if (source.equals(mainFile)) {
                 finalMainPath = target;
@@ -1137,6 +1172,14 @@ public class ResourceDownloadService {
             Files.createLink(target, source);
         } catch (UnsupportedOperationException | IOException e) {
             Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private boolean sameFileSize(Path a, Path b) {
+        try {
+            return Files.isRegularFile(a) && Files.isRegularFile(b) && Files.size(a) == Files.size(b);
+        } catch (IOException e) {
+            return false;
         }
     }
 
