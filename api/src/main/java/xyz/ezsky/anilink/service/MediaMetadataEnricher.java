@@ -38,6 +38,9 @@ public class MediaMetadataEnricher {
     @Autowired
     private SiteConfigService siteConfigService;
 
+    @Autowired
+    private MediaTranscodeService mediaTranscodeService;
+
     /**
      * 异步提取并补充媒体文件的完整元数据
      * 
@@ -89,6 +92,9 @@ public class MediaMetadataEnricher {
 
             // 第五步：标记已获取元数据
             mediaFile.setMetadataFetched(true);
+
+            // 第五点五步：预热 remux/mixed 播放所需的关键帧边界索引（后台异步，不阻塞扫描）
+            mediaTranscodeService.warmupBoundaryIndexAsync(mediaFile);
 
             long duration = System.currentTimeMillis() - startTime;
             log.info("Enriched metadata for file in {} ms: {}", duration, filePath);

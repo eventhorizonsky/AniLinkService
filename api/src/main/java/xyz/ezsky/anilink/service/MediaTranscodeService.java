@@ -22,7 +22,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -41,8 +44,8 @@ import java.util.stream.Stream;
  * <p>「即跳即转」能力：
  * <ul>
  *   <li>transcode 返回带 ENDLIST 的完整 VOD 清单（进度条一开始就是完整时长），按源时长 +
- *       强制关键帧预铺分片；remux/mixed 用 ffprobe 关键帧边界探测精确分片（{@code -skip_frame
- *       nokey} 快速探测），边界就绪后同样返回完整 VOD 清单，就绪前透传 EVENT 清单随产出增长；</li>
+ *       强制关键帧预铺分片；remux/mixed 用 ffprobe 关键帧边界探测精确分片（demux 层
+ *       packet 标记，不解码视频，极快），边界就绪后返回完整 VOD 清单，就绪前透传 EVENT 清单；</li>
  *   <li>拖动到未产出区域时（缺失分片距当前产出前沿超过近前沿余量，或落入向前重锚留下的
  *       未产出空洞），杀掉当前 ffmpeg 重新起转：transcode 用 {@code -ss} 输入流粗定位 +
  *       {@code -ss} 输出精定位（帧精确，消除 A/V 错位）+ {@code -start_number} 对齐分片序号，
@@ -109,6 +112,10 @@ public class MediaTranscodeService {
      */
     @Value("${media.transcode.reanchor-near-segments:3}")
     private int reanchorNearSegments;
+
+    /** 首个清单请求允许同步等待 remux/mixed 关键帧边界探测的秒数；超时后该次请求退化为 EVENT 清单 */
+    @Value("${media.transcode.boundary-probe-wait-seconds:60}")
+    private long boundaryProbeWaitSeconds;
 
     @Value("${media.transcode.vaapi-device:/dev/dri/renderD128}")
     private String vaapiDevice;
@@ -293,6 +300,16 @@ public class MediaTranscodeService {
     /** 关键帧边界探测结果缓存（mediaFileId → 分片起始时间序列），上限后整体清空 */
     private final Map<Long, List<Double>> boundaryCache = new ConcurrentHashMap<>();
 
+    /** remux/mixed 关键帧边界探测专用执行器（单线程，避免弱机上并发 ffprobe 打满磁盘 IO） */
+    private final ExecutorService boundaryProbeExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "transcode-boundary-probe");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** per-mediaId 的关键帧边界探测单飞 Future（成功后常驻，失败/超时后移除以便重试） */
+    private final Map<Long, CompletableFuture<List<Double>>> boundaryProbeFutures = new ConcurrentHashMap<>();
+
     /**
      * 根据媒体文件元数据给出后端推荐播放模式（前端最终基于浏览器能力决定）。
      */
@@ -316,6 +333,31 @@ public class MediaTranscodeService {
             return PlayMode.MIXED;
         }
         return PlayMode.TRANSCODE;
+    }
+
+    /**
+     * 媒体扫描/元数据入库后预热关键帧边界索引（后台异步）。
+     * 让 remux/mixed 首次播放即可返回带完整时长的 VOD 清单，而不是播放时才探测。
+     * 幂等：已有内存/磁盘索引时直接跳过。
+     */
+    public void warmupBoundaryIndexAsync(MediaFile mediaFile) {
+        if (mediaFile == null || mediaFile.getId() == null || mediaFile.getFilePath() == null) {
+            return;
+        }
+        // 冷启动阶段 ffmpeg 尚未探测完成时直接跳过，避免阻塞扫描队列；
+        // 此时播放路径仍会兜底探测并落盘，之后的播放即得益于该索引。
+        if (ffmpegAvailable != Boolean.TRUE || !canCopyVideoToTs(mediaFile)) {
+            return;
+        }
+        Path input = Paths.get(mediaFile.getFilePath());
+        if (!Files.isRegularFile(input)) {
+            return;
+        }
+        Long mediaFileId = mediaFile.getId();
+        if (boundaryCache.containsKey(mediaFileId) || loadBoundaryIndex(mediaFileId, input) != null) {
+            return;
+        }
+        boundaryProbeFuture(mediaFileId, input);
     }
 
     /**
@@ -622,11 +664,13 @@ public class MediaTranscodeService {
             return synthesizeTranscodePlaylist(durationSec, manifest, anchorIdx);
         }
 
-        // remux/mixed：关键帧边界已就绪时按真实边界精确合成完整 VOD 清单；
-        // 尚未就绪时透传 ffmpeg 实时 EVENT 清单（仅列已产出分片，随产出增长），
-        // 不按源时长等分铺满——等分预估与实际关键帧切分无关，会引用永不产出的
-        // 尾部 seg 序号导致拖到后半段持续 loading，且弱机/大文件上边界探测常需数秒。
-        // 配合 -skip_frame nokey 快速探测，边界就绪后下次请求即切回精确完整 VOD。
+        // remux/mixed：关键帧边界就绪时按真实边界精确合成完整 VOD 清单（进度条一开始
+        // 就是完整时长）。首次播放边界索引缺失时，先同步等待一个快速 ffprobe（仅 demux
+        // 不解码）构建边界，避免先发 EVENT、再切 VOD 造成 hls.js 重载后进度条闪变/重置。
+        // 超时未就绪才退化为 EVENT 清单，探测任务仍在后台继续，下一次请求可复用结果。
+        if (session != null) {
+            ensureCopyBoundariesReady(session, mediaFileId);
+        }
         List<Double> boundaries = session == null ? null : session.boundaries;
         if (boundaries != null && !boundaries.isEmpty()) {
             return synthesizeCopyPlaylist(durationSec, mode, boundaries);
@@ -870,18 +914,26 @@ public class MediaTranscodeService {
      */
     private void reanchorSession(TranscodeSession session, Long mediaFileId, int anchorIdx) {
         synchronized (this) {
+            // MIXED（视频 -c:v copy + 音频重编码 AAC）在输入侧 -ss 后，ffmpeg 的 HLS 分段
+            // 会把第一个分片写成没有任何音频 packet 的"哑"段（首个视频关键帧切点前 AAC
+            // 编码器尚未产出 packet）。因此从目标分片的前一个关键帧起转，让哑段落在上一
+            // 分片，用户实际 seek 到的目标分片即可获得完整音视频，消除跳转后静音/错位。
+            int startIdx = anchorIdx;
+            if (session.mode == PlayMode.MIXED && anchorIdx > 0) {
+                startIdx = anchorIdx - 1;
+            }
             boolean processAlive = session.process.isAlive();
-            // 进程存活且目标与当前锚一致 → 已在该位置产出，忽略重复请求
-            if (processAlive && session.anchorIdx == anchorIdx) {
+            // 进程存活且已从该生产起点起转 → 忽略重复请求
+            if (processAlive && session.anchorIdx == startIdx) {
                 return;
             }
             // 进程存活时前向重锚且距离过近 → 等当前进程按序产出即可
-            if (processAlive && anchorIdx > session.anchorIdx
-                    && anchorIdx - session.anchorIdx <= reanchorNearSegments()) {
+            if (processAlive && startIdx > session.anchorIdx
+                    && startIdx - session.anchorIdx <= reanchorNearSegments()) {
                 return;
             }
-            double ss = segmentStartTimeSec(session, anchorIdx);
-            session.anchorIdx = anchorIdx;
+            double ss = segmentStartTimeSec(session, startIdx);
+            session.anchorIdx = startIdx;
             session.generation++;
             // 重锚/恢复时清除失败态，允许从缺失分片请求处原地重启
             session.failed = false;
@@ -890,7 +942,7 @@ public class MediaTranscodeService {
             cleanupPartialSegments(session);
             if (startFfmpegProcess(session, mediaFileId)) {
                 log.info("转码会话跳转重锚：mediaId={} mode={} anchorIdx={} ss={}s",
-                        mediaFileId, session.mode.name().toLowerCase(), anchorIdx,
+                        mediaFileId, session.mode.name().toLowerCase(), startIdx,
                         String.format(Locale.ROOT, "%.1f", ss));
             } else {
                 session.failed = true;
@@ -1335,6 +1387,137 @@ public class MediaTranscodeService {
     }
 
     /**
+     * 确保 remux/mixed 会话的关键帧边界已就绪。
+     * <ul>
+     *   <li>内存/磁盘已缓存 → 直接复用；</li>
+     *   <li>首次播放 → 阻塞等待共享的快速 ffprobe 探测（仅 demux 不解码），
+     *       在预算时间内完成即可让首个清单就是精确完整时长的 VOD；</li>
+     *   <li>超时 → 返回让清单退化为 EVENT，探测继续后台完成，下次请求可复用。</li>
+     * </ul>
+     */
+    private void ensureCopyBoundariesReady(TranscodeSession session, Long mediaFileId) {
+        if (session.boundaries != null && !session.boundaries.isEmpty()) {
+            return;
+        }
+        List<Double> memory = boundaryCache.get(mediaFileId);
+        if (memory != null && !memory.isEmpty()) {
+            session.boundaries = memory;
+            return;
+        }
+        List<Double> disk = loadBoundaryIndex(mediaFileId, session.input);
+        if (disk != null && !disk.isEmpty()) {
+            session.boundaries = disk;
+            putBoundaryCache(mediaFileId, disk);
+            return;
+        }
+        try {
+            long budgetSec = Math.max(10, Math.min(120, boundaryProbeWaitSeconds));
+            List<Double> boundaries = boundaryProbeFuture(mediaFileId, session.input).get(budgetSec, TimeUnit.SECONDS);
+            if (boundaries != null && !boundaries.isEmpty()) {
+                session.boundaries = boundaries;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException ignored) {
+            // 探测超时/失败：本次退化为 EVENT，之后请求会再次等待同一个 Future
+        }
+    }
+
+    /**
+     * per-mediaId 单飞的关键帧边界探测。成功后 Future 常驻，后续播放/请求直接复用；
+     * 失败/超时则从 map 移除，允许下次重新探测。
+     */
+    private CompletableFuture<List<Double>> boundaryProbeFuture(Long mediaFileId, Path input) {
+        // 限制常驻 Future 数量：结果已落盘并写入内存缓存，清空后重放可随时重建
+        if (boundaryProbeFutures.size() > 512) {
+            boundaryProbeFutures.clear();
+        }
+        return boundaryProbeFutures.computeIfAbsent(mediaFileId, id -> {
+            CompletableFuture<List<Double>> f = CompletableFuture.supplyAsync(() -> {
+                List<Double> disk = loadBoundaryIndex(id, input);
+                if (disk != null && !disk.isEmpty()) {
+                    return disk;
+                }
+                return probeKeyframeBoundariesWithTimeout(input, Math.max(120, probeTimeoutSeconds * 4));
+            }, boundaryProbeExecutor);
+            f.whenComplete((boundaries, ex) -> {
+                if (boundaries == null || boundaries.isEmpty()) {
+                    boundaryProbeFutures.remove(id, f);
+                } else {
+                    putBoundaryCache(id, boundaries);
+                    persistBoundaryIndex(id, input, boundaries);
+                    log.info("关键帧边界探测完成：mediaId={} segments={}", id, boundaries.size());
+                }
+            });
+            return f;
+        });
+    }
+
+    private void putBoundaryCache(Long mediaFileId, List<Double> boundaries) {
+        if (boundaryCache.size() > 128) {
+            boundaryCache.clear();
+        }
+        boundaryCache.put(mediaFileId, boundaries);
+    }
+
+    private Path boundaryIndexPath(Long mediaFileId) {
+        return Paths.get(transcodeOutputDir, "index", mediaFileId + ".boundaries");
+    }
+
+    /**
+     * 从磁盘索引读取关键帧边界。首行为源文件 mtime（毫秒）用于判旧，其后每行为一个分片起始秒数。
+     */
+    private List<Double> loadBoundaryIndex(Long mediaFileId, Path input) {
+        try {
+            Path file = boundaryIndexPath(mediaFileId);
+            if (!Files.isRegularFile(file)) {
+                return null;
+            }
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            if (lines.size() < 2) {
+                return null;
+            }
+            long mtime = Files.getLastModifiedTime(input).toMillis();
+            long recorded;
+            try {
+                recorded = Long.parseLong(lines.get(0).trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (recorded != mtime) {
+                return null;
+            }
+            List<Double> boundaries = new ArrayList<>();
+            for (int i = 1; i < lines.size(); i++) {
+                try {
+                    boundaries.add(Double.parseDouble(lines.get(i).trim()));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            return boundaries.isEmpty() ? null : boundaries;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private void persistBoundaryIndex(Long mediaFileId, Path input, List<Double> boundaries) {
+        try {
+            Path file = boundaryIndexPath(mediaFileId);
+            if (file.getParent() != null) {
+                Files.createDirectories(file.getParent());
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append(Files.getLastModifiedTime(input).toMillis()).append('\n');
+            for (double b : boundaries) {
+                sb.append(String.format(Locale.ROOT, "%.6f", b)).append('\n');
+            }
+            Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("持久化关键帧边界索引失败：mediaId={} msg={}", mediaFileId, e.getMessage());
+        }
+    }
+
+    /**
      * remux/mixed 模式后台探测源视频关键帧时间，模拟 ffmpeg -hls_time 的分片边界，
      * 用于合成完整 VOD 清单。结果按 mediaFileId 缓存。
      */
@@ -1344,55 +1527,60 @@ public class MediaTranscodeService {
             session.boundaries = cached;
             return;
         }
-        Thread t = new Thread(() -> {
-            try {
-                List<Double> boundaries = probeKeyframeBoundaries(input);
-                if (boundaries != null && !boundaries.isEmpty()) {
-                    session.boundaries = boundaries;
-                    if (boundaryCache.size() > 128) {
-                        boundaryCache.clear();
-                    }
-                    boundaryCache.put(mediaFileId, boundaries);
-                    log.info("关键帧边界探测完成：mediaId={} segments={}", mediaFileId, boundaries.size());
-                }
-            } catch (Exception e) {
-                log.warn("关键帧边界探测失败：mediaId={} msg={}", mediaFileId, e.getMessage());
+        List<Double> disk = loadBoundaryIndex(mediaFileId, input);
+        if (disk != null && !disk.isEmpty()) {
+            session.boundaries = disk;
+            putBoundaryCache(mediaFileId, disk);
+            return;
+        }
+        // 后台单飞探测：同一文件只跑一个 ffprobe，结果写内存缓存 + 磁盘索引
+        boundaryProbeFuture(mediaFileId, input).thenAccept(boundaries -> {
+            if (boundaries != null && !boundaries.isEmpty()) {
+                session.boundaries = boundaries;
             }
-        }, "transcode-boundary-probe-" + mediaFileId);
-        t.setDaemon(true);
-        t.start();
+        });
     }
 
     /**
      * 用 ffprobe 提取视频关键帧 pts，模拟 -c copy + -hls_time 的切分规则，
      * 返回各分片起始时间（秒）。
-     * {@code -skip_frame nokey} 使 ffprobe 只解析关键帧（跳过非关键帧的解码/读取），
-     * 探测速度提升约一个数量级，弱机/大文件上也能在数秒内就绪，缩短 EVENT 降级窗口。
+     *
+     * <p>采用 {@code -show_entries packet=pts_time,flags}：仅遍历 demux 层 packet
+     * 标记（flags 首字符为 K 即关键帧），完全不解码视频。相比旧的
+     * {@code -skip_frame nokey}（仍需解码每个关键帧），弱机/大文件上可快数倍。</p>
      */
-    private List<Double> probeKeyframeBoundaries(Path input) {
+    private List<Double> probeKeyframeBoundariesWithTimeout(Path input, long timeoutSeconds) {
         List<Double> keyframes = new ArrayList<>();
+        Process p = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(
                     "ffprobe", "-v", "error",
-                    "-skip_frame", "nokey",
                     "-select_streams", "v:0",
-                    "-show_entries", "frame=key_frame,pts_time",
+                    "-show_entries", "packet=pts_time,flags",
                     "-of", "csv=p=0",
                     input.toString());
             pb.redirectErrorStream(true);
-            Process p = pb.start();
+            p = pb.start();
+            final Process process = p;
             StringBuilder sb = new StringBuilder();
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    sb.append(line).append('\n');
+            Thread reader = new Thread(() -> {
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        sb.append(line).append('\n');
+                    }
+                } catch (IOException ignored) {
                 }
-            }
-            boolean finished = p.waitFor(Math.max(60, probeTimeoutSeconds * 4), TimeUnit.SECONDS);
+            }, "ffprobe-boundary-reader");
+            reader.setDaemon(true);
+            reader.start();
+
+            boolean finished = p.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 p.destroyForcibly();
                 return null;
             }
+            reader.join(1000);
             if (p.exitValue() != 0) {
                 return null;
             }
@@ -1401,16 +1589,10 @@ public class MediaTranscodeService {
                 if (comma <= 0) {
                     continue;
                 }
-                if ("1".equals(line.substring(0, comma).trim())) {
+                if (line.substring(comma + 1).trim().startsWith("K")) {
                     try {
-                        // ffprobe csv 行形如 "1,12.340000,"，pts 后有尾部逗号，需剔除后再解析
-                        String pts = line.substring(comma + 1).trim();
-                        int extra = pts.indexOf(',');
-                        if (extra >= 0) {
-                            pts = pts.substring(0, extra);
-                        }
-                        keyframes.add(Double.parseDouble(pts));
-                    } catch (Exception ignored) {
+                        keyframes.add(Double.parseDouble(line.substring(0, comma).trim()));
+                    } catch (NumberFormatException ignored) {
                     }
                 }
             }
@@ -1420,6 +1602,10 @@ public class MediaTranscodeService {
             }
             log.warn("ffprobe 关键帧探测失败：{}", e.getMessage());
             return null;
+        } finally {
+            if (p != null && p.isAlive()) {
+                p.destroyForcibly();
+            }
         }
         if (keyframes.isEmpty()) {
             return null;

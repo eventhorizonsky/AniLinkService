@@ -59,6 +59,10 @@ public class MediaPlayController {
         boolean transcodeEnabled = mediaTranscodeService.isTranscodeEnabled() && mediaTranscodeService.isFfmpegAvailable();
         MediaTranscodeService.PlayMode recommended = mediaTranscodeService.recommendMode(mediaFile);
 
+        // 播放页加载即预热 remux/mixed 的关键帧边界索引（后台单飞），
+        // 让紧随其后的 m3u8 清单请求尽量一次就拿到带完整时长的 VOD 清单
+        mediaTranscodeService.warmupBoundaryIndexAsync(mediaFile);
+
         PlayInfoVO.PlayInfoVOBuilder builder = PlayInfoVO.builder()
                 .mediaFileId(mediaFile.getId())
                 .fileName(mediaFile.getFileName())
