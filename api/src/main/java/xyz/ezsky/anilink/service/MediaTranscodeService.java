@@ -113,8 +113,8 @@ public class MediaTranscodeService {
     @Value("${media.transcode.reanchor-near-segments:3}")
     private int reanchorNearSegments;
 
-    /** 首个清单请求允许同步等待 remux/mixed 关键帧边界探测的秒数；超时后该次请求退化为 EVENT 清单 */
-    @Value("${media.transcode.boundary-probe-wait-seconds:60}")
+    /** 首个清单请求为等边界探测完成最多额外等待的秒数（短宽限，不阻塞播放） */
+    @Value("${media.transcode.boundary-probe-wait-seconds:3}")
     private long boundaryProbeWaitSeconds;
 
     @Value("${media.transcode.vaapi-device:/dev/dri/renderD128}")
@@ -1390,9 +1390,10 @@ public class MediaTranscodeService {
      * 确保 remux/mixed 会话的关键帧边界已就绪。
      * <ul>
      *   <li>内存/磁盘已缓存 → 直接复用；</li>
-     *   <li>首次播放 → 阻塞等待共享的快速 ffprobe 探测（仅 demux 不解码），
-     *       在预算时间内完成即可让首个清单就是精确完整时长的 VOD；</li>
-     *   <li>超时 → 返回让清单退化为 EVENT，探测继续后台完成，下次请求可复用。</li>
+     *   <li>首次播放 → 最多额外等几个秒级宽限，共享的 ffprobe 探测若已完成，
+     *       首个清单即为精确完整时长的 VOD；</li>
+     *   <li>宽限内未完成 → 立即返回 EVENT 清单开始播放，探测继续后台完成，
+     *       下一请求即可复用精确结果。</li>
      * </ul>
      */
     private void ensureCopyBoundariesReady(TranscodeSession session, Long mediaFileId) {
@@ -1411,7 +1412,7 @@ public class MediaTranscodeService {
             return;
         }
         try {
-            long budgetSec = Math.max(10, Math.min(120, boundaryProbeWaitSeconds));
+            long budgetSec = Math.max(0, Math.min(15, boundaryProbeWaitSeconds));
             List<Double> boundaries = boundaryProbeFuture(mediaFileId, session.input).get(budgetSec, TimeUnit.SECONDS);
             if (boundaries != null && !boundaries.isEmpty()) {
                 session.boundaries = boundaries;
