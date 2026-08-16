@@ -1,6 +1,7 @@
 package xyz.ezsky.anilink.service;
 
 import lombok.extern.log4j.Log4j2;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import xyz.ezsky.anilink.model.dto.MediaMetadata;
@@ -39,7 +40,7 @@ public class MediaMetadataEnricher {
     private SiteConfigService siteConfigService;
 
     @Autowired
-    private MediaTranscodeService mediaTranscodeService;
+    private ObjectProvider<MediaTranscodeService> mediaTranscodeServiceProvider;
 
     /**
      * 异步提取并补充媒体文件的完整元数据
@@ -93,8 +94,12 @@ public class MediaMetadataEnricher {
             // 第五步：标记已获取元数据
             mediaFile.setMetadataFetched(true);
 
-            // 第五点五步：预热 remux/mixed 播放所需的关键帧边界索引（后台异步，不阻塞扫描）
-            mediaTranscodeService.warmupBoundaryIndexAsync(mediaFile);
+            // 第五点五步：预热 remux/mixed 播放所需的关键帧边界索引（后台异步，不阻塞扫描）。
+            // ObjectProvider 延迟解析，避免 enricher→transcode→fileService→queueManager→enricher 循环依赖
+            MediaTranscodeService mediaTranscodeService = mediaTranscodeServiceProvider.getIfAvailable();
+            if (mediaTranscodeService != null) {
+                mediaTranscodeService.warmupBoundaryIndexAsync(mediaFile);
+            }
 
             long duration = System.currentTimeMillis() - startTime;
             log.info("Enriched metadata for file in {} ms: {}", duration, filePath);
