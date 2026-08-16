@@ -45,8 +45,11 @@ import java.util.stream.Stream;
  *   <li>所有模式都返回带 ENDLIST 的完整 VOD 清单（进度条一开始就是完整时长），
  *       transcode 模式按源时长 + 强制关键帧预铺分片；remux/mixed 模式用 ffprobe
  *       关键帧边界探测精确分片；</li>
- *   <li>拖动到未产出区域时（判定为跳转），杀掉当前 ffmpeg，用 {@code -ss} 输入流定位 +
- *       {@code -start_number} 对齐分片序号，从目标位置重新起转，无需从开头线性追赶；</li>
+ *   <li>拖动到未产出区域时（缺失分片距当前产出前沿超过近前沿余量，或落入向前重锚留下的
+ *       未产出空洞），杀掉当前 ffmpeg 重新起转：transcode 用 {@code -ss} 输入流粗定位 +
+ *       {@code -ss} 输出精定位（帧精确，消除 A/V 错位）+ {@code -start_number} 对齐分片序号，
+ *       从目标位置精确起转，无需从开头线性追赶；</li>
+ *   <li>首次清单请求可携带 {@code t} 参数（续播/URL 跳转），ffmpeg 直接起转于目标位置；</li>
  *   <li>转码编码器自动选择硬件加速（QSV/NVENC/VAAPI/AMF），回退 libx264，弱机也能
  *       远超实时速度产出分片。</li>
  * </ul>
@@ -101,8 +104,13 @@ public class MediaTranscodeService {
     @Value("${media.transcode.encoder:auto}")
     private String configuredEncoder;
 
-    @Value("${media.transcode.seek-reanchor-threshold-seconds:120}")
-    private double reanchorThresholdSeconds;
+    /**
+     * 距当前产出前沿多少个分片内判定为"近前沿"（等待当前 ffmpeg 按序产出即可，不重锚）。
+     * 超过该数量的前向缺失分片一律重锚从目标位置起转（即跳即转），
+     * 而非从开头线性追赶，避免慢编码时长时间空等卡死。
+     */
+    @Value("${media.transcode.reanchor-near-segments:3}")
+    private int reanchorNearSegments;
 
     @Value("${media.transcode.vaapi-device:/dev/dri/renderD128}")
     private String vaapiDevice;
@@ -422,12 +430,23 @@ public class MediaTranscodeService {
     }
 
     /**
-     * 获取（必要时启动）指定媒体与模式的 HLS 会话清单文件路径。
+     * 获取（必要时启动）指定媒体与模式的 HLS 会话清单文件路径（从开头起转）。
      * 首次调用会同步等待首个分片就绪；后续调用直接返回。
      *
      * @throws IllegalStateException ffmpeg 不可用、转码被禁用、并发超限或启动失败
      */
     public Path getManifest(Long mediaFileId, PlayMode mode) {
+        return getManifest(mediaFileId, mode, 0);
+    }
+
+    /**
+     * 获取（必要时启动）指定媒体与模式的 HLS 会话清单文件路径。
+     * 新会话若指定 {@code initialSeekSec > 0}，ffmpeg 直接起转于该时间位置
+     * （续播/URL 跳转场景免去"从 0 起转再重锚"的一轮等待）。
+     *
+     * @throws IllegalStateException ffmpeg 不可用、转码被禁用、并发超限或启动失败
+     */
+    public Path getManifest(Long mediaFileId, PlayMode mode, double initialSeekSec) {
         if (mode == PlayMode.DIRECT) {
             throw new IllegalStateException("DIRECT 模式无需转码会话");
         }
@@ -439,7 +458,7 @@ public class MediaTranscodeService {
         }
 
         String key = mode.name() + "/" + mediaFileId;
-        TranscodeSession session = acquireSession(key, mediaFileId, mode);
+        TranscodeSession session = acquireSession(key, mediaFileId, mode, initialSeekSec);
         session.lastAccess = System.currentTimeMillis();
 
         Path manifest = session.dir.resolve("index.m3u8");
@@ -474,6 +493,10 @@ public class MediaTranscodeService {
      * 在清理旧会话/启动新会话，避免并发请求误删正在写入的新会话目录导致分片永久缺失。
      */
     private TranscodeSession acquireSession(String key, Long mediaFileId, PlayMode mode) {
+        return acquireSession(key, mediaFileId, mode, 0);
+    }
+
+    private TranscodeSession acquireSession(String key, Long mediaFileId, PlayMode mode, double initialSeekSec) {
         // 快速路径：现有可用会话直接复用（无锁），播放热路径不再触碰全局锁与数据库
         TranscodeSession session = sessions.get(key);
         if (session != null && !isSessionDead(session)) {
@@ -481,7 +504,7 @@ public class MediaTranscodeService {
         }
         // 单飞（single-flight）：同一 key 的并发请求只允许一个线程真正执行清理+启动逻辑，
         // 其余线程等待同一 Future，避免同 key 竞态双启动导致两个 ffmpeg 进程写同一目录。
-        CompletableFuture<TranscodeSession> future = pendingStarts.computeIfAbsent(key, k -> startSessionAsync(key, mediaFileId, mode));
+        CompletableFuture<TranscodeSession> future = pendingStarts.computeIfAbsent(key, k -> startSessionAsync(key, mediaFileId, mode, initialSeekSec));
         try {
             TranscodeSession result = future.get();
             if (result == null) {
@@ -500,12 +523,16 @@ public class MediaTranscodeService {
         }
     }
 
+    private CompletableFuture<TranscodeSession> startSessionAsync(String key, Long mediaFileId, PlayMode mode) {
+        return startSessionAsync(key, mediaFileId, mode, 0);
+    }
+
     /**
      * 单飞启动任务：由 computeIfAbsent 的创建者线程执行（其余线程等待同一 Future）。
      * 完成（成功/失败）后移除 pendingStarts 占位，后续请求可重新进入快速路径或重建新会话。
      * 永不抛出异常：任何失败都通过 Future 的异常完成传递给等待者。
      */
-    private CompletableFuture<TranscodeSession> startSessionAsync(String key, Long mediaFileId, PlayMode mode) {
+    private CompletableFuture<TranscodeSession> startSessionAsync(String key, Long mediaFileId, PlayMode mode, double initialSeekSec) {
         CompletableFuture<TranscodeSession> future = new CompletableFuture<>();
         boolean reserved = false;
         try {
@@ -532,7 +559,7 @@ public class MediaTranscodeService {
                 reserved = true;
             }
             // 进程启动（含首次 DB 读取源文件信息）在锁外执行
-            TranscodeSession created = startSession(mediaFileId, mode);
+            TranscodeSession created = startSession(mediaFileId, mode, initialSeekSec);
             if (created == null) {
                 future.complete(null);
                 return future;
@@ -589,7 +616,23 @@ public class MediaTranscodeService {
      * </ul></p>
      */
     public String getManifestContent(Long mediaFileId, PlayMode mode) {
-        Path manifest = getManifest(mediaFileId, mode);
+        return getManifestContent(mediaFileId, mode, 0);
+    }
+
+    /**
+     * 获取供浏览器播放的 HLS 清单内容。
+     *
+     * <p>所有模式尽量返回带 ENDLIST 的完整 VOD 清单，进度条一开始就是完整时长：
+     * <ul>
+     *   <li>transcode：分片按源时长 + 强制关键帧预铺（精确对齐）；</li>
+     *   <li>remux/mixed：用 ffprobe 关键帧边界探测得到真实分片边界；探测尚未完成时
+     *       降级透传 ffmpeg 实时 EVENT 清单，探测完成后下次请求即切回完整 VOD。</li>
+     * </ul></p>
+     *
+     * @param initialSeekSec 新会话的初始定位秒数（续播/URL 跳转），仅首个请求生效
+     */
+    public String getManifestContent(Long mediaFileId, PlayMode mode, double initialSeekSec) {
+        Path manifest = getManifest(mediaFileId, mode, initialSeekSec);
         String key = mode.name() + "/" + mediaFileId;
         TranscodeSession session = sessions.get(key);
         double durationSec = session == null ? 0 : session.durationSec;
@@ -776,15 +819,20 @@ public class MediaTranscodeService {
     }
 
     /**
-     * 判断缺失分片是否构成跳转（与当前产出前沿差距超过阈值），是则重锚 ffmpeg。
-     * 阈值默认 120s，正常缓冲预取（几十秒内）不会误触发。
+     * 判断缺失分片是否构成跳转并重锚 ffmpeg：
+     * <ul>
+     *   <li>向后跳入"从未产出的空洞"（前向重锚杀掉旧进程留下的未产出区间）→ 反向重锚；</li>
+     *   <li>向前缺失分片距当前产出前沿超过近前沿余量 → 重锚从目标位置起转（即跳即转），
+     *       而不是线性追赶，避免慢编码时长时间空等；</li>
+     *   <li>近前沿（当前 ffmpeg 即将按序产出）→ 不重锚，等待即可。</li>
+     * </ul>
      */
     private void maybeReanchor(Long mediaFileId, PlayMode mode, String key, Path segmentsDir, int requestedIdx) {
         if (requestedIdx < 0) {
             return;
         }
         TranscodeSession session = sessions.get(key);
-        if (session == null || session.failed || !session.process.isAlive()) {
+        if (session == null) {
             return;
         }
         // remux/mixed 在关键帧边界未就绪（EVENT 降级）时不重锚：重锚会破坏 EVENT 清单的
@@ -793,32 +841,56 @@ public class MediaTranscodeService {
                 && (session.boundaries == null || session.boundaries.isEmpty())) {
             return;
         }
+        int anchor = session.anchorIdx;
+        // ffmpeg 进程已退出（崩溃/被杀）：任何缺失分片都原地重启恢复，否则等待将空转到超时
+        if (!session.process.isAlive()) {
+            reanchorSession(session, mediaFileId, requestedIdx);
+            return;
+        }
+        // 向后跳到当前锚点之前且分片缺失 → 落在前向重锚留下的空洞，必须反向重锚
+        if (requestedIdx < anchor) {
+            reanchorSession(session, mediaFileId, requestedIdx);
+            return;
+        }
+        // 向前：当前 ffmpeg 从 anchor 起按序产出。请求超过产出前沿 + 近前沿余量才重锚。
         int frontier = maxProducedSegment(segmentsDir);
-        double requestedTime = segmentStartTimeSec(session, requestedIdx);
-        double frontierTime = frontier >= 0 ? segmentStartTimeSec(session, frontier) : 0;
-        boolean nearFrontier = Math.abs(requestedIdx - frontier) <= 2;
-        if (nearFrontier || Math.abs(requestedTime - frontierTime) <= reanchorThresholdSeconds) {
+        int effective = Math.max(frontier, anchor);
+        if (requestedIdx <= effective + reanchorNearSegments()) {
             return;
         }
         reanchorSession(session, mediaFileId, requestedIdx);
     }
 
+    private int reanchorNearSegments() {
+        return Math.max(1, Math.min(12, reanchorNearSegments));
+    }
+
     /**
-     * 重锚：杀掉当前 ffmpeg，用 -ss 输入流定位到目标时间并 -start_number 对齐分片序号，
-     * 从目标位置重新起转，实现拖动即播。
+     * 重锚：杀掉当前 ffmpeg，从目标时间/分片序号重新起转，实现拖动即播。
+     * 目标与当前锚点相距不超过近前沿余量的前向重锚会被忽略（当前进程按序产出更快，
+     * 避免 hls.js 缓冲突发请求触发重锚风暴反复杀进程）。
+     * 会话异常退出后同样可通过本方法原地恢复（由缺失分片请求触发）。
      */
     private void reanchorSession(TranscodeSession session, Long mediaFileId, int anchorIdx) {
         synchronized (this) {
-            if (session.failed || !session.process.isAlive()) {
+            boolean processAlive = session.process.isAlive();
+            // 进程存活且目标与当前锚一致 → 已在该位置产出，忽略重复请求
+            if (processAlive && session.anchorIdx == anchorIdx) {
                 return;
             }
-            if (session.anchorIdx == anchorIdx) {
+            // 进程存活时前向重锚且距离过近 → 等当前进程按序产出即可
+            if (processAlive && anchorIdx > session.anchorIdx
+                    && anchorIdx - session.anchorIdx <= reanchorNearSegments()) {
                 return;
             }
             double ss = segmentStartTimeSec(session, anchorIdx);
             session.anchorIdx = anchorIdx;
             session.generation++;
+            // 重锚/恢复时清除失败态，允许从缺失分片请求处原地重启
+            session.failed = false;
+            session.exitCode = null;
             killProcess(session.process);
+            cleanupPartialSegments(session);
             if (startFfmpegProcess(session, mediaFileId)) {
                 log.info("转码会话跳转重锚：mediaId={} mode={} anchorIdx={} ss={}s",
                         mediaFileId, session.mode.name().toLowerCase(), anchorIdx,
@@ -827,6 +899,46 @@ public class MediaTranscodeService {
                 session.failed = true;
                 log.error("跳转重锚失败：mediaId={} anchorIdx={}", mediaFileId, anchorIdx);
             }
+        }
+    }
+
+    /**
+     * 清理被杀进程留下的不完整分片：manifest 只登记已完整写完的分片，
+     * 凡磁盘上序号大于 manifest 最后一条分片号的文件均为中断写入的半成品，
+     * 删除之，避免 hls.js 拉到截断分片导致卡死。
+     */
+    private void cleanupPartialSegments(TranscodeSession session) {
+        Path manifest = session.dir.resolve("index.m3u8");
+        Path segmentsDir = session.dir.resolve("segments");
+        if (!Files.exists(manifest) || !Files.isDirectory(segmentsDir)) {
+            return;
+        }
+        int lastListed = -1;
+        try {
+            for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
+                if (!line.isEmpty() && !line.startsWith("#") && line.endsWith(".ts")) {
+                    String name = line.substring(line.lastIndexOf('/') + 1);
+                    lastListed = Math.max(lastListed, parseSegmentIndex(name));
+                }
+            }
+        } catch (IOException ignored) {
+            return;
+        }
+        if (lastListed < 0) {
+            return;
+        }
+        int threshold = lastListed;
+        try (Stream<Path> stream = Files.list(segmentsDir)) {
+            stream.filter(p -> p.getFileName().toString().startsWith("seg_"))
+                    .filter(p -> parseSegmentIndex(p.getFileName().toString()) > threshold)
+                    .forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                            log.debug("删除中断写入的不完整分片：{}", p.getFileName());
+                        } catch (IOException ignored) {
+                        }
+                    });
+        } catch (IOException ignored) {
         }
     }
 
@@ -841,10 +953,17 @@ public class MediaTranscodeService {
     /**
      * 启动 ffmpeg 会话。进程后台运行，持续把分片写入会话目录。
      * remux/mixed 模式额外后台探测关键帧边界，用于合成完整 VOD 清单。
+     * {@code initialSeekSec > 0} 时新会话直接从该时间起转（续播/URL 跳转场景即跳即转）。
      */
     private TranscodeSession startSession(Long mediaFileId, PlayMode mode) {
+        return startSession(mediaFileId, mode, 0);
+    }
+
+    private TranscodeSession startSession(Long mediaFileId, PlayMode mode, double initialSeekSec) {
         try {
             Path dir = sessionDir(mediaFileId, mode);
+            // 清理上次异常退出（如 JVM 崩溃）遗留的陈旧分片与清单，避免新会话复用过期产物
+            deleteRecursively(dir);
             Files.createDirectories(dir);
 
             MediaFile mediaFile = mediaFileService.getMediaFileById(mediaFileId);
@@ -863,7 +982,30 @@ public class MediaTranscodeService {
             Path segmentPattern = segmentsDir.resolve("seg_%05d.ts");
 
             double durationSec = mediaFile.getDuration() == null ? 0 : mediaFile.getDuration() / 1000.0;
+            if (durationSec <= 0) {
+                // 元数据缺失/未探测时兜底：ffprobe 仅读文件头即可拿到时长（毫秒级），
+                // 否则 transcode 模式无法合成带完整时长的 VOD 清单，进度条一直很短。
+                Double probed = probeDurationSec(input);
+                if (probed != null && probed > 0) {
+                    durationSec = probed;
+                    persistDuration(mediaFile, (long) (probed * 1000));
+                }
+            }
+
             TranscodeSession session = new TranscodeSession(mode, dir, input, segmentPattern, durationSec);
+            // 仅 transcode 模式支持初始定位直达：分片时间轴均匀（i*segSec），可直接按 t 换算出转起点；
+            // remux/mixed 的 -c copy 从 0 起转本身秒级完成，且边界探测未完成前无法精确换算。
+            if (initialSeekSec > 0 && durationSec > 0 && mode == PlayMode.TRANSCODE) {
+                int segSec = Math.max(2, segmentSeconds);
+                int targetIdx = (int) Math.floor(initialSeekSec / segSec);
+                int total = (int) Math.ceil(durationSec / segSec);
+                session.anchorIdx = Math.max(0, Math.min(targetIdx, Math.max(0, total - 1)));
+                if (session.anchorIdx > 0) {
+                    log.info("会话按定位参数直接起转：mediaId={} mode={} anchorIdx={} t={}s",
+                            mediaFileId, mode.name().toLowerCase(), session.anchorIdx,
+                            String.format(Locale.ROOT, "%.1f", initialSeekSec));
+                }
+            }
             if (!startFfmpegProcess(session, mediaFileId)) {
                 return null;
             }
@@ -876,6 +1018,57 @@ public class MediaTranscodeService {
         } catch (IOException e) {
             log.error("启动 ffmpeg 转码会话失败：mediaId={} mode={}", mediaFileId, mode, e);
             return null;
+        }
+    }
+
+    /**
+     * 用 ffprobe 快速读取源文件时长（秒）。仅解析文件头/格式信息，毫秒级完成。
+     */
+    private Double probeDurationSec(Path input) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "csv=p=0",
+                    input.toString());
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    sb.append(line).append('\n');
+                }
+            }
+            boolean finished = p.waitFor(Math.max(10, probeTimeoutSeconds), TimeUnit.SECONDS);
+            if (!finished) {
+                p.destroyForcibly();
+                return null;
+            }
+            if (p.exitValue() != 0) {
+                return null;
+            }
+            String raw = sb.toString().trim();
+            int comma = raw.indexOf(',');
+            if (comma > 0) {
+                raw = raw.substring(0, comma);
+            }
+            double dur = Double.parseDouble(raw);
+            return dur > 0 ? dur : null;
+        } catch (Exception e) {
+            log.warn("ffprobe 时长探测失败：{}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void persistDuration(MediaFile mediaFile, Long durationMs) {
+        try {
+            if (mediaFile.getDuration() == null || mediaFile.getDuration() <= 0) {
+                mediaFile.setDuration(durationMs);
+                mediaFileService.updateDuration(mediaFile.getId(), durationMs);
+            }
+        } catch (Exception e) {
+            log.warn("回写媒体时长到数据库失败：id={}", mediaFile.getId(), e);
         }
     }
 
@@ -925,7 +1118,7 @@ public class MediaTranscodeService {
             cmd.add("va");
         }
         if (anchorIdx > 0) {
-            // 输入流定位（放在 -i 前），毫秒级快进，配合 -start_number 对齐分片序号
+            // 输入流粗定位（放在 -i 前）：毫秒级快进到目标附近的关键帧，避免从头解码
             cmd.add("-ss");
             cmd.add(String.format(Locale.ROOT, "%.3f", segmentStartTimeSec(session, anchorIdx)));
         }
@@ -947,6 +1140,16 @@ public class MediaTranscodeService {
         } else {
             addTranscodeVideoArgs(cmd, activeEncoder(), segSec);
             addAacAudioArgs(cmd);
+        }
+
+        if (anchorIdx > 0 && mode == PlayMode.TRANSCODE) {
+            // 输出侧精定位（放在 -i 后）：丢弃输入粗定位落点的多余帧，使输出从目标帧开始。
+            // 输入侧 -ss 只落到"目标前最近关键帧"，若视频从该关键帧直接起转，视频会比音频
+            // 提前（关键帧间隔）→ 重锚后音画不同步；输出侧 -ss 让视频也精确对齐目标时间，
+            // 且配合 -force_key_frames 使首个分片恰好从目标分片边界开始，分片时间轴与
+            // 清单预估完全一致，消除跳转后的卡顿与音画错位。
+            cmd.add("-ss");
+            cmd.add(String.format(Locale.ROOT, "%.3f", segmentStartTimeSec(session, anchorIdx)));
         }
 
         cmd.add("-f");

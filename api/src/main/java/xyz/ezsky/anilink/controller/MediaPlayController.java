@@ -85,19 +85,22 @@ public class MediaPlayController {
         return ApiResponseVO.success(builder.build());
     }
 
-    @Operation(summary = "获取转码/秒转 HLS 清单", description = "按需启动 ffmpeg 会话并返回 m3u8 清单；transcode 模式为按源时长合成的完整 VOD 清单（含 ENDLIST），remux/mixed 模式为随分片产出增长的 EVENT 清单，总时长均为真实值。首次请求会等待首个分片就绪")
+    @Operation(summary = "获取转码/秒转 HLS 清单", description = "按需启动 ffmpeg 会话并返回 m3u8 清单；transcode 模式为按源时长合成的完整 VOD 清单（含 ENDLIST），remux/mixed 模式为随分片产出增长的 EVENT 清单，总时长均为真实值。首次请求会等待首个分片就绪；可携带 t 参数使新会话直接从该秒数起转（续播/URL 跳转即跳即转）")
     @GetMapping("/{id}/transcode/index.m3u8")
     public ResponseEntity<?> getTranscodeManifest(
             @Parameter(description = "媒体文件ID")
             @PathVariable Long id,
             @Parameter(description = "模式：remux 秒转封装 / transcode 转码")
-            @RequestParam(defaultValue = "transcode") String mode) {
+            @RequestParam(defaultValue = "transcode") String mode,
+            @Parameter(description = "初始定位秒数（续播/URL 跳转时直接从此处起转，可选）")
+            @RequestParam(required = false) String t) {
         MediaTranscodeService.PlayMode playMode = parseMode(mode);
         if (playMode == MediaTranscodeService.PlayMode.DIRECT) {
             return ResponseEntity.badRequest().body(ApiResponseVO.fail(400, "不支持的转码模式: " + mode));
         }
+        double initialSeekSec = parseSeekSeconds(t);
         try {
-            String content = mediaTranscodeService.getManifestContent(id, playMode);
+            String content = mediaTranscodeService.getManifestContent(id, playMode, initialSeekSec);
             return ResponseEntity.ok()
                     .contentType(M3U8_MEDIA_TYPE)
                     .header(HttpHeaders.CACHE_CONTROL, "no-cache")
@@ -136,6 +139,18 @@ public class MediaPlayController {
             return MediaTranscodeService.PlayMode.valueOf((mode == null ? "" : mode).trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             return MediaTranscodeService.PlayMode.DIRECT;
+        }
+    }
+
+    private double parseSeekSeconds(String t) {
+        if (t == null || t.trim().isEmpty()) {
+            return 0;
+        }
+        try {
+            double sec = Double.parseDouble(t.trim());
+            return sec > 0 ? sec : 0;
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 }

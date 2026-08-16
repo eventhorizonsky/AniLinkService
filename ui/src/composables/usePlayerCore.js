@@ -234,14 +234,20 @@ export function usePlayerCore({
 
   /**
    * 为视频元素加载 HLS 转码/秒转流（优先 MSE + hls.js，iOS 回退原生 HLS）。
+   * @param {string} url 清单地址
+   * @param {number} startPosition 初始播放位置（秒），>0 时 hls.js 直接从该位置起播，
+   *                               避免从 0 起播时先请求未产出的 0 号分片再跳转（即跳即转）
    */
-  const attachHlsSource = (url) => {
+  const attachHlsSource = (url, startPosition = 0) => {
     const video = art.value?.video
     if (!video) {
       return
     }
     if (Hls && typeof Hls.isSupported === 'function' && Hls.isSupported()) {
-      const hls = new Hls({ enableWorker: true })
+      const hls = new Hls({
+        enableWorker: true,
+        ...(startPosition > 0 ? { startPosition } : {}),
+      })
       _hlsInstance = hls
       hls.loadSource(url)
       hls.attachMedia(video)
@@ -436,10 +442,12 @@ export function usePlayerCore({
       const restoreFullscreenWeb = Boolean(prevArt && prevArt.fullscreenWeb)
       const restoreFullscreen = !restoreFullscreenWeb && Boolean(prevArt && prevArt.fullscreen)
 
-      // 优先获取播放器必需数据：字幕 + 播放信息（用于能力决策）；弹幕改为异步注入
-      const [playInfoRes, subtitles] = await Promise.all([
+      // 优先获取播放器必需数据：字幕 + 播放信息（用于能力决策）+ 续播进度；
+      // 弹幕改为异步注入
+      const [playInfoRes, subtitles, preloadedProgress] = await Promise.all([
         getMediaPlayInfo(targetVideoId).catch(() => null),
         subtitle.fetchSubtitles(targetVideoId),
+        progress.loadPlayProgress().catch(() => null),
       ])
       const routeSelectedTrack = subtitles.find((item) => String(item?.id || '') === String(route.query.subtitleId || '')) || null
       const subtitlesForLibass = subtitles.filter(subtitle.isLibassSubtitleTrack)
@@ -468,6 +476,20 @@ export function usePlayerCore({
       // 无法可靠播放时也会回退直出原始流（degraded），仅提示引导使用弹弹play。
       const playSource = resolvePlaySource(playInfoRes)
       _playbackWarnShown = false
+
+      // 续播/URL 跳转的初始定位：HLS 转码流在首次清单请求携带 t 参数，ffmpeg 直接起转于该位置，
+      // 免去"从 0 起转再重锚"的一轮等待，实现即跳即转
+      const routeSeek = seekTime.value
+      const initialSeekSec =
+        routeSeek !== null && routeSeek >= 0
+          ? routeSeek
+          : preloadedProgress && preloadedProgress > 5
+            ? preloadedProgress
+            : 0
+      let playUrl = playSource.url
+      if (playSource.isHls && initialSeekSec > 0) {
+        playUrl = playSource.url + (playSource.url.includes('?') ? '&' : '?') + `t=${Math.floor(initialSeekSec)}`
+      }
 
       const danmakuOptions = danmaku.buildDanmakuOptions([], mobile)
       const subtitlePlugin = useNativeSubtitle
@@ -546,7 +568,7 @@ export function usePlayerCore({
 
       // 转码/秒转流走 HLS（MSE/hls.js 或 iOS 原生）
       if (playSource.isHls) {
-        attachHlsSource(playSource.url)
+        attachHlsSource(playUrl, initialSeekSec)
       }
 
       // 监听播放器事件
@@ -555,12 +577,11 @@ export function usePlayerCore({
         syncMobileClass()
         installMobileTapHandler()
 
-        // 优先处理 URL 传入的时间跳转参数
-        const t = seekTime.value
-        if (t !== null && t >= 0) {
+        // 优先处理 URL 传入的时间跳转参数，否则使用已预载的续播进度
+        if (initialSeekSec > 0) {
           const doSeek = () => {
             if (art.value) {
-              art.value.currentTime = t
+              art.value.currentTime = initialSeekSec
             }
             // 跳转完成后清除 URL 中的 t 参数
             const { t: _, ...restQuery } = route.query
@@ -576,16 +597,6 @@ export function usePlayerCore({
               art.value.off('video:canplay', onCanPlay)
               doSeek()
             })
-          }
-        } else {
-          // 加载并恢复播放进度
-          try {
-            const savedProgress = await progress.loadPlayProgress()
-            if (savedProgress && savedProgress > 5) {
-              art.value.currentTime = savedProgress
-            }
-          } catch (error) {
-            console.warn('恢复播放进度失败:', error)
           }
         }
 

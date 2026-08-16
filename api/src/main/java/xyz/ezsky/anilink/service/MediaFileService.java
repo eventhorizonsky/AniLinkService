@@ -178,6 +178,19 @@ public class MediaFileService {
     }
 
     /**
+     * 更新媒体文件时长（毫秒）。用于元数据缺失时由 ffprobe 兜底探测后回写。
+     */
+    public void updateDuration(Long fileId, Long durationMs) {
+        if (fileId == null || durationMs == null || durationMs <= 0) {
+            return;
+        }
+        mediaFileRepository.findById(fileId).ifPresent(file -> {
+            file.setDuration(durationMs);
+            mediaFileRepository.save(file);
+        });
+    }
+
+    /**
      * 批量重新获取指定媒体库的元数据（异步）
      * 
      * @param libraryId 媒体库ID
