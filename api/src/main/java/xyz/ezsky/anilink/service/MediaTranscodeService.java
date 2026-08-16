@@ -287,6 +287,10 @@ public class MediaTranscodeService {
         volatile int anchorIdx;
         /** remux/mixed 关键帧边界（秒，各分片起始时间）；null=尚未探测/不可用 */
         volatile List<Double> boundaries;
+        /** 会话级编码器覆盖：硬件编码器运行失败后回退 libx264 */
+        volatile EncoderProfile encoderOverride;
+        /** 本会话是否已尝试过软件编码器回落 */
+        volatile boolean encoderFallbackTried;
 
         TranscodeSession(PlayMode mode, Path dir, Path input, Path segmentPattern, double durationSec) {
             this.mode = mode;
@@ -1160,7 +1164,8 @@ public class MediaTranscodeService {
         // 禁止读取 stdin，避免非交互环境下 ffmpeg 阻塞等待输入导致首分片迟迟不产出
         cmd.add("-nostdin");
         cmd.add("-y");
-        if (mode == PlayMode.TRANSCODE && activeEncoder().kind == EncoderKind.VAAPI) {
+        EncoderProfile encoder = effectiveEncoder(session);
+        if (mode == PlayMode.TRANSCODE && encoder.kind == EncoderKind.VAAPI) {
             cmd.add("-init_hw_device");
             cmd.add("vaapi=va:" + vaapiDevice);
             cmd.add("-filter_hw_device");
@@ -1187,7 +1192,7 @@ public class MediaTranscodeService {
             cmd.add("copy");
             addAacAudioArgs(cmd);
         } else {
-            addTranscodeVideoArgs(cmd, activeEncoder(), segSec);
+            addTranscodeVideoArgs(cmd, encoder, segSec);
             addAacAudioArgs(cmd);
         }
 
@@ -1220,6 +1225,14 @@ public class MediaTranscodeService {
         cmd.add(segmentPattern.toString());
         cmd.add(manifest.toString());
         return cmd;
+    }
+
+    /**
+     * 会话实际使用的视频编码器：优先会话级回落覆盖（硬件编码器运行失败后回退 libx264）。
+     */
+    private EncoderProfile effectiveEncoder(TranscodeSession session) {
+        EncoderProfile override = session.encoderOverride;
+        return override != null ? override : activeEncoder();
     }
 
     private void addAacAudioArgs(java.util.List<String> cmd) {
@@ -1361,6 +1374,12 @@ public class MediaTranscodeService {
                     String line = new String(buffer, 0, read).trim();
                     if (!line.isEmpty()) {
                         log.warn("[transcode:{}/{}] {}", mediaFileId, session.mode.name().toLowerCase(), line);
+                        // QSV/NVENC 等在容器里可能被 ffmpeg 列出但实际无法创建硬件会话；
+                        // 一旦从 stderr 识别到"编码器打不开"，立即杀掉当前进程并用 libx264 重试，
+                        // 否则 ffmpeg 可能既不产出分片也不退出，清单请求只能空等到超时。
+                        if (gen == session.generation && isEncoderOpenFailure(line)) {
+                            maybeFallbackToSoftware(session, mediaFileId, gen);
+                        }
                     }
                 }
             }
@@ -1372,9 +1391,11 @@ public class MediaTranscodeService {
                 if (gen == session.generation) {
                     session.exitCode = exitCode;
                     if (exitCode != 0) {
-                        session.failed = true;
-                        log.warn("转码进程退出：mediaId={} mode={} exitCode={}",
-                                mediaFileId, session.mode.name().toLowerCase(), exitCode);
+                        if (!maybeFallbackToSoftware(session, mediaFileId, gen)) {
+                            session.failed = true;
+                            log.warn("转码进程退出：mediaId={} mode={} exitCode={}",
+                                    mediaFileId, session.mode.name().toLowerCase(), exitCode);
+                        }
                     }
                 }
             } catch (InterruptedException e) {
@@ -1383,6 +1404,67 @@ public class MediaTranscodeService {
                     session.failed = true;
                 }
             }
+        }
+    }
+
+    /**
+     * 判断 ffmpeg stderr 是否为"视频硬件编码器无法打开"类错误。
+     * 这类错误下 ffmpeg 常常挂起不退出，因此这里不依赖退出码，直接触发回落。
+     */
+    private boolean isEncoderOpenFailure(String line) {
+        return line.contains("Error while opening encoder")
+                || line.contains("Error creating a MFX session")
+                || line.contains("Cannot load libcuda")
+                || line.contains("No capable devices")
+                || line.contains("Failed to open codec");
+    }
+
+    /**
+     * 将运行失败的硬件编码器从自动选择列表中移除，避免后续会话反复先失败再回落。
+     */
+    private void markEncoderUnavailable(EncoderProfile enc) {
+        Set<String> avail = availableEncoders;
+        if (avail != null && avail.contains(enc.codec)) {
+            Set<String> updated = new HashSet<>(avail);
+            updated.remove(enc.codec);
+            availableEncoders = updated;
+            activeEncoderProfile = null;
+            log.warn("硬件编码器 {} 不可用，已从自动选择列表移除，后续转码将绕过它", enc.label);
+        }
+    }
+
+    /**
+     * TRANSCODE 硬件编码器一次运行失败后，回退本会话为 libx264 并原地重启。
+     * 返回 true 表示已重启到软件编码器。
+     */
+    private boolean maybeFallbackToSoftware(TranscodeSession session, Long mediaFileId, int expectedGen) {
+        if (session.mode != PlayMode.TRANSCODE || session.encoderFallbackTried) {
+            return false;
+        }
+        EncoderProfile enc = effectiveEncoder(session);
+        if (enc == null || enc.kind == EncoderKind.LIBX264) {
+            return false;
+        }
+        synchronized (this) {
+            if (session.generation != expectedGen || session.encoderFallbackTried) {
+                return false;
+            }
+            session.encoderFallbackTried = true;
+            session.encoderOverride = LIBX264_PROFILE;
+            markEncoderUnavailable(enc);
+            session.failed = false;
+            session.exitCode = null;
+            session.generation++;
+            killProcess(session.process);
+            cleanupPartialSegments(session);
+            if (startFfmpegProcess(session, mediaFileId)) {
+                log.warn("硬件编码器 {} 运行失败，视频转码回落 libx264：mediaId={} anchorIdx={}",
+                        enc.label, mediaFileId, session.anchorIdx);
+                return true;
+            }
+            session.failed = true;
+            log.error("回落 libx264 启动失败：mediaId={} anchorIdx={}", mediaFileId, session.anchorIdx);
+            return false;
         }
     }
 
