@@ -20,6 +20,16 @@ import { checkCodecSupport } from '../utils/codecSupport'
 const MOBILE_VIEWPORT_MAX_WIDTH = 768
 const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
 
+// 播放器控件随容器宽度自适应的阈值（与 Player.vue 中 .player-controls-* 规则对应）：
+// - 容器宽度 < CONTROLS_NARROW_MAX_WIDTH：启用紧凑控件尺寸
+// - 容器宽度 < CONTROLS_EMITTER_OFF_MAX_WIDTH：折叠弹幕输入框
+// - 容器宽度 < CONTROLS_MINI_MAX_WIDTH：隐藏上/下集快捷按钮
+// - 容器宽度 < CONTROLS_TINY_MAX_WIDTH：隐藏时间显示与音量按钮
+const CONTROLS_NARROW_MAX_WIDTH = 971
+const CONTROLS_EMITTER_OFF_MAX_WIDTH = 800
+const CONTROLS_MINI_MAX_WIDTH = 750
+const CONTROLS_TINY_MAX_WIDTH = 730
+
 export const isMobileViewport = () => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     return false
@@ -79,6 +89,18 @@ export function usePlayerCore({
 
   const isAndroidDevice = () =>
     typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '')
+
+  /**
+   * 是否为非 PC 设备（平板/手机等以触摸为主要输入的设备）。
+   * 依据主指针类型判断：`(pointer: coarse)` 表示触摸为主要输入；
+   * 触屏笔记本的主指针仍是鼠标（fine），不会被误判为平板。
+   */
+  const isNonPcDevice = () => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return typeof navigator !== 'undefined' && (navigator.maxTouchPoints || 0) > 0
+    }
+    return window.matchMedia('(pointer: coarse)').matches
+  }
 
   const getStreamUrl = () => {
     if (!getVideoId() || typeof window === 'undefined') {
@@ -191,6 +213,29 @@ export function usePlayerCore({
     }
   }
 
+  /**
+   * 依据播放器【容器实际宽度】切换控件自适应 class：
+   * - player-controls-narrow：紧凑控件尺寸（控件栏完整显示需要约 971px）
+   * - player-controls-emitter-off：折叠弹幕输入框（800px 以下放不下）
+   * - player-controls-mini：隐藏上/下集快捷按钮（约 750px 以下）
+   * - player-controls-tiny：隐藏时间显示与音量按钮（约 730px 以下）
+   * 视口宽度无法直接描述播放器宽度（侧边栏/选集面板会吃掉大量宽度），
+   * 因此直接测量容器宽度，与视口无关。
+   * 全屏时宽度充足且必须保留完整控件（尤其发送弹幕的输入框），不应用任何折叠 class。
+   */
+  const syncNarrowClasses = () => {
+    const container = artRef.value
+    if (!container) return
+    const playerEl = container.querySelector('.art-video-player')
+    if (!playerEl) return
+    const fullscreen = Boolean(art.value && (art.value.fullscreen || art.value.fullscreenWeb))
+    const width = fullscreen ? Number.MAX_SAFE_INTEGER : (container.clientWidth || 0)
+    playerEl.classList.toggle('player-controls-narrow', width > 0 && width < CONTROLS_NARROW_MAX_WIDTH)
+    playerEl.classList.toggle('player-controls-emitter-off', width > 0 && width < CONTROLS_EMITTER_OFF_MAX_WIDTH)
+    playerEl.classList.toggle('player-controls-mini', width > 0 && width < CONTROLS_MINI_MAX_WIDTH)
+    playerEl.classList.toggle('player-controls-tiny', width > 0 && width < CONTROLS_TINY_MAX_WIDTH)
+  }
+
   const installMobileTapHandler = () => {
     if (_mobileTapHandler) {
       const video = art.value?.video
@@ -222,6 +267,7 @@ export function usePlayerCore({
   const updateViewportState = () => {
     isDesktopViewport.value = !isMobileViewport()
     syncMobileClass()
+    syncNarrowClasses()
     installMobileTapHandler()
   }
 
@@ -363,8 +409,13 @@ export function usePlayerCore({
 
   const buildEpisodeControls = (mobile) => {
     const controls = []
+    // 非 PC 设备（平板/手机）上不展示"通过弹弹play播放"与"分集"控件：
+    // - ddplay: 协议仅桌面客户端可用，平板上意义不大
+    // - 分集选择器与页面上的选集面板/选集 TAB 重复
+    // 同时也能为控件栏腾出宽度，避免溢出裁切。
+    const nonPc = !mobile && isNonPcDevice()
 
-    if (!mobile && showDdplayButton.value) {
+    if (!mobile && showDdplayButton.value && !nonPc) {
       controls.push({
         position: 'right',
         index: 5,
@@ -403,7 +454,10 @@ export function usePlayerCore({
           }
         },
       },
-      {
+    )
+
+    if (!nonPc) {
+      controls.push({
         position: 'right',
         index: 6,
         html: '<span class="anilink-episode-control" style="font-size:13px;line-height:1">分集</span>',
@@ -425,8 +479,8 @@ export function usePlayerCore({
           }
           return '分集'
         },
-      },
-    )
+      })
+    }
     return controls
   }
 
@@ -586,6 +640,9 @@ export function usePlayerCore({
         return
       }
 
+      // 创建后立即按容器宽度应用控件自适应 class，避免首帧闪变
+      syncNarrowClasses()
+
       // 探测浏览器编码支持：不支持时弹窗引导使用弹弹play（异步，不阻塞播放）
       checkUnsupportedCodec(targetVideoId, seq)
 
@@ -593,6 +650,7 @@ export function usePlayerCore({
       art.value.on('ready', async () => {
         placeEpisodeControlBeforeScreenshot()
         syncMobileClass()
+        syncNarrowClasses()
         installMobileTapHandler()
 
         // 优先处理 URL 传入的时间跳转参数
@@ -662,6 +720,11 @@ export function usePlayerCore({
       art.value.on('error', (error) => {
         console.error('播放器错误:', error)
         progress.stopProgressSaveTimer()
+      })
+
+      // 播放器容器尺寸变化（如跨布局断点、侧边栏切换）时刷新控件自适应 class
+      art.value.on('resize', () => {
+        syncNarrowClasses()
       })
 
       art.value.on('subtitleOffset', (offsetSec) => {

@@ -17,6 +17,7 @@
           :key="'p' + item.label"
           :to="item.to"
           class="nav-link"
+          :title="item.label"
           :active-class="item.exactOnly ? undefined : 'nav-active'"
           exact-active-class="nav-active"
           @click="sidebarOpen = false"
@@ -32,6 +33,7 @@
             :key="'m' + item.label"
             :to="item.to"
             class="nav-link"
+            :title="item.label"
             :active-class="item.exactOnly ? undefined : 'nav-active'"
             exact-active-class="nav-active"
             @click="sidebarOpen = false"
@@ -44,16 +46,16 @@
 
       <div class="sidebar-footer">
         <!-- 移动端主题设置入口（点击弹出主题选项） -->
-        <button class="footer-link theme-footer-btn" @click="accentPopoverOpen = !accentPopoverOpen">
+        <button class="footer-link theme-footer-btn" title="主题设置" @click="accentPopoverOpen = !accentPopoverOpen">
           <i class="mdi mdi-palette-outline"></i> 主题设置
         </button>
-        <router-link v-if="isAdmin" to="/admin" class="footer-link">
+        <router-link v-if="isAdmin" to="/admin" class="footer-link" title="后台管理">
           <i class="mdi mdi-cog"></i> 后台管理
         </router-link>
-        <a v-if="isLoggedIn" href="#" class="footer-link" @click.prevent="handleLogout">
+        <a v-if="isLoggedIn" href="#" class="footer-link" title="退出登录" @click.prevent="handleLogout">
           <i class="mdi mdi-logout"></i> 退出登录
         </a>
-        <a v-else href="#" class="footer-link" @click.prevent="showLoginDialog = true">
+        <a v-else href="#" class="footer-link" title="登录 / 注册" @click.prevent="showLoginDialog = true">
           <i class="mdi mdi-login"></i> 登录 / 注册
         </a>
       </div>
@@ -851,6 +853,48 @@ body {
 }
 
 /* ===== Responsive ===== */
+/* 中宽视口（1281–1635px）：侧边栏压缩为纯图标模式，
+   为播放页"播放器 + 选集面板"并排布局腾出宽度，保证播放器控件栏完整显示。 */
+@media (min-width: 1281px) and (max-width: 1635px) {
+  .app-sidebar {
+    flex: 0 0 72px;
+    width: 72px;
+    padding: 24px 10px 20px;
+  }
+
+  .sidebar-brand {
+    justify-content: center;
+    padding: 0 0 24px;
+  }
+
+  .sidebar-brand .brand-text {
+    display: none;
+  }
+
+  .sidebar-nav .nav-label {
+    display: none;
+  }
+
+  .sidebar-nav a.nav-link {
+    justify-content: center;
+    padding: 11px 0;
+  }
+
+  .sidebar-nav a.nav-link .nav-text {
+    display: none;
+  }
+
+  .sidebar-footer .footer-link {
+    justify-content: center;
+    padding: 10px 0;
+    font-size: 0;
+  }
+
+  .sidebar-footer .footer-link i {
+    font-size: 15px;
+  }
+}
+
 @media (max-width: 1280px) {
   .app-sidebar {
     position: absolute;

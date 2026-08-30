@@ -882,6 +882,43 @@ onBeforeUnmount(() => {
   }
 }
 
+/* 播放器控件随【播放器容器宽度】自适应（由 usePlayerCore 根据容器宽度切换 class）：
+   - player-controls-narrow（容器 < 971px）：启用紧凑控件尺寸。
+     侧边栏 + 选集面板等 chrome 会把中宽视口下的播放器压到 709–905px，
+     而完整控件栏需要约 971px，必须压缩尺寸才能完整显示。
+   - player-controls-emitter-off（容器 < 800px）：折叠弹幕输入框，
+     保留弹幕开关与设置入口，为左右控件腾出约 260px。
+   - player-controls-mini（容器 < 750px）：隐藏上/下集快捷按钮，
+     仍可通过"分集"菜单切换剧集。
+   - player-controls-tiny（容器 < 730px）：隐藏时间显示与音量按钮，
+     进度条悬停仍可查看时间，音量可用键盘 / 手势调节。 */
+.artplayer-container :deep(.art-video-player.player-controls-narrow) {
+  --art-control-height: 38px;
+  --art-control-icon-size: 28px;
+  --art-bottom-height: 76px;
+  --art-bottom-offset: 14px;
+  --art-padding: 8px;
+  --art-bottom-gap: 3px;
+  --art-state-size: 60px;
+  --art-settings-icon-size: 20px;
+}
+
+/* 折叠弹幕输入框仅限非全屏场景：全屏时播放器宽度充足，
+   必须保留发送弹幕的输入框（即使 class 在切换全屏的瞬间尚未移除）。 */
+.artplayer-container :deep(.art-video-player.player-controls-emitter-off:not(.art-fullscreen):not(.art-fullscreen-web):not(:fullscreen):not(:-webkit-full-screen) .apd-emitter) {
+  display: none !important;
+}
+
+.artplayer-container :deep(.art-video-player.player-controls-mini .art-controls-left [data-index="9"]),
+.artplayer-container :deep(.art-video-player.player-controls-mini .art-controls-left [data-index="11"]) {
+  display: none;
+}
+
+.artplayer-container :deep(.art-video-player.player-controls-tiny .art-control-time),
+.artplayer-container :deep(.art-video-player.player-controls-tiny .art-controls-left [data-index="20"]) {
+  display: none;
+}
+
 /* Responsive */
 @media (max-width: 1199px) {
   .player-layout {
