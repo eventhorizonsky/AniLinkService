@@ -90,6 +90,7 @@
           >
             <span class="mpt-ep-num">{{ episodeNumberDisplay(ep) }}</span>
             <span class="mpt-ep-title">{{ ep.episodeTitle || '' }}</span>
+            <span v-if="isWatchedEpisode(ep)" class="mpt-ep-watched">看过</span>
             <span class="mpt-ep-date">{{ formatEpisodeDate(ep.airDate) }}</span>
           </button>
         </div>
@@ -109,6 +110,7 @@
           >
             <span class="mpt-ep-num">{{ episodeNumberDisplay(ep) }}</span>
             <span class="mpt-ep-title">{{ ep.episodeTitle || '' }}</span>
+            <span v-if="isWatchedEpisode(ep)" class="mpt-ep-watched">看过</span>
             <span class="mpt-ep-date">{{ formatEpisodeDate(ep.airDate) }}</span>
           </button>
         </div>
@@ -132,7 +134,7 @@ import EpisodeComments from './EpisodeComments.vue'
 import { DEFAULT_POSTER } from '../../utils/constants'
 import { sanitizeHtml } from '../../utils/sanitize'
 
-defineProps({
+const props = defineProps({
   anime: { type: Object, required: true },
   animeId: { type: [String, Number], required: true },
   titleInfo: { type: Object, default: () => ({ main: '', sub: '' }) },
@@ -147,11 +149,17 @@ defineProps({
   currentEpisodeNumber: { type: [String, Number], default: '' },
   mainEpisodes: { type: Array, default: () => [] },
   specialEpisodes: { type: Array, default: () => [] },
+  watchedEpisodeNumbers: { type: Set, default: () => new Set() },
   playEpisode: { type: Function, required: true },
   canPlayEpisode: { type: Function, required: true },
   episodeNumberDisplay: { type: Function, default: (ep) => String(ep?.episodeNumber ?? '') },
   formatEpisodeDate: { type: Function, default: () => '' },
 })
+
+const isWatchedEpisode = (ep) => {
+  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) return false
+  return props.watchedEpisodeNumbers.has(String(ep.episodeNumber))
+}
 
 const tabs = [
   { label: '简介', value: 'info' },
@@ -422,6 +430,18 @@ const activeTab = ref('info')
   font-size: 0.72rem;
   color: var(--al-text-muted-2);
   font-variant-numeric: tabular-nums;
+}
+
+.mpt-ep-watched {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--al-success);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  padding: 1px 7px;
+  border-radius: 999px;
+  line-height: 1.4;
 }
 
 .mpt-ep-item.is-current .mpt-ep-date {

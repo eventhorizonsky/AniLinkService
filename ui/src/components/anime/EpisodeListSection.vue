@@ -29,6 +29,7 @@
           <span class="anime-episode-title" :title="ep.episodeTitle">{{ episodeTitleDisplay(ep) }}</span>
           <span v-if="isToday(ep)" class="anime-today-tag">今日更新</span>
           <span v-if="isCurrentEpisode(ep)" class="anime-current-tag">正在播放</span>
+          <span v-if="isWatched(ep)" class="anime-watched-tag">看过</span>
         </div>
         <div class="anime-episode-meta">
           <span>{{ formatDate(ep.airDate) }}</span>
@@ -75,6 +76,10 @@ const props = defineProps({
   currentEpisodeId: {
     type: [String, Number],
     default: null
+  },
+  watchedEpisodeNumbers: {
+    type: Set,
+    default: () => new Set()
   }
 });
 
@@ -106,6 +111,13 @@ const isCurrentEpisode = (ep) => {
     return false;
   }
   return String(ep.episodeId) === String(props.currentEpisodeId);
+};
+
+const isWatched = (ep) => {
+  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) {
+    return false;
+  }
+  return props.watchedEpisodeNumbers.has(String(ep.episodeNumber));
 };
 
 const canPlay = (ep) => isEpisodeExisting(ep) && !isFuture(ep);
@@ -158,6 +170,19 @@ const playEpisode = (ep) => {
   font-size: 0.85rem;
   font-weight: 600;
   animation: pulse 2s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+/* 已看过标签样式 */
+.anime-watched-tag {
+  display: inline-block;
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--al-success);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 

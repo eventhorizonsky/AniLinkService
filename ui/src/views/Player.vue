@@ -77,6 +77,7 @@
             >
               <span class="episode-item-num">{{ episodeNumberDisplay(ep) }}</span>
               <span class="episode-item-title">{{ ep.episodeTitle || '' }}</span>
+              <span v-if="isWatchedEpisode(ep)" class="episode-item-watched">看过</span>
               <span class="episode-item-date">{{ formatEpisodeDate(ep.airDate) }}</span>
             </button>
           </div>
@@ -107,6 +108,7 @@
           :current-episode-number="currentEpisodeNumber"
           :main-episodes="mainEpisodes"
           :special-episodes="specialEpisodes"
+          :watched-episode-numbers="watchedEpisodeNumbers"
           :play-episode="playEpisode"
           :can-play-episode="canPlayEpisode"
           :episode-number-display="episodeNumberDisplay"
@@ -135,6 +137,7 @@ import { markEpisodeMessagesRead as apiMarkEpisodeMessagesRead } from '../api/me
 import { syncEpisodeWatched } from '../api/bangumi'
 import { useAnimeDerived } from '../composables/useAnimeDerived'
 import { useAnimeData } from '../composables/useAnimeData'
+import { useBangumiWatched } from '../composables/useBangumiWatched'
 import { useAuth } from '../composables/useAuth'
 import { useFollow } from '../composables/useFollow'
 import { useResourceSelection } from '../composables/useResourceSelection'
@@ -238,6 +241,17 @@ const canPlayEpisode = (ep) => {
   return playableEpisodeKeys.value.has(String(ep.episodeId)) && !isFuture(ep)
 }
 
+// 已绑定 Bangumi 时拉取"已看过"的剧集，用于选集面板标记
+const { watchedEpisodeNumbers, refresh: refreshWatchedEpisodes, markWatchedLocally } = useBangumiWatched(
+  animeId,
+  computed(() => Boolean(userInfo.value?.bangumiBound))
+)
+
+const isWatchedEpisode = (ep) => {
+  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) return false
+  return watchedEpisodeNumbers.value.has(String(ep.episodeNumber))
+}
+
 const {
   isOnAir,
   ratingMain,
@@ -297,11 +311,19 @@ const syncEpisodeWatchedToBangumi = async () => {
   if (duration > 0 && currentTime / duration < 0.8) return
 
   _lastSyncedKey = key
+
+  // 立即在本地标记"看过"，选集面板实时响应（乐观标记与后端数据合并展示，不会被刷新抹掉）
+  if (userInfo.value?.bangumiBound) {
+    markWatchedLocally(currentEp.episodeNumber)
+  }
+
   try {
     await syncEpisodeWatched({
       animeId: animeId.value,
       episodeNumber: String(currentEp.episodeNumber)
     })
+    // 稍后从服务端核对一次，将后端已写入的结果合并进来
+    setTimeout(() => refreshWatchedEpisodes(), 3000)
   } catch (e) {
     // 静默失败 — 同步是最大努力，不应打扰用户
     console.debug('Bangumi 剧集同步跳过:', e)
@@ -702,6 +724,18 @@ onBeforeUnmount(() => {
   font-size: 0.72rem;
   color: var(--al-text-muted-2);
   font-variant-numeric: tabular-nums;
+}
+
+.episode-item-watched {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--al-success);
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  padding: 1px 7px;
+  border-radius: 999px;
+  line-height: 1.4;
 }
 
 .episode-panel-item.is-current .episode-item-date {

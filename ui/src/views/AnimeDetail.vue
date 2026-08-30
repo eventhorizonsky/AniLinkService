@@ -103,6 +103,7 @@
           :main-count="mainEpisodes.length"
           :total-count="animeData.episodes.length"
           :playable-episode-keys="playableEpisodeKeys"
+          :watched-episode-numbers="watchedEpisodeNumbers"
           @playEpisode="playEpisode"
         />
 
@@ -182,6 +183,7 @@ import { getSubjectCollection, saveSubjectCollection } from '../api/bangumi';
 import { useAuth } from '../composables/useAuth';
 import { useAnimeData } from '../composables/useAnimeData';
 import { useAnimeDerived } from '../composables/useAnimeDerived';
+import { useBangumiWatched } from '../composables/useBangumiWatched';
 import { useFollow } from '../composables/useFollow';
 import { useResourceSelection } from '../composables/useResourceSelection';
 import { BANGUMI_BASE_URL } from '../utils/constants';
@@ -415,6 +417,12 @@ const resumeEpisodeLine = computed(() => {
 const isBangumiBound = computed(() => Boolean(currentUserInfo.value?.bangumiBound));
 const showBangumiCollectionCard = computed(() => isLoggedIn.value && isBangumiBound.value && bangumiSubjectId.value !== null);
 const showBangumiBindHint = computed(() => isLoggedIn.value && !isBangumiBound.value && bangumiSubjectId.value !== null);
+
+// 已绑定 Bangumi 时拉取"已看过"的剧集，用于选集列表标记
+const { watchedEpisodeNumbers } = useBangumiWatched(
+  resolvedAnimeId,
+  computed(() => isLoggedIn.value && isBangumiBound.value && bangumiSubjectId.value !== null)
+);
 
 watch(
   () => [bangumiSubjectId.value, showBangumiCollectionCard.value],

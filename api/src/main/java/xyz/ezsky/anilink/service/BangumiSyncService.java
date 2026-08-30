@@ -20,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -43,6 +45,9 @@ public class BangumiSyncService {
 
     @Autowired
     private BangumiApiService bangumiApiService;
+
+    @Autowired
+    private AnimeService animeService;
 
     @Autowired
     private AnimeRepository animeRepository;
@@ -100,6 +105,125 @@ public class BangumiSyncService {
     }
 
     // ==================== 公开方法 ====================
+
+    /**
+     * 获取当前用户对某番剧已标记"看过"（type=2）的本地集数列表。
+     * <p>
+     * 通过 Bangumi 剧集收藏接口拉取已看剧集 ID 集合，再按"本篇列表位置"
+     * 映射回本地集数（1..N），与 syncEpisodeWatched 的映射规则保持一致。
+     * 未绑定 / 未关联条目 / 接口异常时返回 available=false，调用方静默忽略。
+     *
+     * @param userId  本地用户 ID
+     * @param animeId 本地番剧 ID（弹弹 animeId）
+     * @return map with keys: available, subjectId (成功时), watched (本地集数列表),
+     *         total, message (失败时)
+     */
+    public Map<String, Object> getAnimeWatchedEpisodes(Long userId, Long animeId) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("available", false);
+
+        String accessToken = getBangumiAccessToken(userId);
+        if (accessToken == null) {
+            result.put("message", "未绑定 Bangumi 账号");
+            return result;
+        }
+        Long subjectId = getBangumiSubjectId(animeId);
+        if (subjectId == null) {
+            result.put("message", "番剧未关联 Bangumi 条目");
+            return result;
+        }
+        result.put("subjectId", subjectId);
+
+        try {
+            // 1. 分页拉取用户剧集收藏，收集"看过"(type=2) 的剧集 ID
+            Set<Long> watchedEpisodeIds = new HashSet<>();
+            int offset = 0;
+            int pageSize = 1000;
+            while (true) {
+                ResponseEntity<String> response = bangumiApiService.getUserSubjectEpisodeCollection(
+                        accessToken, subjectId, offset, pageSize);
+                int status = response.getStatusCode().value();
+                if (status == 401) {
+                    result.put("message", "Bangumi Token 已过期或无效");
+                    return result;
+                }
+                if (status == 404) {
+                    // 条目未收藏：视为没有任何已看剧集
+                    result.put("available", true);
+                    result.put("watched", List.of());
+                    result.put("total", 0);
+                    return result;
+                }
+                if (!response.getStatusCode().is2xxSuccessful() || !StringUtils.hasText(response.getBody())) {
+                    result.put("message", "Bangumi API 返回错误: HTTP " + status);
+                    return result;
+                }
+
+                JsonNode root = objectMapper.readTree(response.getBody());
+                JsonNode data = root.get("data");
+                if (data == null || !data.isArray()) {
+                    break;
+                }
+                for (JsonNode item : data) {
+                    if (item.path("type").asInt(-1) == EPISODE_TYPE_WATCHED) {
+                        long epId = item.path("episode").path("id").asLong(-1);
+                        if (epId > 0) {
+                            watchedEpisodeIds.add(epId);
+                        }
+                    }
+                }
+                if (data.size() < pageSize) {
+                    break;
+                }
+                offset += pageSize;
+            }
+
+            if (watchedEpisodeIds.isEmpty()) {
+                result.put("available", true);
+                result.put("watched", List.of());
+                result.put("total", 0);
+                return result;
+            }
+
+            // 2. 拉取本篇剧集列表（按 sort 排序），建立 epId -> 集数(位置) 映射
+            ResponseEntity<String> epResp = bangumiApiService.getEpisodes(subjectId, 0, 200, 0);
+            if (!epResp.getStatusCode().is2xxSuccessful() || !StringUtils.hasText(epResp.getBody())) {
+                result.put("message", "获取 Bangumi 剧集列表失败");
+                return result;
+            }
+            JsonNode epRoot = objectMapper.readTree(epResp.getBody());
+            JsonNode epData = epRoot.get("data");
+            List<JsonNode> eps = new ArrayList<>();
+            if (epData != null && epData.isArray()) {
+                epData.forEach(eps::add);
+            }
+            eps.sort(Comparator.comparingDouble(e -> e.path("sort").asDouble(0)));
+
+            Map<Long, String> idToNumber = new HashMap<>();
+            for (int i = 0; i < eps.size(); i++) {
+                long epId = eps.get(i).path("id").asLong(-1);
+                if (epId > 0) {
+                    idToNumber.put(epId, String.valueOf(i + 1));
+                }
+            }
+
+            List<String> watchedNumbers = watchedEpisodeIds.stream()
+                    .map(idToNumber::get)
+                    .filter(Objects::nonNull)
+                    .sorted(Comparator.comparingInt(Integer::parseInt))
+                    .collect(Collectors.toList());
+
+            result.put("available", true);
+            result.put("watched", watchedNumbers);
+            result.put("total", watchedNumbers.size());
+            return result;
+        } catch (Exception e) {
+            log.warn("Failed to fetch watched episodes for userId={}, animeId={}: {}",
+                    userId, animeId, e.getMessage());
+            result.put("message", "获取已看剧集失败: " + e.getMessage());
+            return result;
+        }
+    }
 
     /**
      * Get Bangumi episode comments (tucao box) for a local anime episode.
@@ -752,10 +876,56 @@ public class BangumiSyncService {
 
     /**
      * 获取番剧对应的 Bangumi subject ID。
+     * <p>
+     * 优先从本地 Anime 记录读取；本地未记录绑定关系时，回退到弹弹接口的
+     * raw JSON（bangumiUrl 字段）解析。getRawJsonByAnimeId 内部同时会
+     * 补建/更新本地记录，因此后续请求直接命中数据库。
      */
     private Long getBangumiSubjectId(Long animeId) {
+        if (animeId == null) {
+            return null;
+        }
         Optional<Anime> animeOpt = animeRepository.findByAnimeId(animeId);
-        return animeOpt.map(Anime::getBangumiSubjectId).orElse(null);
+        Long subjectId = animeOpt.map(Anime::getBangumiSubjectId).orElse(null);
+        if (subjectId != null) {
+            return subjectId;
+        }
+        try {
+            String rawJson = animeService.getRawJsonByAnimeId(animeId);
+            if (!StringUtils.hasText(rawJson)) {
+                return null;
+            }
+            JsonNode root = objectMapper.readTree(rawJson);
+            JsonNode data = root.has("bangumi") ? root.get("bangumi") : root;
+            String bangumiUrl = data.has("bangumiUrl") && !data.get("bangumiUrl").isNull()
+                    ? data.get("bangumiUrl").asText() : null;
+            return extractBangumiSubjectId(bangumiUrl);
+        } catch (Exception e) {
+            log.warn("Failed to resolve Bangumi subjectId from dandan raw JSON for animeId={}: {}",
+                    animeId, e.getMessage());
+            return null;
+        }
+    }
+
+    private static final Pattern BANGUMI_SUBJECT_ID_PATTERN = Pattern.compile("/subject/(\\d+)");
+
+    /**
+     * 从 Bangumi URL 中提取 subject ID。
+     * 例如: "https://bangumi.tv/subject/571784" → 571784L
+     */
+    private Long extractBangumiSubjectId(String bangumiUrl) {
+        if (bangumiUrl == null || bangumiUrl.isBlank()) {
+            return null;
+        }
+        Matcher matcher = BANGUMI_SUBJECT_ID_PATTERN.matcher(bangumiUrl);
+        if (matcher.find()) {
+            try {
+                return Long.parseLong(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+                // fall through
+            }
+        }
+        return null;
     }
 
     /**

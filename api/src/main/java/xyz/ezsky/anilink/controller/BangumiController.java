@@ -294,6 +294,16 @@ public class BangumiController {
     }
 
     @SaCheckLogin
+    @GetMapping("/animes/{animeId}/watched-episodes")
+    @Operation(summary = "获取当前用户已看的剧集列表", description = "查询当前绑定 Bangumi 账号对该番剧的剧集收藏，返回已标记'看过'的本地集数列表")
+    public ApiResponseVO<Object> getAnimeWatchedEpisodes(
+            @Parameter(description = "本地番剧 ID（弹弹 animeId）", required = true)
+            @PathVariable Long animeId) {
+        Long userId = Long.valueOf(StpUtil.getLoginId().toString());
+        return ApiResponseVO.success(bangumiSyncService.getAnimeWatchedEpisodes(userId, animeId));
+    }
+
+    @SaCheckLogin
     @PostMapping("/sync/pull-collections")
     @Operation(summary = "从 Bangumi 拉取追番数据", description = "拉取当前绑定 Bangumi 账号的所有动画收藏，同步到本地追番列表。以 Bangumi 数据为准。")
     public ApiResponseVO<Map<String, Object>> pullBangumiCollections() {
