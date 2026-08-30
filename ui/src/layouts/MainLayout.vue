@@ -43,9 +43,9 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="footer-link theme-footer-btn" @click="toggleTheme">
-          <i class="mdi" :class="isDark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"></i>
-          {{ isDark ? '浅色模式' : '深色模式' }}
+        <!-- 移动端主题设置入口（点击弹出主题选项） -->
+        <button class="footer-link theme-footer-btn" @click="accentPopoverOpen = !accentPopoverOpen">
+          <i class="mdi mdi-palette-outline"></i> 主题设置
         </button>
         <router-link v-if="isAdmin" to="/admin" class="footer-link">
           <i class="mdi mdi-cog"></i> 后台管理
@@ -84,7 +84,7 @@
         </div>
 
         <div class="topbar-actions">
-          <!-- 主题设置（主题色 + 深/浅色切换） -->
+          <!-- 主题设置（桌面端入口，弹层展示主题色 + 深/浅色切换） -->
           <div class="accent-menu-wrapper">
             <button
               class="theme-toggle"
@@ -95,27 +95,7 @@
               <i class="mdi mdi-palette-outline"></i>
             </button>
             <div v-if="accentPopoverOpen" class="accent-popover" @wheel.stop>
-              <div class="accent-popover-title">
-                <i class="mdi mdi-palette-swatch-outline"></i> 主题色
-              </div>
-              <div class="accent-swatches">
-                <button
-                  v-for="p in THEME_COLOR_PRESETS"
-                  :key="p.key"
-                  class="accent-swatch"
-                  :class="{ active: p.key === accentKey }"
-                  :title="p.name"
-                  :style="{ background: isDark ? p.dark.accent : p.light.accent }"
-                  @click="selectAccent(p.key)"
-                >
-                  <i v-if="p.key === accentKey" class="mdi mdi-check"></i>
-                </button>
-              </div>
-              <div class="accent-popover-divider"></div>
-              <button class="accent-mode-btn" @click="toggleTheme">
-                <i class="mdi" :class="isDark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"></i>
-                {{ isDark ? '深色模式' : '浅色模式' }}
-              </button>
+              <AccentThemePanel @close="accentPopoverOpen = false" />
             </div>
           </div>
 
@@ -183,6 +163,13 @@
       @request-login="openLoginDialog"
       @register-success="openLoginDialog"
     />
+
+    <!-- 移动端主题设置弹窗 -->
+    <div v-if="accentPopoverOpen" class="theme-dialog-overlay" @click.self="accentPopoverOpen = false">
+      <div class="theme-dialog">
+        <AccentThemePanel @close="accentPopoverOpen = false" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -192,14 +179,15 @@ import { useRouter, useRoute } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
 import { DEFAULT_SITE_NAME, hasRoleLevel, isSuperAdmin } from '../utils/constants'
-import { THEME_COLOR_PRESETS, getThemeColorPreset } from '../utils/themeColors'
+import { getThemeColorPreset } from '../utils/themeColors'
 import { getCurrentUser } from '../api/auth'
 import { readSiteConfig, remoteAccessEnabled, remoteAccessTokenRequired } from '../utils/siteConfig'
 import LoginDialog from '../components/LoginDialog.vue'
 import RegisterDialog from '../components/RegisterDialog.vue'
 import MessageBell from '../components/MessageBell.vue'
+import AccentThemePanel from '../components/AccentThemePanel.vue'
 
-const { isDark, toggleTheme, accentKey, setAccentColor } = useTheme()
+const { accentKey } = useTheme()
 const { token, userInfo, isLoggedIn, setUserInfo, clearAuth } = useAuth()
 const router = useRouter()
 const route = useRoute()
@@ -309,7 +297,9 @@ const handleClickOutside = (event) => {
   }
   if (accentPopoverOpen.value) {
     const accentWrapper = event.target.closest('.accent-menu-wrapper')
-    if (!accentWrapper) {
+    const accentDialog = event.target.closest('.theme-dialog-overlay')
+    const accentTrigger = event.target.closest('.theme-footer-btn')
+    if (!accentWrapper && !accentDialog && !accentTrigger) {
       accentPopoverOpen.value = false
     }
   }
@@ -399,11 +389,6 @@ const goToMessages = () => {
 const goToAdmin = () => {
   userMenuOpen.value = false
   router.push('/admin')
-}
-
-const selectAccent = (key) => {
-  setAccentColor(key)
-  accentPopoverOpen.value = false
 }
 </script>
 
@@ -731,7 +716,7 @@ body {
   position: relative;
 }
 
-/* ===== 主题色选择弹层 ===== */
+/* ===== 主题色选择弹层（桌面端，内容在 AccentThemePanel） ===== */
 .accent-menu-wrapper {
   position: relative;
 }
@@ -748,73 +733,31 @@ body {
   z-index: 1001;
   animation: slideDown 0.2s ease;
 }
-.accent-popover-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--anime-text-main);
-  margin-bottom: 12px;
-}
-.accent-popover-title i {
-  color: var(--anime-accent-red);
-  font-size: 15px;
-}
-.accent-swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.accent-swatch {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 2px solid var(--al-bg);
-  box-shadow: 0 0 0 1px var(--al-border-soft);
-  cursor: pointer;
-  padding: 0;
-  display: flex;
+
+/* ===== 移动端主题设置弹窗 ===== */
+.theme-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1200;
   align-items: center;
   justify-content: center;
-  color: var(--al-text-on-accent);
-  font-size: 15px;
-  transition: transform 0.2s, box-shadow 0.2s;
+  padding: 24px;
 }
-.accent-swatch:hover {
-  transform: scale(1.12);
-}
-.accent-swatch.active {
-  box-shadow: 0 0 0 2px var(--anime-accent-red);
-  transform: scale(1.12);
-}
-.accent-popover-divider {
-  height: 1px;
-  background: var(--al-border-neutral);
-  margin: 12px 0;
-}
-.accent-mode-btn {
+.theme-dialog {
   width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--anime-text-secondary);
-  padding: 6px 8px;
-  border-radius: 9px;
-  font-family: inherit;
-  transition: background 0.15s, color 0.15s;
+  max-width: 300px;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  padding: 18px;
+  animation: dialogIn 0.2s ease;
 }
-.accent-mode-btn:hover {
-  background: rgba(var(--al-accent-rgb), 0.08);
-  color: var(--anime-accent-red);
-}
-.accent-mode-btn i {
-  font-size: 15px;
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ===== 内容区 ===== */
@@ -941,6 +884,14 @@ body {
 @media (max-width: 600px) {
   .app-topbar {
     gap: 10px;
+  }
+  /* 移动端：顶栏主题按钮及其锚定弹层隐藏，改由侧边栏"主题设置"入口弹出弹窗 */
+  .theme-toggle,
+  .accent-menu-wrapper {
+    display: none;
+  }
+  .theme-dialog-overlay {
+    display: flex;
   }
   .sidebar-footer .theme-footer-btn {
     display: flex;
