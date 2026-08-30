@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.3.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.2.0...v1.3.0) (2026-08-30)
+
+
+### Features
+
+* Bangumi 镜像切换后封面地址自愈 + 后台手动修复按钮 ([5275a40](https://github.com/eventhorizonsky/AniLinkService/commit/5275a409eeabd25a2fc2bc3b60f09118e5a72a77))
+* Web 播放器支持服务端转码/秒转（HLS），浏览器不支持的编码自动转码播放 ([14493ba](https://github.com/eventhorizonsky/AniLinkService/commit/14493ba927b8aa7eedc4ca0904fc45be351b9757))
+* 前台支持主题色配置（本地持久化）并补充 pnpm 11 构建配置 ([00fd1e7](https://github.com/eventhorizonsky/AniLinkService/commit/00fd1e736ce4923592943e17e73f73afcfe5e500))
+* 浏览器不支持视频编码时弹窗引导使用弹弹play ([bc6c949](https://github.com/eventhorizonsky/AniLinkService/commit/bc6c94988f36e272bd372c642782fbc8f63c62ec))
+* 移动端主题设置入口移入侧边栏并弹出选项 ([51a49ce](https://github.com/eventhorizonsky/AniLinkService/commit/51a49ceb74e3f7df32268a6afd1c4fbd2c65f7aa))
+* 详情页/播放页标记 Bangumi 已看过的剧集 ([98bd044](https://github.com/eventhorizonsky/AniLinkService/commit/98bd044c224e963fcac90ce85ee5a0765e54239d))
+
+
+### Bug Fixes
+
+* 修复下载管理运行日志在浅色/深色模式下颜色反转 ([d31daaf](https://github.com/eventhorizonsky/AniLinkService/commit/d31daaf42c4d10131c5f1e5980889d178213d06d))
+* 修复番剧详情页追番状态切换失效问题 ([29e0eb1](https://github.com/eventhorizonsky/AniLinkService/commit/29e0eb14a80e0710b108ddaf59e729aaf362b7b5))
+* 修复移动端顶栏按钮被挤到第二行的问题 ([eef6103](https://github.com/eventhorizonsky/AniLinkService/commit/eef61030321ee5478d455e5d8d98a16e23b77fa3))
+* 修复首页榜单与追番不显示问题 ([0ac7844](https://github.com/eventhorizonsky/AniLinkService/commit/0ac7844b65875af75b3b1e5c6f8b8acfc0f25cf3))
+* 更新 Bangumi 接口提示文案 ([99d4f6d](https://github.com/eventhorizonsky/AniLinkService/commit/99d4f6d30681b1a953b4d2eaebf7e0a9bc04dca6))
+
+
+### Documentation
+
+* 更新 README 界面截图并压缩图标资源 ([9e5a117](https://github.com/eventhorizonsky/AniLinkService/commit/9e5a117fcc17b58d8c2985d0fc46801e3fe2d7f3))
+
 ## [1.2.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.1.0...v1.2.0) (2026-08-14)
 
 
