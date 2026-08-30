@@ -453,7 +453,7 @@ onMounted(() => {
                 variant="outlined"
                 color="primary"
                 placeholder="https://next.bgm.tv"
-                hint="例如 https://next.bangumi.lol，用于 next.bgm.tv (p1) 接口，如单集吐槽"
+                hint="例如 https://next.bangumi.pro，用于 next.bgm.tv (p1) 接口，如单集吐槽"
                 persistent-hint
                 class="mb-3"
               />
