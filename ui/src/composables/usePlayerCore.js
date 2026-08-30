@@ -4,11 +4,18 @@ import { computed, ref } from 'vue'
 import Artplayer from 'artplayer'
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
-import { showAppMessage } from '../utils/ui-feedback'
-import { API_BASE } from '../utils/constants'
+import { showAppMessage, askAppConfirm } from '../utils/ui-feedback'
+import {
+  API_BASE,
+  DANDPANPLAY_OFFICIAL_URL,
+  DANDPANPLAY_ANDROID_URL,
+  DANDPANPLAY_ANDROID_PACKAGE,
+} from '../utils/constants'
 import { truncateText } from '../utils/episodes'
 import { theme, accentKey } from './useTheme'
 import { getThemeColorPreset } from '../utils/themeColors'
+import { getMediaFileCodecs } from '../api/media'
+import { checkCodecSupport } from '../utils/codecSupport'
 
 const MOBILE_VIEWPORT_MAX_WIDTH = 768
 const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
@@ -62,25 +69,116 @@ export function usePlayerCore({
 }) {
   let playerRecreateSeq = 0
   let _mobileTapHandler = null
+  // 编码不支持弹窗去重：同一番剧只提示一次（跨播放器重建保留，切分集不重复打扰）
+  let _codecPromptAnimeId = null
   const isDesktopViewport = ref(true)
 
   const showDdplayButton = computed(() => {
     return isDesktopViewport.value && Boolean(getVideoId())
   })
 
-  const ddplayLink = computed(() => {
+  const isAndroidDevice = () =>
+    typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '')
+
+  const getStreamUrl = () => {
     if (!getVideoId() || typeof window === 'undefined') {
       return ''
     }
+    return `${window.location.origin}${API_BASE}/media-files/stream/${getVideoId()}`
+  }
 
-    const streamUrl = `${window.location.origin}${API_BASE}/media-files/stream/${getVideoId()}`
+  /**
+   * 构建 Android intent:// 唤起 URL。
+   * @param {string} streamUrl 直链地址
+   * @param {string|null} pkg 目标应用包名；传 null 时不指定包名，由系统弹出应用选择器
+   */
+  const buildAndroidIntentUrl = (streamUrl, pkg) => {
+    try {
+      const u = new URL(streamUrl)
+      const fallback = encodeURIComponent(DANDPANPLAY_OFFICIAL_URL)
+      const pkgPart = pkg ? `;package=${pkg}` : ''
+      return (
+        `intent://${u.host}${u.pathname}${u.search}` +
+        `#Intent;scheme=${u.protocol.replace(':', '')}${pkgPart};` +
+        `action=android.intent.action.VIEW;type=video/mp4;` +
+        `S.browser_fallback_url=${fallback};end`
+      )
+    } catch {
+      return streamUrl
+    }
+  }
+
+  /**
+   * 生成"通过弹弹play播放"的唤起链接：
+   * - Android：无 ddplay: 自定义协议，改用 intent:// 精确唤起弹弹play APP
+   *   （该 APP 注册了 ACTION_VIEW + BROWSABLE + http/https + video/* 的
+   *   intent-filter，入口直接把 URL 交给播放器）；未安装时回退到官网。
+   * - 桌面端：使用 ddplay: 自定义协议。
+   */
+  const buildExternalPlayerLaunchUrl = () => {
+    const streamUrl = getStreamUrl()
+    if (!streamUrl) {
+      return ''
+    }
+    if (isAndroidDevice()) {
+      return buildAndroidIntentUrl(streamUrl, DANDPANPLAY_ANDROID_PACKAGE)
+    }
+
     const filePath = getDdplayFilePath()
     const withOptionalFilePath = filePath
       ? `${streamUrl}|filePath=${filePath}`
       : streamUrl
-
     return `ddplay:${encodeURIComponent(withOptionalFilePath)}`
-  })
+  }
+
+  /**
+   * Android 端"通过其他视频软件打开"：不带 package 的 intent://，
+   * 由系统弹出应用选择器（弹弹play、MX Player、VLC 等已注册视频 intent-filter 的应用）。
+   */
+  const buildExternalPlayerChooserUrl = () => {
+    const streamUrl = getStreamUrl()
+    if (!streamUrl || !isAndroidDevice()) {
+      return ''
+    }
+    return buildAndroidIntentUrl(streamUrl, null)
+  }
+
+  /**
+   * 通过隐藏 iframe 触发 Android intent:// 唤起，避免页面跳转/闪白页。
+   * （intent:// 唤起无需页面导航，iframe 导航即可触发系统 intent）
+   */
+  const fireAndroidIntent = (intentUrl) => {
+    if (!intentUrl) return
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.src = intentUrl
+    document.body.appendChild(iframe)
+    setTimeout(() => iframe.remove(), 1000)
+  }
+
+  const openWithDdplay = () => {
+    const launchUrl = buildExternalPlayerLaunchUrl()
+    if (!launchUrl) {
+      showAppMessage('未获取到可播放地址', 'warning')
+      return
+    }
+    if (isAndroidDevice()) {
+      fireAndroidIntent(launchUrl)
+    } else {
+      window.location.href = launchUrl
+    }
+  }
+
+  /** Android：通过其他视频软件打开（系统应用选择器，iframe 触发不跳转页面） */
+  const openWithOtherPlayer = () => {
+    const chooserUrl = buildExternalPlayerChooserUrl()
+    if (!chooserUrl) {
+      showAppMessage('未获取到可播放地址', 'warning')
+      return
+    }
+    fireAndroidIntent(chooserUrl)
+  }
 
   const syncMobileClass = () => {
     if (!artRef.value) return
@@ -127,12 +225,58 @@ export function usePlayerCore({
     installMobileTapHandler()
   }
 
-  const openWithDdplay = () => {
-    if (!ddplayLink.value) {
-      showAppMessage('未获取到可播放地址', 'warning')
-      return
+  /**
+   * 探测浏览器对当前视频编码的支持情况。
+   * 直出播放时若视频/音频编码浏览器无法解码（如 HEVC、FLAC/AC3/DTS），
+   * 弹窗引导用户使用【通过弹弹play播放】。同一番剧只提示一次。
+   * 探测失败或编码未知时静默跳过，不影响播放。
+   */
+  const checkUnsupportedCodec = async (videoId, seq) => {
+    try {
+      const res = await getMediaFileCodecs(videoId)
+      if (seq !== playerRecreateSeq) return
+      const d = res?.data
+      if (!d) return
+      const { supported, unsupportedParts } = checkCodecSupport({
+        videoCodec: d.videoCodec,
+        audioCodec: d.audioCodec,
+      })
+      if (supported) return
+
+      const animeKey = String(getAnimeId() || '')
+      if (_codecPromptAnimeId === animeKey) return
+      _codecPromptAnimeId = animeKey
+
+      // 手机端/PC 展示各自适用的链接；Android 额外提供"通过其他视频软件打开"平级按钮
+      const links = isAndroidDevice()
+        ? [
+            { text: '弹弹play 官网', href: DANDPANPLAY_OFFICIAL_URL },
+            { text: 'Android 客户端（开源）', href: DANDPANPLAY_ANDROID_URL },
+          ]
+        : [{ text: '弹弹play 官网', href: DANDPANPLAY_OFFICIAL_URL }]
+      const actions = isAndroidDevice()
+        ? [{ text: '通过其他视频软件打开', value: 'other-player', color: 'primary' }]
+        : []
+
+      askAppConfirm({
+        title: '浏览器可能无法播放该视频',
+        message: `当前视频/音频编码（${unsupportedParts.join('、')}）可能无法在浏览器中直接播放。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。`,
+        confirmText: '通过弹弹play播放',
+        cancelText: '继续播放',
+        color: 'warning',
+        links,
+        actions,
+      }).then((choice) => {
+        if (choice === 'other-player') {
+          openWithOtherPlayer()
+        } else if (choice === true) {
+          openWithDdplay()
+        }
+      })
+    } catch (e) {
+      // 静默失败：拿不到编码信息时不打扰用户
+      console.debug('编码探测失败:', e)
     }
-    window.location.href = ddplayLink.value
   }
 
   const getCurrentPlayableEpisodeIndex = () => {
@@ -441,6 +585,9 @@ export function usePlayerCore({
         destroyPlayerInstance()
         return
       }
+
+      // 探测浏览器编码支持：不支持时弹窗引导使用弹弹play（异步，不阻塞播放）
+      checkUnsupportedCodec(targetVideoId, seq)
 
       // 监听播放器事件
       art.value.on('ready', async () => {

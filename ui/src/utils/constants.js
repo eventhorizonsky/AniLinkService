@@ -11,6 +11,12 @@ export const BANGUMI_BASE_URL = 'https://bgm.tv/'
 
 export const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 
+// 弹弹play 官网 / Android 客户端开源仓库（编码不支持时引导用户安装使用）
+export const DANDPANPLAY_OFFICIAL_URL = 'https://www.dandanplay.com/'
+export const DANDPANPLAY_ANDROID_URL = 'https://gitee.com/xyoye/DanDanPlayForAndroid/releases'
+// Android 端弹弹play 应用包名（intent:// 精确唤起用）
+export const DANDPANPLAY_ANDROID_PACKAGE = 'com.xyoye.dandanplay'
+
 // 星期标签（0=周日，7 也代表周日），用于放送日展示。
 export const WEEKDAY_LABELS = {
   0: '周日',

@@ -35,10 +35,34 @@
     <v-dialog v-model="confirmDialog.open" max-width="420" persistent>
       <v-card>
         <v-card-title class="text-h6">{{ confirmDialog.title }}</v-card-title>
-        <v-card-text>{{ confirmDialog.message }}</v-card-text>
-        <v-card-actions>
-          <v-spacer />
+        <v-card-text>
+          <p class="confirm-message">{{ confirmDialog.message }}</p>
+          <div v-if="confirmDialog.links?.length" class="confirm-links">
+            <a
+              v-for="l in confirmDialog.links"
+              :key="l.href"
+              :href="l.href"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="confirm-link"
+            >
+              <i class="mdi mdi-open-in-new"></i> {{ l.text }}
+            </a>
+          </div>
+        </v-card-text>
+        <v-card-actions
+          class="confirm-actions"
+          :class="{ 'is-stacked': confirmDialog.actions.length > 0 }"
+        >
+          <v-spacer v-if="!confirmDialog.actions.length" />
           <v-btn variant="text" @click="handleConfirmCancel">{{ confirmDialog.cancelText }}</v-btn>
+          <v-btn
+            v-for="a in confirmDialog.actions"
+            :key="a.value"
+            variant="text"
+            :color="a.color || 'primary'"
+            @click="handleAction(a)"
+          >{{ a.text }}</v-btn>
           <v-btn :color="confirmDialog.color" @click="handleConfirmOk">{{ confirmDialog.confirmText }}</v-btn>
         </v-card-actions>
       </v-card>
@@ -69,6 +93,8 @@ const confirmDialog = ref({
   confirmText: '确定',
   cancelText: '取消',
   color: 'primary',
+  links: [],
+  actions: [],
   resolver: null
 })
 
@@ -117,6 +143,8 @@ onMounted(async () => {
       confirmText: detail.confirmText || '确定',
       cancelText: detail.cancelText || '取消',
       color: detail.color || 'primary',
+      links: Array.isArray(detail.links) ? detail.links : [],
+      actions: Array.isArray(detail.actions) ? detail.actions : [],
       resolver: typeof detail.resolve === 'function' ? detail.resolve : null
     }
   }
@@ -171,10 +199,69 @@ const handleConfirmOk = () => {
   }
   confirmDialog.value.open = false
 }
+
+const handleAction = (action) => {
+  if (confirmDialog.value.resolver) {
+    confirmDialog.value.resolver(action.value)
+  }
+  confirmDialog.value.open = false
+}
 </script>
 
 <style scoped>
 .fill-height {
   min-height: 100vh;
+}
+
+.confirm-message {
+  margin: 0 0 8px;
+  white-space: pre-line;
+}
+
+/* 按钮多的场景（有附加操作）竖排通栏，避免窄屏横向溢出 */
+.confirm-actions.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 24px 16px;
+}
+
+.confirm-actions.is-stacked .v-btn {
+  width: 100%;
+  margin: 0;
+}
+
+.confirm-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--al-border-neutral);
+}
+
+.confirm-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--anime-text-secondary);
+  text-decoration: none;
+  padding: 6px 8px;
+  border-radius: 8px;
+  word-break: break-all;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.confirm-link i {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--anime-accent-red);
+}
+
+.confirm-link:hover {
+  background: rgba(var(--al-accent-rgb), 0.08);
+  color: var(--anime-accent-red);
 }
 </style>

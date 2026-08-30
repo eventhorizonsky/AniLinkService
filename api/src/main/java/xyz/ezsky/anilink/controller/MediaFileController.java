@@ -35,7 +35,9 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 媒体文件管理API
@@ -243,6 +245,22 @@ public class MediaFileController {
             @Parameter(description = "媒体库ID，不提供则汇总全部")
             @RequestParam(required = false) Long libraryId) {
         return ApiResponseVO.success(mediaFileService.getMatchProgress(libraryId));
+    }
+
+    @Operation(summary = "获取媒体文件编码信息", description = "返回视频/音频编码名（FFprobe codec_name）与容器格式，供播放页探测浏览器是否支持，引导外部播放器")
+    @GetMapping("/{id}/codecs")
+    public ApiResponseVO<Map<String, String>> getMediaFileCodecs(
+            @Parameter(description = "媒体文件ID")
+            @PathVariable Long id) {
+        MediaFile mediaFile = mediaFileService.getMediaFileById(id);
+        if (mediaFile == null) {
+            return ApiResponseVO.fail(404, "媒体文件不存在");
+        }
+        Map<String, String> codecs = new LinkedHashMap<>();
+        codecs.put("videoCodec", mediaFile.getVideoCodec());
+        codecs.put("audioCodec", mediaFile.getAudioCodec());
+        codecs.put("containerFormat", mediaFile.getContainerFormat());
+        return ApiResponseVO.success(codecs);
     }
 
     @Operation(summary = "获取视频流", description = "根据媒体文件ID获取视频流，支持HTTP Range请求实现跳转播放")

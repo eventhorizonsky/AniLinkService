@@ -20,6 +20,9 @@ export const scanAllLibraries = () => axios.post(`${API_BASE}/media-library/scan
 
 export const getMediaFiles = (params) => axios.get(`${API_BASE}/media-files`, { params }).then((r) => r.data)
 
+export const getMediaFileCodecs = (fileId) =>
+  axios.get(`${API_BASE}/media-files/${fileId}/codecs`).then((r) => r.data)
+
 export const updateMediaFile = (fileId, data) =>
   axios.put(`${API_BASE}/media-files/${fileId}`, data).then((r) => r.data)
 
