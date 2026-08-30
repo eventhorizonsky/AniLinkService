@@ -1,5 +1,15 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { formatBytes, formatSpeed } from '../../../utils/format'
+import { useIsMobile } from '../../../composables/useIsMobile'
+import {
+  formatTaskStatus as formatStatus,
+  taskStatusColor as statusColor,
+  canCancelTask as canCancel,
+  canRetryTask as canRetry,
+  canDeleteTask as canDelete,
+  canViewTaskBinding as canViewBinding
+} from '../../../utils/taskStatus'
 
 const props = defineProps({
   title: {
@@ -66,49 +76,11 @@ const emit = defineEmits([
   'binding'
 ])
 
-const STATUS_META = {
-  PENDING: { label: '等待中', color: 'grey' },
-  RUNNING: { label: '下载中', color: 'primary' },
-  SEEDING: { label: '做种中', color: 'purple' },
-  MOVING: { label: '迁移中', color: 'info' },
-  SCANNING: { label: '扫描中', color: 'teal' },
-  COMPLETED: { label: '已完成', color: 'success' },
-  CANCELLED: { label: '已取消', color: 'warning' },
-  FAILED: { label: '失败', color: 'error' },
-  STALLED: { label: '停滞', color: 'orange' }
-}
-
-const ACTIVE_STATUSES = ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING']
-
 const activeFilter = ref('all')
 const keyword = ref('')
 const detailDialog = ref(false)
 const detailTask = ref(null)
-const isMobile = ref(false)
-
-const checkViewport = () => {
-  isMobile.value =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 768px)').matches
-}
-
-onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
-})
-
-const formatStatus = (status) => STATUS_META[status]?.label || status || '-'
-const statusColor = (status) => STATUS_META[status]?.color || 'grey'
-
-const canCancel = (status) => ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING'].includes(status)
-const canRetry = (status) => ['FAILED', 'CANCELLED', 'STALLED'].includes(status)
-const canDelete = (status) => ['COMPLETED', 'FAILED', 'CANCELLED', 'STALLED'].includes(status)
-const canViewBinding = (status) => ['COMPLETED', 'SEEDING'].includes(status)
+const { isMobile } = useIsMobile(768)
 
 const toNum = (v) => Number(v) || 0
 
@@ -161,29 +133,6 @@ const cancellableSelection = computed(() => {
 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(props.total / props.size)))
-
-const formatSpeed = (bps) => {
-  if (!bps || bps <= 0) return '0 B/s'
-  if (bps < 1024) return `${Math.round(bps)} B/s`
-  const kb = bps / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB/s`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(2)} MB/s`
-  const gb = mb / 1024
-  return `${gb.toFixed(2)} GB/s`
-}
-
-const formatBytes = (value) => {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '-'
-  const num = Number(value)
-  if (num < 1024) return `${num} B`
-  const kb = num / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(2)} MB`
-  const gb = mb / 1024
-  return `${gb.toFixed(2)} GB`
-}
 
 const formatTime = (value) => {
   if (!value) return '-'
@@ -677,9 +626,10 @@ const sizeOptions = [20, 50, 100]
   overflow: auto;
   padding: 10px;
   margin: 0;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 8px;
-  background: #fafafa;
+  background: rgb(var(--v-theme-surface-light));
+  color: rgb(var(--v-theme-on-surface));
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;

@@ -1,5 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import axios from 'axios'
+import { hasRoleLevel } from '../utils/constants'
+import { useAuth } from '../composables/useAuth'
+import { getSiteConfig } from '../api/site'
+import {
+  readInstalled,
+  writeInstalled,
+  readSiteConfig,
+  writeSiteConfig,
+  remoteAccessEnabled,
+  remoteAccessTokenRequired,
+} from '../utils/siteConfig'
 
 const routes = [
   {
@@ -11,7 +21,7 @@ const routes = [
     path: '/admin',
     name: 'Admin',
     component: () => import('../views/Admin.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, roles: ['admin', 'super-admin'] }
   },
   {
     path: '/',
@@ -111,93 +121,66 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  let installed = localStorage.getItem('installed')
-  const token = localStorage.getItem('token')
+  let installed = readInstalled()
+  const { token, userInfo } = useAuth()
   let siteConfig = null
 
-  // 若状态不存在，则从接口获取，避免频繁请求 siteConfig 的同时确保状态可靠
+  // 仅在本地状态缺失时从接口获取，避免每次导航都请求 siteConfig
+  if (localStorage.getItem('installed') == null) {
     try {
-      const res = await axios.get('/api/site/config')
-      const isInstalled = res.data?.data?.installed === true
-      siteConfig = res.data?.data || null
-      installed = isInstalled ? 'true' : 'false'
+      const res = await getSiteConfig()
+      const isInstalled = res?.data?.installed === true
+      siteConfig = res?.data || null
+      installed = isInstalled
       if (isInstalled) {
-        localStorage.setItem('installed', 'true')
-        localStorage.setItem('siteConfig', JSON.stringify(siteConfig || {}))
+        writeInstalled(true)
+        writeSiteConfig(siteConfig)
       } else {
-        localStorage.removeItem('installed')
+        writeInstalled(false)
       }
     } catch (err) {
       console.error('获取安装状态失败:', err)
       // 默认认为未安装，清理 localStorage
-      localStorage.removeItem('installed')
-      installed = 'false'
+      writeInstalled(false)
+      installed = false
     }
-  
+  }
 
   // 如果已安装，访问安装页跳转到首页
-  if (installed === 'true' && to.path === '/install') {
+  if (installed && to.path === '/install') {
     return next('/')
   }
 
   // 如果未安装，跳转到安装页
-  if (installed !== 'true' && to.path !== '/install') {
+  if (!installed && to.path !== '/install') {
     return next('/install')
   }
 
   // 检查需要认证的路由
-  if (to.meta.requiresAuth && !token) {
+  if (to.meta.requiresAuth && !token.value) {
+    return next('/')
+  }
+
+  // 检查需要特定角色的路由（如管理后台），普通用户无权访问
+  if (to.meta.roles && !hasRoleLevel(userInfo.value || {}, to.meta.roles[0])) {
     return next('/')
   }
 
   if (to.name === 'RemoteAccess') {
     if (!siteConfig) {
-      try {
-        siteConfig = JSON.parse(localStorage.getItem('siteConfig') || '{}')
-      } catch (e) {
-        siteConfig = {}
-      }
+      siteConfig = readSiteConfig()
     }
 
-    const enabledRaw = siteConfig?.remoteAccessEnabled
-    const tokenRequiredRaw = siteConfig?.remoteAccessTokenRequired
-    const requiredRoleRaw = siteConfig?.remoteAccessRequiredRole
-    const enabled = enabledRaw === true || enabledRaw === 'true'
-    const tokenRequired = tokenRequiredRaw === true || tokenRequiredRaw === 'true'
-    if (!enabled) {
+    if (!remoteAccessEnabled(siteConfig)) {
       return next('/')
     }
 
-    if (tokenRequired) {
-      if (!token) {
+    if (remoteAccessTokenRequired(siteConfig)) {
+      if (!token.value) {
         return next('/')
       }
 
-      let userInfo = null
-      try {
-        userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}')
-      } catch (e) {
-        userInfo = {}
-      }
-
-      const roleLevel = {
-        user: 1,
-        admin: 2,
-        'super-admin': 3
-      }
-      const requiredRole = (requiredRoleRaw || 'user').toString().trim()
-      const requiredLevel = roleLevel[requiredRole]
-      const roleCodes = Array.isArray(userInfo?.roleCodeList) ? userInfo.roleCodeList : []
-
-      let allowed = false
-      if (!requiredLevel) {
-        allowed = roleCodes.includes(requiredRole)
-      } else {
-        allowed = roleCodes.some((role) => {
-          const level = roleLevel[role]
-          return typeof level === 'number' && level >= requiredLevel
-        })
-      }
+      const allowed = hasRoleLevel(userInfo.value || {}, siteConfig?.remoteAccessRequiredRole)
 
       if (!allowed) {
         return next('/')

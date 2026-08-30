@@ -1,0 +1,363 @@
+/* ============================================================
+   AniLink 前台主题令牌
+   浅色（:root）取值与重构前完全一致，保证外观不变；
+   深色（.dark）为新增配色。所有前台样式只允许引用这些变量，
+   不再硬编码色值。
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- 品牌强调色 ---- */
+  --al-accent: #c45d2b;              /* 主强调色（红棕） */
+  --al-accent-strong: #a65628;       /* 主强调色 hover/深一档 */
+  --al-accent-strong-2: #a85628;     /* 关注按钮 hover */
+  --al-accent-strong-3: #a84e24;     /* 继续观看按钮 hover */
+  --al-accent-deep: #8a3d12;         /* 导航选中文字 */
+  --al-accent-teal: #1e7b6b;         /* 状态徽章 */
+  --al-accent-orange: #a65634;       /* 开播徽章 */
+  --al-accent-brown: #b99a7e;        /* 棕色强调 */
+  --al-accent-brown-dark: #b3815b;   /* 观看按钮 / 收藏描边 */
+  --al-accent-gold: #e0a050;         /* 品牌渐变第二色 */
+
+  /* ---- 文字 ---- */
+  --al-text: #2e2a26;                /* 正文 */
+  --al-text-strong: #2e241e;         /* 标题 */
+  --al-text-secondary: #6b5f55;      /* 次要文字 */
+  --al-text-muted: #8b7e74;          /* 弱化文字 */
+  --al-text-muted-2: #a39386;        /* 更弱化 */
+  --al-text-muted-3: #b0a59a;        /* 最弱化 */
+  --al-text-faint: #b3a494;          /* 导航标签 */
+  --al-text-placeholder: #9ca3af;    /* 占位符 */
+  --al-text-input: #1f2937;          /* 输入框文字 */
+  --al-text-pager: #374151;          /* 分页文字 */
+  --al-text-on-accent: #ffffff;      /* 强调色上的文字 */
+
+  /* ---- 棕色系文字（详情页/评论区专用色阶） ---- */
+  --al-text-brown: #5f4e3c;
+  --al-text-brown-2: #4e3f33;
+  --al-text-brown-3: #5a4a3a;
+  --al-text-brown-4: #4e3a28;
+  --al-text-brown-5: #4e3d30;
+  --al-text-brown-6: #3e332b;
+  --al-text-brown-7: #3f332b;
+  --al-text-brown-8: #342b23;
+  --al-text-brown-9: #2f281f;
+  --al-text-brown-10: #795d45;
+  --al-text-brown-11: #8b745e;
+  --al-text-brown-12: #8f7864;
+  --al-text-brown-13: #7a6e61;
+  --al-text-brown-14: #7a6c60;
+  --al-text-brown-15: #7a6c5f;
+  --al-text-brown-16: #7b6d60;
+  --al-text-brown-17: #968679;
+  --al-text-brown-18: #5c4032;
+  --al-text-brown-19: #3d2f26;
+  --al-text-brown-20: #2f2b28;
+  --al-text-brown-21: #5f5148;
+  --al-text-brown-22: #4a4039;
+  --al-text-brown-23: #3c3129;
+  --al-text-brown-24: #b0876b;
+  --al-text-brown-25: #a5622d;
+  --al-text-brown-26: #c1662b;
+  --al-text-tab: #5f5348;          /* 标签按钮文字 */
+  --al-text-link-hover: #8b7355;   /* 展开按钮 hover */
+  --al-text-copyright: #a28e7a;    /* 版权文字 */
+
+  /* ---- 界面背景（白 / 奶油 / 米色，浅色取值与现状一致） ---- */
+  --al-bg: #ffffff;                  /* 主背景 */
+  --al-bg-offwhite: #fdfbf9;         /* 近白 */
+  --al-bg-cream: #faf8f5;            /* 奶油 */
+  --al-bg-rating: #faf7f3;           /* 评分块 */
+  --al-bg-soft: #f9fafb;             /* 输入框底色 */
+  --al-bg-light: #f9f5f0;            /* 浅奶油面板 */
+  --al-bg-panel: #f9f4ef;            /* 面板 */
+  --al-bg-comment: #faf5ef;          /* 评论输入底 */
+  --al-bg-gradient-1: #fdf7f2;       /* 个人中心渐变 */
+  --al-bg-gradient-2: #faf0e8;       /* 个人中心渐变 */
+  --al-bg-watch: #fffaf6;            /* 继续观看卡片 */
+  --al-bg-watch-2: #fff5ec;          /* 继续观看渐变 */
+  --al-bg-hover-soft: #fff8f2;       /* 按钮 hover */
+  --al-bg-hover-warm: #fff7f0;       /* 评论 hover */
+  --al-bg-active-soft: #fef9f5;      /* 状态选择激活 */
+  --al-bg-active-warm: #fff1e8;      /* 按钮激活 */
+  --al-bg-highlight-1: #fef3e8;      /* 集数高亮渐变 */
+  --al-bg-highlight-2: #ffebd0;      /* 集数高亮渐变 */
+  --al-bg-today: #fef7e9;            /* 今日更新 */
+  --al-bg-favorited: #f5e7d9;        /* 收藏激活 */
+
+  /* ---- 侧边栏渐变底（半透明，配合 backdrop-blur） ---- */
+  --al-sidebar-bg-1: rgba(255, 253, 251, 0.92);
+  --al-sidebar-bg-2: rgba(253, 248, 243, 0.9);
+
+  /* ---- 米色 / 暖灰（浅色取值与现状一致） ---- */
+  --al-bg-beige: #f4eee7;
+  --al-bg-beige-2: #f4ebe4;
+  --al-bg-beige-3: #f6efe7;
+  --al-bg-beige-4: #f0e5db;
+  --al-bg-beige-5: #f0e8df;
+  --al-bg-beige-6: #efe7de;
+  --al-bg-beige-7: #ede3d8;
+  --al-bg-beige-8: #ece3da;
+  --al-bg-beige-9: #ecdfd4;
+  --al-bg-beige-10: #ede5dd;
+  --al-bg-beige-11: #e9ddd1;
+  --al-bg-beige-12: #e8e2da;
+  --al-bg-beige-13: #e8e0d6;
+  --al-bg-beige-14: #e9dfd3;
+  --al-bg-beige-15: #e2d7cc;
+  --al-bg-poster: #e6e0d6;            /* 海报占位 */
+  --al-bg-tabs: #efebe6;              /* 标签组底 */
+  --al-bg-trailer-img: #b0a392;       /* 预告片图占位 */
+
+  /* ---- 边框 / 分隔（浅色取值与现状一致） ---- */
+  --al-border: #e5d8cc;
+  --al-border-warm: #ead9c8;
+  --al-border-warm-2: #ead8cb;
+  --al-border-soft: #e9e2dc;
+  --al-border-soft-2: #e7ddd3;
+  --al-border-soft-3: #e2d5ca;
+  --al-border-soft-4: #dfd2c8;
+  --al-border-soft-5: #d9c8bb;
+  --al-border-soft-6: #d4c4b8;
+  --al-border-soft-7: #d8c5b4;
+  --al-border-soft-8: #cdbcab;
+  --al-border-soft-9: #c7b5a2;
+  --al-border-soft-10: #dccfc0;
+  --al-border-soft-11: #dccfc3;
+  --al-border-soft-12: #ece1d6;
+  --al-border-today: #dbaa7a;
+  --al-border-neutral: #f0f0f0;       /* 中性分隔线 */
+  --al-border-panel: #eceff3;         /* 面板描边 */
+  --al-border-input: #e5e7eb;         /* 输入框描边 */
+  --al-border-subtle: #f3f4f6;
+  --al-border-hover: #f6f6f6;
+  --al-border-hover-2: #f8f8f8;
+  --al-border-disabled: #c0b5ab;
+  --al-border-extra: #f4f4f5;
+  --al-border-accent-line: #eddccf;   /* 外链区块上边框 */
+  --al-border-danger: #fecaca;        /* 危险按钮描边 */
+  --al-border-danger-hover: #f87171;  /* 危险按钮 hover 描边 */
+
+  /* ---- 语义色 ---- */
+  --al-danger: #dc2626;
+  --al-danger-strong: #d32f2f;
+  --al-danger-bright: #ef4444;
+  --al-danger-deep: #e74c3c;
+  --al-danger-hot: #e53935;
+  --al-danger-soft: #fef2f2;
+  --al-danger-coral: #ef5350;
+  --al-danger-coral-2: #c23b22;
+  --al-success: #16a34a;
+  --al-success-bright: #22c55e;
+  --al-success-green: #4caf50;
+  --al-warning: #b45309;
+  --al-warning-amber: #d97706;
+  --al-warning-bg: #fffbeb;
+  --al-warning-border: #fde68a;
+  --al-info-blue: #42a5f5;
+  --al-info-orange: #ff9800;
+  --al-info-amber: #ffc107;
+  --al-purple: #8b5cf6;
+
+  /* ---- 星标 / 评分 ---- */
+  --al-star: #fbbf24;
+  --al-star-soft: #f5b342;
+  --al-star-2: #d4b896;
+  --al-star-3: #e8954a;
+
+  /* ---- 中性灰（图标/箭头等） ---- */
+  --al-gray-arrow: #d1d5db;
+  --al-gray-muted: #c3b7ab;
+  --al-gray-faint: #b3b3b3;
+  --al-gray-chip: #d4d4d8;
+  --al-gray-chip-text: #71717a;
+  --al-gray-text: #d7c8b8;
+  --al-gray-500: #6b7280;             /* 中性灰（状态标签） */
+  --al-status-fallback: #9e8c7e;      /* 状态兜底色 */
+
+  /* ---- 兼容旧命名（--anime-*，便于主题统一，新代码请直接使用 --al-*） ---- */
+  --anime-primary-dark: var(--al-text-strong);
+  --anime-primary-light: var(--al-bg-light);
+  --anime-border-light: var(--al-border);
+  --anime-text-main: var(--al-text);
+  --anime-text-secondary: var(--al-text-secondary);
+  --anime-accent-brown: var(--al-accent-brown);
+  --anime-accent-red: var(--al-accent);
+  --anime-accent-teal: var(--al-accent-teal);
+  --anime-accent-orange: var(--al-accent-orange);
+  --anime-bg-cream: var(--al-bg-cream);
+  --anime-bg-beige: var(--al-bg-beige);
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* ---- 品牌强调色（深色下提亮以保证对比度） ---- */
+  --al-accent: #e0804e;
+  --al-accent-strong: #ef9360;
+  --al-accent-strong-2: #ef9360;
+  --al-accent-strong-3: #ef9360;
+  --al-accent-deep: #f0a478;
+  --al-accent-teal: #4ec9b5;
+  --al-accent-orange: #e89463;
+  --al-accent-brown: #c8a98c;
+  --al-accent-brown-dark: #d6a07c;
+  --al-accent-gold: #e8a85f;
+
+  /* ---- 文字 ---- */
+  --al-text: #ece6de;
+  --al-text-strong: #f4efe9;
+  --al-text-secondary: #c2b8ad;
+  --al-text-muted: #a99e92;
+  --al-text-muted-2: #94897e;
+  --al-text-muted-3: #877c72;
+  --al-text-faint: #8b8075;
+  --al-text-placeholder: #6f665c;
+  --al-text-input: #ece6de;
+  --al-text-pager: #c2b8ad;
+  --al-text-on-accent: #1a1410;
+
+  /* ---- 棕色系文字（深色下统一为暖灰） ---- */
+  --al-text-brown: #c2b8ad;
+  --al-text-brown-2: #b5aa9e;
+  --al-text-brown-3: #b5aa9e;
+  --al-text-brown-4: #c2b8ad;
+  --al-text-brown-5: #b5aa9e;
+  --al-text-brown-6: #a99e92;
+  --al-text-brown-7: #a99e92;
+  --al-text-brown-8: #d8d0c6;
+  --al-text-brown-9: #d8d0c6;
+  --al-text-brown-10: #c8b5a0;
+  --al-text-brown-11: #b5aa9e;
+  --al-text-brown-12: #b5aa9e;
+  --al-text-brown-13: #b5aa9e;
+  --al-text-brown-14: #b5aa9e;
+  --al-text-brown-15: #b5aa9e;
+  --al-text-brown-16: #b5aa9e;
+  --al-text-brown-17: #a99e92;
+  --al-text-brown-18: #c2b8ad;
+  --al-text-brown-19: #c2b8ad;
+  --al-text-brown-20: #ece6de;
+  --al-text-brown-21: #c2b8ad;
+  --al-text-brown-22: #c2b8ad;
+  --al-text-brown-23: #d8d0c6;
+  --al-text-brown-24: #c8a98c;
+  --al-text-brown-25: #d6a07c;
+  --al-text-brown-26: #e89463;
+  --al-text-tab: #c2b8ad;
+  --al-text-link-hover: #c8a98c;
+  --al-text-copyright: #8b8075;
+
+  /* ---- 界面背景（深色暖黑） ---- */
+  --al-bg: #1b1612;
+  --al-bg-offwhite: #201a15;
+  --al-bg-cream: #211b16;
+  --al-bg-rating: #241d17;
+  --al-bg-soft: #1f1914;
+  --al-bg-light: #221c16;
+  --al-bg-panel: #241d17;
+  --al-bg-comment: #221b15;
+  --al-bg-gradient-1: #241d17;
+  --al-bg-gradient-2: #201a15;
+  --al-bg-watch: #251d16;
+  --al-bg-watch-2: #2a2019;
+  --al-bg-hover-soft: #2a211a;
+  --al-bg-hover-warm: #2a211a;
+  --al-bg-active-soft: #2c2219;
+  --al-bg-active-warm: #2c2219;
+  --al-bg-highlight-1: #2e2318;
+  --al-bg-highlight-2: #33261a;
+  --al-bg-today: #2c2416;
+  --al-bg-favorited: #312417;
+
+  /* ---- 侧边栏渐变底（半透明，配合 backdrop-blur） ---- */
+  --al-sidebar-bg-1: rgba(27, 22, 18, 0.92);
+  --al-sidebar-bg-2: rgba(32, 26, 21, 0.9);
+
+  /* ---- 米色 / 暖灰（深色） ---- */
+  --al-bg-beige: #241e18;
+  --al-bg-beige-2: #251f19;
+  --al-bg-beige-3: #261f19;
+  --al-bg-beige-4: #2a221b;
+  --al-bg-beige-5: #2a221b;
+  --al-bg-beige-6: #2a221b;
+  --al-bg-beige-7: #2b241d;
+  --al-bg-beige-8: #2b241d;
+  --al-bg-beige-9: #2b241d;
+  --al-bg-beige-10: #2b241d;
+  --al-bg-beige-11: #2b241d;
+  --al-bg-beige-12: #2b241d;
+  --al-bg-beige-13: #2b241d;
+  --al-bg-beige-14: #2b241d;
+  --al-bg-beige-15: #2b241d;
+  --al-bg-poster: #2a231c;
+  --al-bg-tabs: #2a231c;
+  --al-bg-trailer-img: #3a342d;
+
+  /* ---- 边框 / 分隔（深色） ---- */
+  --al-border: #3a3128;
+  --al-border-warm: #3a3128;
+  --al-border-warm-2: #3a3128;
+  --al-border-soft: #352d25;
+  --al-border-soft-2: #352d25;
+  --al-border-soft-3: #352d25;
+  --al-border-soft-4: #352d25;
+  --al-border-soft-5: #352d25;
+  --al-border-soft-6: #352d25;
+  --al-border-soft-7: #352d25;
+  --al-border-soft-8: #3a3128;
+  --al-border-soft-9: #3a3128;
+  --al-border-soft-10: #3a3128;
+  --al-border-soft-11: #3a3128;
+  --al-border-soft-12: #3a3128;
+  --al-border-today: #6e4c2e;
+  --al-border-neutral: #302922;
+  --al-border-panel: #2c261f;
+  --al-border-input: #3a332b;
+  --al-border-subtle: #2a241e;
+  --al-border-hover: #2a241e;
+  --al-border-hover-2: #2a241e;
+  --al-border-disabled: #4a4137;
+  --al-border-extra: #28221c;
+  --al-border-accent-line: #3a3128;
+  --al-border-danger: #5a2a28;
+  --al-border-danger-hover: #f87171;
+
+  /* ---- 语义色（深色下提亮） ---- */
+  --al-danger: #f87171;
+  --al-danger-strong: #ef4444;
+  --al-danger-bright: #f87171;
+  --al-danger-deep: #f87171;
+  --al-danger-hot: #f87171;
+  --al-danger-soft: #3a1f1d;
+  --al-danger-coral: #f87171;
+  --al-danger-coral-2: #f87171;
+  --al-success: #4ade80;
+  --al-success-bright: #4ade80;
+  --al-success-green: #4ade80;
+  --al-warning: #fbbf24;
+  --al-warning-amber: #fbbf24;
+  --al-warning-bg: #2c2616;
+  --al-warning-border: #5a4a1e;
+  --al-info-blue: #60a5fa;
+  --al-info-orange: #fbbf24;
+  --al-info-amber: #fbbf24;
+  --al-purple: #a78bfa;
+
+  /* ---- 星标 / 评分 ---- */
+  --al-star: #fbbf24;
+  --al-star-soft: #fbbf24;
+  --al-star-2: #d4b896;
+  --al-star-3: #e8954a;
+
+  /* ---- 中性灰 ---- */
+  --al-gray-arrow: #554c43;
+  --al-gray-muted: #6f665c;
+  --al-gray-faint: #6f665c;
+  --al-gray-chip: #3a342d;
+  --al-gray-chip-text: #a99e92;
+  --al-gray-text: #6f665c;
+  --al-gray-500: #9ca3af;
+  --al-status-fallback: #a99e92;
+}

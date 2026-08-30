@@ -1,19 +1,23 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
-import { showAppMessage } from '../../utils/ui-feedback'
+import PaginationBar from '../../components/PaginationBar.vue'
+import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
+import {
+  FOLLOW_STATUS_ORDER_MAP as STATUS_ORDER,
+  FOLLOW_STATUS_LABEL as STATUS_LABEL,
+  FOLLOW_STATUS_COLORS as STATUS_COLORS,
+} from '../../utils/followStatus'
+import { usePagination } from '../../composables/usePagination'
+import { getFollows, getActiveFollows, getFollowsByStatus, setFollowStatus, removeFollow, bindFollow, matchFollow } from '../../api/follows'
+import { searchDandanAnimes } from '../../api/anime'
+import { pullBangumiCollections } from '../../api/bangumi'
 
 const router = useRouter()
-const API_BASE = '/api'
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(24)
 const total = ref(0)
 const statusFilter = ref('active')
 const keyword = ref('')
@@ -25,28 +29,6 @@ const pulling = ref(false)
 const bindDialog = ref({ show: false, follow: null, keyword: '', results: [], searched: false, searching: false })
 const matchDialog = ref({ show: false, follow: null })
 
-// 页面级确认弹窗（替代 window.confirm）
-const confirmDialog = ref({ show: false, title: '', message: '', confirmText: '确定', resolve: null })
-const showConfirm = (title, message, confirmText = '确定') => {
-  return new Promise((resolve) => {
-    confirmDialog.value = { show: true, title, message, confirmText, resolve }
-  })
-}
-const confirmOk = () => {
-  const r = confirmDialog.value.resolve
-  confirmDialog.value.show = false
-  if (r) r(true)
-}
-const confirmCancel = () => {
-  const r = confirmDialog.value.resolve
-  confirmDialog.value.show = false
-  if (r) r(false)
-}
-
-const STATUS_ORDER = { wish: 0, watching: 1, watched: 2, on_hold: 3, dropped: 4 }
-const STATUS_LABEL = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
-const STATUS_COLORS = { wish: '#42a5f5', watching: '#ff9800', watched: '#4caf50', on_hold: '#ffc107', dropped: '#ef5350' }
-
 const statusOptions = [
   { label: '活跃', value: 'active' },
   { label: '全部', value: '' },
@@ -57,33 +39,24 @@ const statusOptions = [
   { label: '抛弃', value: 'dropped' }
 ]
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  const arr = []
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
-
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
     const params = { page: page.value, pageSize: pageSize.value, keyword: keyword.value.trim() }
-    const url = statusFilter.value === 'active' ? '/api/follows/active'
-              : statusFilter.value ? `/api/follows/status/${statusFilter.value}`
-              : '/api/follows'
-    const res = await axios.get(url, { params })
-    if (res.data?.code !== 200) throw new Error(res.data?.msg || '加载追番失败')
+    const res = statusFilter.value === 'active'
+      ? await getActiveFollows(params)
+      : statusFilter.value
+        ? await getFollowsByStatus(statusFilter.value, params)
+        : await getFollows(params)
+    if (res?.code !== 200) throw new Error(res?.msg || '加载追番失败')
 
     let items
-    if (Array.isArray(res.data.data)) {
-      items = [...res.data.data]
+    if (Array.isArray(res.data)) {
+      items = [...res.data]
       total.value = items.length
     } else {
-      items = [...(res.data.data?.content || [])]
-      total.value = Number(res.data.data?.totalElements || 0)
+      items = [...(res.data?.content || [])]
+      total.value = Number(res.data?.totalElements || 0)
     }
     // 活跃视图保持接口的更新时间倒序（新更新的在前），不按状态重排
     if (statusFilter.value !== 'active') {
@@ -96,11 +69,11 @@ const fetchData = async () => {
   } finally { loading.value = false }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 24,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const applyFilter = (value) => {
   statusFilter.value = value
@@ -127,9 +100,9 @@ const setStatus = async (follow, status) => {
   if (!follow.animeId || follow.status === status) return
   updatingId.value = follow.animeId
   try {
-    const res = await axios.put(`/api/follows/${follow.animeId}/status`, null, { params: { status } })
-    if (res.data?.code === 200) await fetchData()
-    else showAppMessage(res.data?.msg || '更新状态失败', 'error')
+    const res = await setFollowStatus(follow.animeId, status)
+    if (res?.code === 200) await fetchData()
+    else showAppMessage(res?.msg || '更新状态失败', 'error')
   } catch (e) {
     showAppMessage(e.response?.data?.msg || '更新状态失败', 'error')
   } finally { updatingId.value = null }
@@ -137,12 +110,12 @@ const setStatus = async (follow, status) => {
 
 const unfollow = async (follow) => {
   menuId.value = null
-  const ok = await showConfirm('取消追番', `确定要取消追番《${follow.animeTitle}》吗？`, '取消追番')
+  const ok = await askAppConfirm({ title: '取消追番', message: `确定要取消追番《${follow.animeTitle}》吗？`, confirmText: '取消追番' })
   if (!ok) return
   try {
-    const res = await axios.delete(`/api/follows/${follow.animeId}`)
-    if (res.data?.code === 200) await fetchData()
-    else showAppMessage(res.data?.msg || '取消追番失败', 'error')
+    const res = await removeFollow(follow.animeId)
+    if (res?.code === 200) await fetchData()
+    else showAppMessage(res?.msg || '取消追番失败', 'error')
   } catch (e) { showAppMessage('取消追番失败', 'error') }
 }
 
@@ -155,8 +128,8 @@ const searchBindAnime = async () => {
   if (!bindDialog.value.keyword.trim()) return
   bindDialog.value.searching = true
   try {
-    const res = await axios.get('/api/animes/search-dandan', { params: { keyword: bindDialog.value.keyword } })
-    const raw = res.data?.data
+    const res = await searchDandanAnimes(bindDialog.value.keyword)
+    const raw = res?.data
     const listRaw = raw?.animes || raw?.data?.animes || []
     bindDialog.value.results = Array.isArray(listRaw) ? listRaw : []
   } catch (e) { bindDialog.value.results = [] }
@@ -166,7 +139,7 @@ const searchBindAnime = async () => {
 const bindAnime = async (follow, anime) => {
   try {
     const title = anime.animeTitle || anime.title
-    await axios.put(`/api/follows/${follow.id}/bind`, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
+    await bindFollow(follow.id, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
     showAppMessage(`已绑定「${title}」`, 'success')
     bindDialog.value.show = false
     await fetchData()
@@ -177,8 +150,7 @@ const autoMatch = async (follow) => {
   menuId.value = null
   matchDialog.value = { show: true, follow }
   try {
-    const res = await axios.post(`/api/follows/${follow.id}/match`)
-    const body = res.data
+    const body = await matchFollow(follow.id)
     if (body?.code === 200 && body.data?.matched) {
       matchDialog.value.show = false
       showAppMessage(`已匹配并绑定「${body.data.animeTitle || follow.animeTitle}」`, 'success')
@@ -195,20 +167,20 @@ const autoMatch = async (follow) => {
 }
 
 const pullBangumi = async () => {
-  const ok = await showConfirm(
-    '拉取 Bangumi 追番',
-    '将从 Bangumi 拉取你的所有动画收藏并同步到本地追番列表。以 Bangumi 数据为准，同名番剧的状态将被覆盖。是否继续？',
-    '开始拉取'
-  )
+  const ok = await askAppConfirm({
+    title: '拉取 Bangumi 追番',
+    message: '将从 Bangumi 拉取你的所有动画收藏并同步到本地追番列表。以 Bangumi 数据为准，同名番剧的状态将被覆盖。是否继续？',
+    confirmText: '开始拉取'
+  })
   if (!ok) return
   pulling.value = true
   try {
-    const res = await axios.post('/api/bangumi/sync/pull-collections')
-    if (res.data?.code === 200 && res.data?.data) {
-      const d = res.data.data
+    const res = await pullBangumiCollections()
+    if (res?.code === 200 && res?.data) {
+      const d = res.data
       showAppMessage(`同步完成：共 ${d.total} 条，新增 ${d.created}，更新 ${d.updated}，跳过 ${d.skipped}`, 'success')
       await fetchData()
-    } else showAppMessage(res.data?.msg || '拉取失败', 'error')
+    } else showAppMessage(res?.msg || '拉取失败', 'error')
   } catch (e) { showAppMessage('拉取 Bangumi 追番失败', 'error') }
   finally { pulling.value = false }
 }
@@ -318,12 +290,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-      <span class="info">共 {{ total }} 部</span>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 部`" @change="changePage" />
 
     <!-- 手动绑定弹窗 -->
     <div v-if="bindDialog.show" class="dialog-overlay" @click.self="bindDialog.show = false">
@@ -368,23 +335,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
         </div>
       </div>
     </div>
-
-    <!-- 确认弹窗 -->
-    <div v-if="confirmDialog.show" class="dialog-overlay" @click.self="confirmCancel">
-      <div class="dialog">
-        <div class="dialog-head">
-          <h3>{{ confirmDialog.title }}</h3>
-          <button class="dialog-close" @click="confirmCancel"><i class="mdi mdi-close"></i></button>
-        </div>
-        <div class="dialog-body">
-          <p class="confirm-message">{{ confirmDialog.message }}</p>
-        </div>
-        <div class="dialog-foot">
-          <button class="btn btn-ghost" @click="confirmCancel">取消</button>
-          <button class="btn btn-primary" @click="confirmOk">{{ confirmDialog.confirmText }}</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -403,8 +353,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 
 .filter-pills { display: flex; gap: 8px; flex-wrap: wrap; }
 .pill {
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border: 1px solid var(--al-border-input);
+  background: var(--al-bg);
   color: var(--anime-text-secondary);
   padding: 7px 16px;
   border-radius: 999px;
@@ -415,23 +365,23 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   font-family: inherit;
 }
 .pill:hover { border-color: var(--anime-accent-red); color: var(--anime-accent-red); }
-.pill.active { background: rgba(196, 93, 43, 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
+.pill.active { background: rgba(var(--al-accent-rgb), 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
 
 .search-box {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f9fafb;
-  border: 1.5px solid #e5e7eb;
+  background: var(--al-bg-soft);
+  border: 1.5px solid var(--al-border-input);
   border-radius: 999px;
   padding: 0 14px;
   min-width: 220px;
   transition: all 0.2s;
 }
-.search-box:focus-within { border-color: var(--anime-accent-red); background: #fff; box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12); }
-.search-box i { color: #9ca3af; }
+.search-box:focus-within { border-color: var(--anime-accent-red); background: var(--al-bg); box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12); }
+.search-box i { color: var(--al-text-placeholder); }
 .search-box input { flex: 1; border: none; outline: none; background: transparent; padding: 9px 0; font-size: 13px; font-family: inherit; color: var(--anime-text-main); }
-.search-box .clear-btn { border: none; background: none; color: #9ca3af; cursor: pointer; padding: 0; display: flex; }
+.search-box .clear-btn { border: none; background: none; color: var(--al-text-placeholder); cursor: pointer; padding: 0; display: flex; }
 .search-box .clear-btn:hover { color: var(--anime-accent-red); }
 
 .follow-card { overflow: visible; }
@@ -447,8 +397,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 .poster-ph {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  color: #c3b7ab; font-size: 2rem;
-  background: linear-gradient(135deg, #f4eee7, #e8e0d6);
+  color: var(--al-gray-muted); font-size: 2rem;
+  background: linear-gradient(135deg, var(--al-bg-beige), var(--al-bg-beige-13));
 }
 .unbound-tag {
   position: absolute; top: 12px; right: 12px;
@@ -467,8 +417,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #e53935;
-  color: #fff;
+  background: var(--al-danger-hot);
+  color: var(--al-text-on-accent);
   font-size: 12px;
   font-weight: 700;
   line-height: 20px;
@@ -485,7 +435,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   display: flex; align-items: center; justify-content: center;
   transition: background 0.2s;
 }
-.more-btn:hover:not(:disabled) { background: #f0f0f0; color: var(--anime-accent-red); }
+.more-btn:hover:not(:disabled) { background: var(--al-border-neutral); color: var(--anime-accent-red); }
 .more-btn:disabled { opacity: 0.5; }
 
 .menu-panel {
@@ -493,8 +443,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   top: calc(100% + 6px);
   right: 0;
   z-index: 60;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
   padding: 6px;
@@ -509,11 +459,11 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   font-size: 13px; cursor: pointer; transition: background 0.15s;
   text-align: left;
 }
-.menu-item:hover { background: #f8f8f8; }
+.menu-item:hover { background: var(--al-border-hover-2); }
 .menu-item.selected { font-weight: 700; }
 .menu-item .dot { width: 9px; height: 9px; border-radius: 50%; }
-.menu-item.danger { color: #dc2626; }
-.menu-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
+.menu-item.danger { color: var(--al-danger); }
+.menu-divider { height: 1px; background: var(--al-border-neutral); margin: 4px 0; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -531,7 +481,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .dialog {
-  background: #fff; border-radius: 16px;
+  background: var(--al-bg); border-radius: 16px;
   width: 90%; max-width: 460px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   overflow: hidden;
@@ -540,7 +490,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 .dialog-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid #f0f0f0;
+  padding: 16px 20px; border-bottom: 1px solid var(--al-border-neutral);
 }
 .dialog-head h3 { margin: 0; font-size: 16px; }
 .dialog-close { border: none; background: none; color: var(--anime-text-secondary); font-size: 20px; cursor: pointer; }
@@ -551,13 +501,13 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
 }
 .dialog-hint { margin: 0 0 14px; font-size: 13px; color: var(--anime-text-secondary); line-height: 1.6; }
 
 .bind-search { display: flex; gap: 8px; }
 .bind-search input {
-  flex: 1; border: 1.5px solid #e5e7eb; border-radius: 10px;
+  flex: 1; border: 1.5px solid var(--al-border-input); border-radius: 10px;
   padding: 9px 12px; font-size: 13px; outline: none; font-family: inherit;
 }
 .bind-search input:focus { border-color: var(--anime-accent-red); }
@@ -565,13 +515,13 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 .bind-results { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; max-height: 300px; overflow-y: auto; }
 .bind-result {
   display: flex; align-items: center; gap: 10px;
-  border: 1px solid #eceff3; border-radius: 12px;
-  padding: 8px; background: #fff; cursor: pointer;
+  border: 1px solid var(--al-border-panel); border-radius: 12px;
+  padding: 8px; background: var(--al-bg); cursor: pointer;
   transition: border-color 0.2s;
   text-align: left;
 }
 .bind-result:hover { border-color: var(--anime-accent-red); }
-.bind-result img { width: 42px; height: 56px; object-fit: cover; border-radius: 8px; background: #f0f0f0; }
+.bind-result img { width: 42px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--al-border-neutral); }
 .bind-result-title { font-size: 13px; font-weight: 600; color: var(--anime-text-main); }
 .bind-result-meta { font-size: 12px; color: var(--anime-text-secondary); margin-top: 2px; }
 .bind-empty { padding: 20px; text-align: center; color: var(--anime-text-secondary); font-size: 13px; }

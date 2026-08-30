@@ -1,53 +1,42 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getMyDanmakuRecords } from '../../api/danmaku'
+import PaginationBar from '../../components/PaginationBar.vue'
+import { usePagination } from '../../composables/usePagination'
+import { DEFAULT_POSTER } from '../../utils/constants'
+import { DANMAKU_MODE_LABELS } from '../../utils/danmakuMode'
+import { formatDateTime, formatDanmakuColor } from '../../utils/format'
 
 const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(20)
 const total = ref(0)
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const danmakuHex = (record) => {
   const c = Number(record?.color)
   if (!Number.isFinite(c) || c <= 0) return ''
-  return '#' + c.toString(16).padStart(6, '0')
+  return formatDanmakuColor(c, '')
 }
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  const arr = []
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
 
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
-    const res = await axios.get('/api/v2/danmaku-records/mine', {
-      params: { page: page.value, pageSize: pageSize.value }
-    })
-    if (res.data?.code === 200) {
-      list.value = res.data.data?.content || []
-      total.value = Number(res.data.data?.totalElements || 0)
-    } else error.value = res.data?.msg || '加载弹幕记录失败'
+    const res = await getMyDanmakuRecords({ page: page.value, pageSize: pageSize.value })
+    if (res?.code === 200) {
+      list.value = res.data?.content || []
+      total.value = Number(res.data?.totalElements || 0)
+    } else error.value = res?.msg || '加载弹幕记录失败'
   } catch (e) { console.error('加载弹幕记录失败:', e); error.value = '加载弹幕记录失败' }
   finally { loading.value = false }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 20,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const goToPlayer = (record) => {
   if (record.videoId) {
@@ -69,18 +58,7 @@ const goToAnime = (record) => {
   if (record?.animeId) router.push(`/anime/${record.animeId}`)
 }
 
-const modeLabel = (mode) => {
-  const map = { 1: '普通', 4: '底部', 5: '顶部' }
-  return map[mode] || `模式${mode}`
-}
-
-const formatTime = (v) => {
-  if (!v) return '--'
-  return new Date(v).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
-}
+const modeLabel = (mode) => DANMAKU_MODE_LABELS[mode] || `模式${mode}`
 
 const formatPos = (seconds) => {
   if (seconds == null) return '--'
@@ -112,7 +90,7 @@ onMounted(fetchData)
     <div v-else class="danmaku-list">
       <div v-for="record in list" :key="record.id" class="danmaku-card">
         <div class="dm-poster" @click="goToAnime(record)">
-          <img :src="record.imageUrl || defaultPoster" :alt="record.animeTitle" loading="lazy" />
+          <img :src="record.imageUrl || DEFAULT_POSTER" :alt="record.animeTitle" loading="lazy" />
           <div class="dm-poster-shade"></div>
           <div class="dm-poster-play"><i class="mdi mdi-play"></i></div>
         </div>
@@ -129,7 +107,7 @@ onMounted(fetchData)
             <span class="dm-ep">{{ record.episodeTitle || `#${record.episodeId}` }}</span>
             <span class="dm-mode">{{ modeLabel(record.mode) }}</span>
           </div>
-          <div class="dm-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(record.createdAt) }}</div>
+          <div class="dm-time"><i class="mdi mdi-clock-outline"></i> {{ formatDateTime(record.createdAt) }}</div>
         </div>
 
         <div class="dm-side">
@@ -139,11 +117,7 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" @change="changePage" />
   </div>
 </template>
 
@@ -153,7 +127,7 @@ onMounted(fetchData)
 
 .sk-row {
   height: 96px; border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -171,8 +145,8 @@ onMounted(fetchData)
   display: flex;
   align-items: stretch;
   gap: 14px;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 16px;
   padding: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -180,7 +154,7 @@ onMounted(fetchData)
 }
 .danmaku-card:hover {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
-  border-color: rgba(196, 93, 43, 0.2);
+  border-color: rgba(var(--al-accent-rgb), 0.2);
   transform: translateY(-2px);
 }
 
@@ -270,7 +244,7 @@ onMounted(fetchData)
 .dm-anime { font-weight: 600; color: var(--anime-text-main); cursor: pointer; transition: color 0.2s; }
 .dm-anime:hover { color: var(--anime-accent-red); }
 .dm-ep { opacity: 0.85; }
-.dm-mode { background: #f0f0f0; color: var(--anime-text-secondary); padding: 1px 8px; border-radius: 999px; font-size: 11px; }
+.dm-mode { background: var(--al-border-neutral); color: var(--anime-text-secondary); padding: 1px 8px; border-radius: 999px; font-size: 11px; }
 .dm-time {
   margin-top: auto;
   padding-top: 8px;

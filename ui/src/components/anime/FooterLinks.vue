@@ -20,14 +20,9 @@ defineProps({
   databases: {
     type: Array,
     required: true
-  },
-  copyrightText: {
-    type: String,
-    required: true
   }
 });
 </script>
 
 <style scoped>
-@import '../../styles/anime.css';
 </style>

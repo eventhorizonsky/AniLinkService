@@ -1,15 +1,15 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getTrendingHot, getTrendingNewAnime } from '../api/anime'
+import { getActiveFollows } from '../api/follows'
+import { followStatusLabel } from '../utils/followStatus'
+import { DEFAULT_POSTER } from '../utils/constants'
+import { formatScore, formatCompactNumber } from '../utils/format'
+import { useAuth } from '../composables/useAuth'
+import AnimeCard from '../components/AnimeCard.vue'
 
 const router = useRouter()
-const API_BASE = '/api'
-
-const STATUS_LABEL_MAP = { wish: '想看', watching: '在看', watched: '看过', on_hold: '搁置', dropped: '抛弃' }
-const statusLabel = (s) => STATUS_LABEL_MAP[s] || s
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 // ===================== Follow List =====================
 const followList = ref([])
@@ -22,19 +22,13 @@ const trendingLoading = ref(false)
 const trendingError = ref('')
 
 // ===================== User =====================
-const userInfo = ref(null)
-try {
-  const stored = localStorage.getItem('userInfo')
-  if (stored) userInfo.value = JSON.parse(stored)
-} catch (e) { /* ignore */ }
-
-const isLoggedIn = computed(() => !!localStorage.getItem('token') && !!userInfo.value)
+const { isLoggedIn } = useAuth()
 
 // ===================== Hero Carousel =====================
 const heroSlides = computed(() => trendingHot.value.slice(0, 5))
 const heroTags = ['🔥 热播中', '✨ 新作', '🏆 霸权', '🎬 热门', '⭐ 推荐']
 const heroTag = (i) => heroTags[i % heroTags.length]
-const heroBg = (slide) => slide.imageUrl || defaultPoster
+const heroBg = (slide) => slide.imageUrl || DEFAULT_POSTER
 
 const currentSlide = ref(0)
 let autoPlayTimer = null
@@ -107,22 +101,11 @@ watch(() => followList.value.length, () => {
 })
 
 // ===================== Formatting =====================
-const fmtScore = (v) => {
-  if (v == null || v === '') return '-'
-  const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
-}
-const fmtHeat = (v) => {
-  if (v == null || v === '') return ''
-  const n = Number(v)
-  if (Number.isNaN(n)) return String(v)
-  if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + '亿'
-  if (n >= 1e4) return (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万'
-  return String(n)
-}
+const fmtHeat = (v) => formatCompactNumber(v, '')
 const genreLabel = (a, kind) => {
   if (kind === 'hot') return '本周热播'
   if (kind === 'new') return '热门新番'
-  if (kind === 'follow') return statusLabel(a.status)
+  if (kind === 'follow') return followStatusLabel(a.status, '')
   return a.type || '动漫'
 }
 
@@ -131,10 +114,10 @@ const fetchFollowList = async () => {
   if (!isLoggedIn.value) return
   followLoading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/follows/active`)
-    if (res.data?.code === 200) {
+    const res = await getActiveFollows()
+    if (res?.code === 200) {
       // 首页只展示已绑定本地番剧的追番，animeId 为空（未匹配）的不展示
-      followList.value = (Array.isArray(res.data.data) ? res.data.data : []).filter((item) => item.animeId)
+      followList.value = (Array.isArray(res.data) ? res.data : []).filter((item) => item.animeId)
     }
   } catch (e) { console.error('Fetch follow list failed:', e) }
   finally { followLoading.value = false }
@@ -144,32 +127,55 @@ const fetchTrending = async () => {
   trendingLoading.value = true; trendingError.value = ''
   try {
     const [hotRes, newRes] = await Promise.allSettled([
-      axios.get(`${API_BASE}/v2/trending/all/hot/week`),
-      axios.get(`${API_BASE}/v2/trending/new-anime/hot/current-season`)
+      getTrendingHot(),
+      getTrendingNewAnime()
     ])
-    if (hotRes.status === 'fulfilled' && hotRes.value?.data)
-      trendingHot.value = extractList(hotRes.value.data).slice(0, 10)
-    if (newRes.status === 'fulfilled' && newRes.value?.data)
-      trendingNewAnime.value = extractList(newRes.value.data).slice(0, 10)
+    if (hotRes.status === 'fulfilled' && hotRes.value)
+      trendingHot.value = normalizeTrending(hotRes.value).slice(0, 10)
+    if (newRes.status === 'fulfilled' && newRes.value)
+      trendingNewAnime.value = normalizeTrending(newRes.value).slice(0, 10)
   } catch (e) { trendingError.value = '榜单数据加载失败'; console.error(e) }
   finally { trendingLoading.value = false }
 }
 
+// Dandanplay 榜单响应：{ response_base, summary, bangumi_list: [{ bangumi_intro, rank, heat }] }
+// 提取条目列表，并归一化为页面模板所需的 flat 结构
 const extractList = (data) => {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object') {
     if (Array.isArray(data.bangumiList)) return data.bangumiList
-    for (const k of ['animeList', 'results', 'data', 'animes'])
+    if (Array.isArray(data.bangumi_list)) return data.bangumi_list
+    for (const k of ['animeList', 'anime_list', 'results', 'data', 'animes'])
       if (Array.isArray(data[k])) return data[k]
     if (data.animeId) return [data]
   }
   return []
 }
 
+const normalizeTrending = (body) =>
+  extractList(body).map((item) => {
+    const intro = item?.bangumi_intro || item || {}
+    return {
+      animeId: intro.anime_id ?? intro.bangumi_id ?? intro.animeId ?? intro.bangumiId,
+      animeTitle: intro.anime_title ?? intro.animeTitle,
+      imageUrl: intro.image_url ?? intro.imageUrl,
+      rating: intro.rating,
+      heat: item?.heat ?? intro.heat,
+      rank: item?.rank ?? intro.rank,
+      isFavorited: intro.is_favorited ?? intro.isFavorited
+    }
+  })
+
 // ===================== Lifecycle =====================
 watch(() => trendingHot.value.length, () => {
   currentSlide.value = 0
   resetAutoPlay()
+})
+
+// 登录/登出时刷新追番：避免停留在首页完成登录后追番一直不加载
+watch(isLoggedIn, (loggedIn) => {
+  if (loggedIn) fetchFollowList()
+  else followList.value = []
 })
 
 onMounted(() => {
@@ -210,7 +216,7 @@ onBeforeUnmount(() => {
           <span class="tag">{{ heroTag(i) }}</span>
           <h2>{{ slide.animeTitle }}</h2>
           <div class="meta">
-            <span><i class="mdi mdi-star" style="color:#fbbf24;"></i> {{ fmtScore(slide.rating) }}</span>
+            <span><i class="mdi mdi-star" style="color:#fbbf24;"></i> {{ formatScore(slide.rating) }}</span>
             <span v-if="slide.heat" class="meta-heat"><i class="mdi mdi-fire"></i> {{ fmtHeat(slide.heat) }} 热度</span>
             <span><i class="mdi mdi-play-circle-outline"></i> 立即观看</span>
           </div>
@@ -218,7 +224,7 @@ onBeforeUnmount(() => {
 
         <!-- 右侧封面卡片（原比例） -->
         <div class="hero-poster">
-          <img :src="slide.imageUrl || defaultPoster" :alt="slide.animeTitle" loading="lazy" />
+          <img :src="slide.imageUrl || DEFAULT_POSTER" :alt="slide.animeTitle" loading="lazy" />
           <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
         </div>
       </div>
@@ -257,26 +263,25 @@ onBeforeUnmount(() => {
         <button class="br-link" @click="goToSearch">发现番剧</button>
       </div>
       <div v-else ref="followScrollRef" class="br-follow-scroll">
-        <div
+        <AnimeCard
           v-for="a in followList.slice(0, 10)"
           :key="a.id"
-          class="br-card br-follow-card"
+          :image-url="a.imageUrl || DEFAULT_POSTER"
+          :alt="a.animeTitle"
+          :title="a.animeTitle"
+          card-class="br-follow-card"
+          hover
           @click="goToDetail(a)"
         >
-          <div class="br-card-image">
-            <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
-            <div class="poster-hover"><i class="mdi mdi-play-circle-outline"></i></div>
+          <template #badges>
             <span v-if="a.unreadEpisodeCount > 0" class="br-follow-unread" title="未读新剧集">{{ a.unreadEpisodeCount }}</span>
-          </div>
-          <div class="br-card-body">
-            <h4>{{ a.animeTitle }}</h4>
-            <div class="br-card-meta">
-              <span class="genre" :class="a.status === 'watching' ? 'genre-active' : 'genre-done'">
-                {{ genreLabel(a, 'follow') }}
-              </span>
-            </div>
-          </div>
-        </div>
+          </template>
+          <template #meta>
+            <span class="genre" :class="a.status === 'watching' ? 'genre-active' : 'genre-done'">
+              {{ genreLabel(a, 'follow') }}
+            </span>
+          </template>
+        </AnimeCard>
       </div>
     </template>
 
@@ -291,20 +296,23 @@ onBeforeUnmount(() => {
     </div>
     <div v-else-if="!trendingHot.length" class="br-empty"><i class="mdi mdi-fire-off"></i> {{ trendingError || '暂无热门数据' }}</div>
     <div v-else class="br-grid">
-      <div v-for="a in trendingHot.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
-        <div class="br-card-image">
-          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+      <AnimeCard
+        v-for="a in trendingHot.slice(0, 10)"
+        :key="a.animeId"
+        :image-url="a.imageUrl || DEFAULT_POSTER"
+        :alt="a.animeTitle"
+        :title="a.animeTitle"
+        @click="goToDetail(a)"
+      >
+        <template #badges>
           <span class="br-badge-new">热播</span>
           <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
-        </div>
-        <div class="br-card-body">
-          <h4>{{ a.animeTitle }}</h4>
-          <div class="br-card-meta">
-            <span class="genre">{{ genreLabel(a, 'hot') }}</span>
-            <span class="rating"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #meta>
+          <span class="genre">{{ genreLabel(a, 'hot') }}</span>
+          <span class="rating"><i class="mdi mdi-star"></i> {{ formatScore(a.rating) }}</span>
+        </template>
+      </AnimeCard>
     </div>
 
     <!-- ===== 热门新番 ===== -->
@@ -318,20 +326,23 @@ onBeforeUnmount(() => {
     </div>
     <div v-else-if="!trendingNewAnime.length" class="br-empty"><i class="mdi mdi-rocket-launch-outline"></i> 暂无新作数据</div>
     <div v-else class="br-grid">
-      <div v-for="a in trendingNewAnime.slice(0, 10)" :key="a.animeId" class="br-card" @click="goToDetail(a)">
-        <div class="br-card-image">
-          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
+      <AnimeCard
+        v-for="a in trendingNewAnime.slice(0, 10)"
+        :key="a.animeId"
+        :image-url="a.imageUrl || DEFAULT_POSTER"
+        :alt="a.animeTitle"
+        :title="a.animeTitle"
+        @click="goToDetail(a)"
+      >
+        <template #badges>
           <span class="br-badge-new br-badge-new--sparkle">新作</span>
           <span v-if="a.heat" class="br-badge-ep"><i class="mdi mdi-fire"></i> {{ fmtHeat(a.heat) }}</span>
-        </div>
-        <div class="br-card-body">
-          <h4>{{ a.animeTitle }}</h4>
-          <div class="br-card-meta">
-            <span class="genre">{{ genreLabel(a, 'new') }}</span>
-            <span class="rating"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #meta>
+          <span class="genre">{{ genreLabel(a, 'new') }}</span>
+          <span class="rating"><i class="mdi mdi-star"></i> {{ formatScore(a.rating) }}</span>
+        </template>
+      </AnimeCard>
     </div>
 
   </div>
@@ -339,9 +350,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .home-root {
-  --accent: #c45d2b;
-  --accent-soft: rgba(196, 93, 43, 0.12);
-  --bg-beige: #f4eee7;
+  --accent: var(--al-accent);
+  --accent-soft: rgba(var(--al-accent-rgb), 0.12);
+  --bg-beige: var(--al-bg-beige);
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-full: 9999px;
@@ -366,7 +377,7 @@ onBeforeUnmount(() => {
   touch-action: pan-y;
 }
 .hero-skeleton {
-  background: linear-gradient(135deg, var(--bg-beige) 25%, #ede3d8 50%, var(--bg-beige) 75%);
+  background: linear-gradient(135deg, var(--bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--bg-beige) 75%);
   background-size: 200% 100%;
   animation: shim 1.4s ease-in-out infinite;
 }
@@ -409,7 +420,7 @@ onBeforeUnmount(() => {
 }
 .hero-content .tag {
   display: inline-block;
-  background: rgba(196, 93, 43, 0.9);
+  background: rgba(var(--al-accent-rgb), 0.9);
   backdrop-filter: blur(4px);
   padding: 3px 14px;
   border-radius: var(--radius-full);
@@ -445,7 +456,7 @@ onBeforeUnmount(() => {
   aspect-ratio: 283 / 400;
   border-radius: 16px;
   overflow: hidden;
-  background: #e6e0d6;
+  background: var(--al-bg-poster);
   border: 2px solid rgba(255, 255, 255, 0.28);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.25);
   z-index: 2;
@@ -482,8 +493,8 @@ onBeforeUnmount(() => {
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #e53935;
-  color: #fff;
+  background: var(--al-danger-hot);
+  color: var(--al-text-on-accent);
   font-size: 12px;
   font-weight: 700;
   line-height: 20px;
@@ -511,7 +522,7 @@ onBeforeUnmount(() => {
   transition: var(--transition);
   padding: 0;
 }
-.hero-controls button.active { background: #fff; width: 28px; border-radius: 6px; }
+.hero-controls button.active { background: var(--al-bg); width: 28px; border-radius: 6px; }
 .hero-controls button:hover { background: rgba(255, 255, 255, 0.75); }
 
 /* 上一张 / 下一张 箭头 */
@@ -537,7 +548,7 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 .hero-section:hover .hero-arrow { opacity: 1; }
-.hero-arrow:hover { background: rgba(196, 93, 43, 0.9); }
+.hero-arrow:hover { background: rgba(var(--al-accent-rgb), 0.9); }
 .hero-arrow:active { transform: translateY(-50%) scale(0.92); }
 .hero-arrow--prev { right: calc(88px + 172px + 14px); }
 .hero-arrow--next { right: 22px; }

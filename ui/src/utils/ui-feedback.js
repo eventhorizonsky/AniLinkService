@@ -21,12 +21,21 @@ export function showSessionExpiredDialog(message = '登录状态已过期，请�
   )
 }
 
+/**
+ * 全局确认框。
+ * 点确认 resolve(true)，点取消 resolve(false)；点附加操作按钮 resolve(该按钮的 value)。
+ * @param {{title?: string, message?: string, confirmText?: string, cancelText?: string,
+ *          color?: string, links?: Array<{text: string, href: string}>,
+ *          actions?: Array<{text: string, value: string, color?: string}>}} options
+ */
 export function askAppConfirm({
   title = '请确认',
   message = '确认执行该操作吗？',
   confirmText = '确定',
   cancelText = '取消',
-  color = 'primary'
+  color = 'primary',
+  links = [],
+  actions = []
 } = {}) {
   return new Promise((resolve) => {
     window.dispatchEvent(
@@ -37,6 +46,8 @@ export function askAppConfirm({
           confirmText,
           cancelText,
           color,
+          links,
+          actions,
           resolve
         }
       })

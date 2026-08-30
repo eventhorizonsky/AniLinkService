@@ -1,20 +1,26 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { getCurrentUser } from '../api/auth'
+import { getFollows } from '../api/follows'
+import { getPlayHistory } from '../api/playHistory'
+import { getMyDanmakuRecords } from '../api/danmaku'
+import { getUnreadCount } from '../api/messages'
+import { useAuth } from '../composables/useAuth'
+import { useTheme } from '../composables/useTheme'
+import { getThemeColorPreset } from '../utils/themeColors'
 
 const router = useRouter()
-const API_BASE = '/api'
+const { userInfo, setUserInfo } = useAuth()
+const { isDark, accentKey } = useTheme()
 
-const userInfo = ref(null)
+const accentColor = computed(
+  () => getThemeColorPreset(accentKey.value)?.[isDark.value ? 'dark' : 'light'].accent || '#c45d2b'
+)
+
 const loading = ref(true)
 const stats = ref({ follows: null, history: null, danmaku: null, unread: null })
 
-const avatar = computed(() => {
-  const bangumi = userInfo.value?.bangumiNickname
-  if (userInfo.value?.username) return null // 用首字母头像
-  return null
-})
 const initial = computed(() => (userInfo.value?.username || '用').charAt(0).toUpperCase())
 const roleLabel = computed(() => {
   const roles = userInfo.value?.roleCodeList || []
@@ -24,7 +30,7 @@ const roleLabel = computed(() => {
 })
 
 const statCards = computed(() => [
-  { label: '追番', icon: 'mdi-bookmark-multiple', value: stats.value.follows, to: '/profile/follows', color: '#c45d2b' },
+  { label: '追番', icon: 'mdi-bookmark-multiple', value: stats.value.follows, to: '/profile/follows', color: accentColor.value },
   { label: '观看历史', icon: 'mdi-history', value: stats.value.history, to: '/profile/history', color: '#1e7b6b' },
   { label: '弹幕', icon: 'mdi-comment-text-multiple', value: stats.value.danmaku, to: '/profile/danmaku', color: '#8b5cf6' },
   { label: '未读消息', icon: 'mdi-bell-outline', value: stats.value.unread, to: '/profile/messages', color: '#ef4444' }
@@ -42,20 +48,19 @@ const fmt = (v) => (v == null ? '--' : Number(v).toLocaleString('zh-CN'))
 
 const fetchStats = async () => {
   const [u, f, h, d, m] = await Promise.allSettled([
-    axios.post(`${API_BASE}/auth/currentUser`),
-    axios.get(`${API_BASE}/follows`, { params: { page: 1, pageSize: 1 } }),
-    axios.get(`${API_BASE}/play-history`, { params: { page: 1, pageSize: 1 } }),
-    axios.get(`${API_BASE}/v2/danmaku-records/mine`, { params: { page: 1, pageSize: 1 } }),
-    axios.get(`${API_BASE}/messages/unread-count`)
+    getCurrentUser(),
+    getFollows({ page: 1, pageSize: 1 }),
+    getPlayHistory({ page: 1, pageSize: 1 }),
+    getMyDanmakuRecords({ page: 1, pageSize: 1 }),
+    getUnreadCount()
   ])
-  if (u.status === 'fulfilled' && u.value.data?.code === 200 && u.value.data.data) {
-    userInfo.value = u.value.data.data
-    localStorage.setItem('userInfo', JSON.stringify(u.value.data.data))
+  if (u.status === 'fulfilled' && u.value?.code === 200 && u.value.data) {
+    setUserInfo(u.value.data)
   }
-  if (f.status === 'fulfilled') stats.value.follows = Number(f.value.data?.data?.totalElements ?? f.value.data?.data?.length ?? 0)
-  if (h.status === 'fulfilled') stats.value.history = Number(h.value.data?.data?.totalElements ?? 0)
-  if (d.status === 'fulfilled') stats.value.danmaku = Number(d.value.data?.data?.totalElements ?? 0)
-  if (m.status === 'fulfilled') stats.value.unread = Number(m.value.data?.data?.unreadCount ?? 0)
+  if (f.status === 'fulfilled') stats.value.follows = Number(f.value?.data?.totalElements ?? f.value?.data?.length ?? 0)
+  if (h.status === 'fulfilled') stats.value.history = Number(h.value?.data?.totalElements ?? 0)
+  if (d.status === 'fulfilled') stats.value.danmaku = Number(d.value?.data?.totalElements ?? 0)
+  if (m.status === 'fulfilled') stats.value.unread = Number(m.value?.data?.unreadCount ?? 0)
   loading.value = false
 }
 
@@ -131,7 +136,7 @@ onMounted(fetchStats)
 
 .profile-skeleton { display: flex; flex-direction: column; gap: 18px; }
 .sk-user, .sk-stat {
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -142,18 +147,18 @@ onMounted(fetchStats)
 /* 用户卡片 */
 .user-card {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  background: linear-gradient(120deg, #fff 0%, #fdf7f2 60%, #faf0e8 100%);
-  border: 1px solid #eceff3; border-radius: 16px;
+  background: linear-gradient(120deg, var(--al-bg) 0%, var(--al-bg-gradient-1) 60%, var(--al-bg-gradient-2) 100%);
+  border: 1px solid var(--al-border-panel); border-radius: 16px;
   padding: 22px 26px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(0, 0, 0, 0.05);
 }
 .user-avatar {
   width: 68px; height: 68px; border-radius: 50%;
-  background: linear-gradient(135deg, rgba(196, 93, 43, 0.2), rgba(179, 129, 91, 0.3));
+  background: linear-gradient(135deg, rgba(var(--al-accent-rgb), 0.2), rgba(var(--al-accent-brown-rgb), 0.3));
   color: var(--anime-accent-red);
   display: flex; align-items: center; justify-content: center;
   font-size: 28px; font-weight: 700;
-  border: 2px solid rgba(196, 93, 43, 0.2);
+  border: 2px solid rgba(var(--al-accent-rgb), 0.2);
   flex-shrink: 0;
 }
 .user-info { flex: 1; min-width: 200px; }
@@ -161,12 +166,12 @@ onMounted(fetchStats)
 .user-name-row h3 { margin: 0; font-size: 1.25rem; color: var(--anime-text-main); }
 .role-chip {
   font-size: 11px; font-weight: 600;
-  background: rgba(196, 93, 43, 0.12); color: var(--anime-accent-red);
+  background: rgba(var(--al-accent-rgb), 0.12); color: var(--anime-accent-red);
   padding: 2px 10px; border-radius: 999px;
 }
 .bangumi-chip {
   font-size: 11px; font-weight: 600;
-  background: rgba(30, 123, 107, 0.1); color: #1e7b6b;
+  background: rgba(30, 123, 107, 0.1); color: var(--al-accent-teal);
   padding: 2px 10px; border-radius: 999px;
   display: inline-flex; align-items: center; gap: 4px;
 }
@@ -177,12 +182,12 @@ onMounted(fetchStats)
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
 .stat-card {
   display: flex; align-items: center; gap: 12px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 14px;
   padding: 16px; text-decoration: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
 }
-.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(196, 93, 43, 0.2); }
+.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(var(--al-accent-rgb), 0.2); }
 .stat-icon {
   width: 42px; height: 42px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
@@ -191,18 +196,18 @@ onMounted(fetchStats)
 .stat-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .stat-value { font-size: 1.3rem; font-weight: 700; color: var(--anime-text-main); line-height: 1.2; }
 .stat-label { font-size: 12px; color: var(--anime-text-secondary); }
-.stat-arrow { color: #d1d5db; }
+.stat-arrow { color: var(--al-gray-arrow); }
 
 /* 快捷入口 */
 .quick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .quick-card {
   display: flex; align-items: center; gap: 14px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 14px;
   padding: 16px; text-decoration: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
 }
-.quick-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(196, 93, 43, 0.2); }
+.quick-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(var(--al-accent-rgb), 0.2); }
 .quick-icon {
   width: 44px; height: 44px; border-radius: 12px;
   background: var(--anime-bg-beige);
@@ -213,7 +218,7 @@ onMounted(fetchStats)
 .quick-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .quick-label { font-size: 14px; font-weight: 600; color: var(--anime-text-main); }
 .quick-desc { font-size: 12px; color: var(--anime-text-secondary); margin-top: 2px; }
-.quick-arrow { color: #d1d5db; }
+.quick-arrow { color: var(--al-gray-arrow); }
 
 @media (max-width: 900px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }

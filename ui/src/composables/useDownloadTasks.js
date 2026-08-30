@@ -1,10 +1,16 @@
-import { ref } from 'vue'
-import axios from 'axios'
+import { ref, onScopeDispose } from 'vue'
 import { showAppMessage } from '../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { API_BASE } from '../utils/constants'
+import { useAuth } from './useAuth'
+import {
+  cancelDownloadTask,
+  retryDownloadTask,
+  deleteDownloadTask,
+  getDownloadTaskBinding,
+} from '../api/download'
 
 export function useDownloadTasks() {
+  const { token } = useAuth()
   const tasks = ref([])
   const summary = ref(null)
   const sseConnected = ref(false)
@@ -29,9 +35,8 @@ export function useDownloadTasks() {
 
   const connectProgressStream = () => {
     disconnectProgressStream()
-    const token = localStorage.getItem('token') || ''
     const source = new EventSource(
-      `${API_BASE}/resource-search/download-tasks/stream?satoken=${encodeURIComponent(token)}`
+      `${API_BASE}/resource-search/download-tasks/stream?satoken=${encodeURIComponent(token.value)}`
     )
     eventSource = source
 
@@ -61,12 +66,12 @@ export function useDownloadTasks() {
 
   const runAction = async (label, action) => {
     try {
-      const res = await action()
-      if (res.data?.code === 200) {
-        showAppMessage(res.data?.msg || `${label}成功`, 'success')
+      const body = await action()
+      if (body?.code === 200) {
+        showAppMessage(body?.msg || `${label}成功`, 'success')
         return true
       }
-      showAppMessage(res.data?.msg || `${label}失败`, 'error')
+      showAppMessage(body?.msg || `${label}失败`, 'error')
       return false
     } catch (error) {
       console.error(`${label}失败:`, error)
@@ -75,22 +80,19 @@ export function useDownloadTasks() {
     }
   }
 
-  const cancelTask = (task) =>
-    runAction('取消', () => axios.post(`${API_BASE}/resource-search/download-tasks/${task.id}/cancel`))
+  const cancelTask = (task) => runAction('取消', () => cancelDownloadTask(task.id))
 
-  const retryTask = (task) =>
-    runAction('重试', () => axios.post(`${API_BASE}/resource-search/download-tasks/${task.id}/retry`))
+  const retryTask = (task) => runAction('重试', () => retryDownloadTask(task.id))
 
-  const deleteTask = (task) =>
-    runAction('删除', () => axios.delete(`${API_BASE}/resource-search/download-tasks/${task.id}`))
+  const deleteTask = (task) => runAction('删除', () => deleteDownloadTask(task.id))
 
   const openBinding = async (taskId) => {
     bindingLoading.value = true
     bindingDialog.value = true
     currentBinding.value = null
     try {
-      const res = await axios.get(`${API_BASE}/resource-search/download-tasks/${taskId}/binding`)
-      currentBinding.value = res.data?.data || null
+      const body = await getDownloadTaskBinding(taskId)
+      currentBinding.value = body?.data || null
     } catch (error) {
       console.error('查询绑定状态失败:', error)
       showAppMessage(error.response?.data?.msg || '查询绑定状态失败', 'error')
@@ -103,6 +105,9 @@ export function useDownloadTasks() {
     bindingDialog.value = false
     currentBinding.value = null
   }
+
+  // 组件卸载时兜底断开 SSE，避免依赖调用方手动 disconnect
+  onScopeDispose(disconnectProgressStream)
 
   return {
     tasks,

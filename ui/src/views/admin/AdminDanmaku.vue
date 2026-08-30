@@ -1,65 +1,49 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import { ref, onMounted } from 'vue'
 import { showAppMessage } from '../../utils/ui-feedback'
+import { formatDateTime, formatDanmakuColor as danmakuColorHex } from '../../utils/format'
+import { getAdminDanmakuRecords } from '../../api/danmaku'
+import { danmakuModeLabel } from '../../utils/danmakuMode'
+import { useServerPagination } from '../../composables/useServerPagination'
 
-const loading = ref(false)
 const records = ref([])
 const filterUserId = ref('')
 const filterEpisodeId = ref('')
 const filterAnimeId = ref('')
 const filterKeyword = ref('')
-const page = ref(1)
-const pageSize = ref(20)
-const totalElements = ref(0)
-const totalPages = ref(0)
 
-const danmakuModeLabel = (mode) => {
-  const map = { 1: '普通', 4: '底部', 5: '顶部' }
-  return map[mode] || `模式${mode}`
-}
-
-const danmakuColorHex = (color) => {
-  if (color == null) return '#FFFFFF'
-  return '#' + color.toString(16).padStart(6, '0').toUpperCase()
-}
-
-const formatDateTime = (value) => {
-  if (!value) return '--'
-  return new Date(value).toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
-
-const fetchRecords = async () => {
-  loading.value = true
-  try {
-    const res = await axios.get('/api/admin/danmaku-records', {
-      params: {
-        page: page.value,
-        pageSize: pageSize.value,
+const {
+  page,
+  totalElements,
+  totalPages,
+  loading,
+  fetchPage
+} = useServerPagination({
+  pageSize: 20,
+  fetchFn: async (query) => {
+    try {
+      const res = await getAdminDanmakuRecords({
+        page: query.page + 1,
+        pageSize: query.pageSize,
         userId: filterUserId.value || undefined,
         episodeId: filterEpisodeId.value || undefined,
         animeId: filterAnimeId.value || undefined,
         keyword: filterKeyword.value?.trim() || undefined,
+      })
+      if (res?.code === 200 && res?.data) {
+        records.value = res.data.content || []
       }
-    })
-    if (res.data?.code === 200 && res.data?.data) {
-      records.value = res.data.data.content || []
-      totalElements.value = Number(res.data.data.totalElements || 0)
-      totalPages.value = Number(res.data.data.totalPages || 0)
+      return res
+    } catch (error) {
+      showAppMessage(error.response?.data?.msg || '获取弹幕记录失败', 'error')
+      return null
     }
-  } catch (error) {
-    showAppMessage(error.response?.data?.msg || '获取弹幕记录失败', 'error')
-  } finally {
-    loading.value = false
   }
-}
+})
 
 const handleSearch = () => {
   page.value = 1
-  fetchRecords()
+  fetchPage()
 }
 
 const handleReset = () => {
@@ -68,16 +52,16 @@ const handleReset = () => {
   filterAnimeId.value = ''
   filterKeyword.value = ''
   page.value = 1
-  fetchRecords()
+  fetchPage()
 }
 
 const handlePageChange = (newPage) => {
   page.value = newPage
-  fetchRecords()
+  fetchPage()
 }
 
 onMounted(() => {
-  fetchRecords()
+  fetchPage()
 })
 </script>
 
@@ -85,7 +69,7 @@ onMounted(() => {
   <div>
     <v-card class="mb-6">
       <v-card-title class="d-flex align-center ga-2">
-        <i class="mdi mdi-comment-text-multiple" style="color: #c45d2b;"></i>
+        <i class="mdi mdi-comment-text-multiple" style="color: var(--al-accent);"></i>
         弹幕管理
       </v-card-title>
       <v-card-text>

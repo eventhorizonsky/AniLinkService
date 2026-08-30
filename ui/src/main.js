@@ -1,7 +1,5 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createVuetify } from 'vuetify'
-import * as components from 'vuetify/components'
-import * as directives from 'vuetify/directives'
 import { zhHans } from 'vuetify/locale'
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
@@ -12,10 +10,13 @@ import './styles/browse.css'
 import App from './App.vue'
 import { md3 } from 'vuetify/blueprints'
 import { setupHttpInterceptors } from './utils/http'
+import { theme, isDark, accentKey } from './composables/useTheme'
+import { getThemeColorPreset } from './utils/themeColors'
+
+// 主题色预设：Vuetify primary 与前台 CSS 强调色保持一致
+const initialPreset = getThemeColorPreset(accentKey.value) || getThemeColorPreset('ember')
 
 const vuetify = createVuetify({
-  components,
-  directives,
   locale: {
     locale: 'zh-Hans',
     messages: {
@@ -23,7 +24,24 @@ const vuetify = createVuetify({
     },
   },
   theme: {
-    defaultTheme: 'light',
+    defaultTheme: isDark.value ? 'dark' : 'light',
+    themes: {
+      light: {
+        colors: {
+          primary: initialPreset.light.primary,
+          background: '#fafafa',
+          surface: '#ffffff',
+        },
+      },
+      dark: {
+        colors: {
+          primary: initialPreset.dark.primary,
+          info: '#7fa8c9',
+          background: '#1b1612',
+          surface: '#201a15',
+        },
+      },
+    },
   },
   blueprint: md3,
   icons: {
@@ -45,6 +63,16 @@ const vuetify = createVuetify({
       elevation: 2,
     },
   },
+})
+
+// 主题模式 / 主题色变化时同步 vuetify（后台与全局 v-app 壳、snackbar/对话框）
+watch([theme, accentKey], () => {
+  const preset = getThemeColorPreset(accentKey.value)
+  if (preset) {
+    vuetify.theme.themes.value.light.colors.primary = preset.light.primary
+    vuetify.theme.themes.value.dark.colors.primary = preset.dark.primary
+  }
+  vuetify.theme.global.name.value = theme.value === 'dark' ? 'dark' : 'light'
 })
 
 setupHttpInterceptors()

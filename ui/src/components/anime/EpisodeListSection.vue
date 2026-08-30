@@ -29,6 +29,7 @@
           <span class="anime-episode-title" :title="ep.episodeTitle">{{ episodeTitleDisplay(ep) }}</span>
           <span v-if="isToday(ep)" class="anime-today-tag">今日更新</span>
           <span v-if="isCurrentEpisode(ep)" class="anime-current-tag">正在播放</span>
+          <span v-if="isWatched(ep)" class="anime-watched-tag">看过</span>
         </div>
         <div class="anime-episode-meta">
           <span>{{ formatDate(ep.airDate) }}</span>
@@ -52,6 +53,8 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { formatDate } from '../../utils/format';
+import { isFuture, filterMainEpisodes, filterSpecialEpisodes, episodeNumberDisplay, truncateText } from '../../utils/episodes';
 
 const props = defineProps({
   episodes: {
@@ -73,6 +76,10 @@ const props = defineProps({
   currentEpisodeId: {
     type: [String, Number],
     default: null
+  },
+  watchedEpisodeNumbers: {
+    type: Set,
+    default: () => new Set()
   }
 });
 
@@ -90,11 +97,7 @@ const EPISODE_TITLE_MAX_LEN = 36;
 
 const todayStr = new Date().toISOString().slice(0, 10);
 
-const formatDate = (iso) => iso ? iso.slice(0, 10) : '';
-
 const isToday = (ep) => formatDate(ep.airDate) === todayStr;
-
-const isFuture = (ep) => new Date(ep.airDate) > new Date();
 
 const isEpisodeExisting = (ep) => {
   if (!ep || ep.episodeId === undefined || ep.episodeId === null) {
@@ -110,23 +113,18 @@ const isCurrentEpisode = (ep) => {
   return String(ep.episodeId) === String(props.currentEpisodeId);
 };
 
-const canPlay = (ep) => isEpisodeExisting(ep) && !isFuture(ep);
-
-const getEpisodeType = (ep) => {
-  const num = ep.episodeNumber;
-  if (/^\d+$/.test(num)) return 'main';
-  if (num.startsWith('S')) return 'special';
-  if (num.startsWith('C')) return 'credit';
-  return 'other';
+const isWatched = (ep) => {
+  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) {
+    return false;
+  }
+  return props.watchedEpisodeNumbers.has(String(ep.episodeNumber));
 };
 
-const mainEpisodes = computed(() => 
-  props.episodes?.filter(ep => getEpisodeType(ep) === 'main') || []
-);
+const canPlay = (ep) => isEpisodeExisting(ep) && !isFuture(ep);
 
-const specialEpisodes = computed(() => 
-  props.episodes?.filter(ep => ['special', 'credit'].includes(getEpisodeType(ep))) || []
-);
+const mainEpisodes = computed(() => filterMainEpisodes(props.episodes));
+
+const specialEpisodes = computed(() => filterSpecialEpisodes(props.episodes));
 
 const allEpisodesSorted = computed(() => 
   [...(props.episodes || [])].sort((a, b) => new Date(a.airDate) - new Date(b.airDate))
@@ -137,22 +135,6 @@ const displayedEpisodes = computed(() => {
   if (activeTab.value === 'special') return specialEpisodes.value;
   return allEpisodesSorted.value;
 });
-
-const episodeNumberDisplay = (ep) => {
-  const type = getEpisodeType(ep);
-  if (type === 'main') return `第${ep.episodeNumber}话`;
-  if (type === 'special') return '特典';
-  if (type === 'credit') return '主题';
-  return ep.episodeNumber;
-};
-
-const truncateText = (text, maxLen) => {
-  const str = String(text || '');
-  if (str.length <= maxLen) {
-    return str;
-  }
-  return `${str.slice(0, maxLen)}...`;
-};
 
 const episodeTitleDisplay = (ep) => {
   return truncateText(ep?.episodeTitle || '', EPISODE_TITLE_MAX_LEN);
@@ -169,13 +151,12 @@ const playEpisode = (ep) => {
 </script>
 
 <style scoped>
-@import '../../styles/anime.css';
 
 /* 正在播放的剧集样式 */
 .anime-episode-card.is-current {
-  background: linear-gradient(135deg, #fef3e8 0%, #ffebd0 100%);
+  background: linear-gradient(135deg, var(--al-bg-highlight-1) 0%, var(--al-bg-highlight-2) 100%);
   border: 2px solid var(--anime-accent-red);
-  box-shadow: 0 4px 16px rgba(196, 93, 43, 0.2);
+  box-shadow: 0 4px 16px rgba(var(--al-accent-rgb), 0.2);
   position: relative;
 }
 
@@ -183,12 +164,25 @@ const playEpisode = (ep) => {
 .anime-current-tag {
   display: inline-block;
   background: linear-gradient(135deg, var(--anime-accent-red) 0%, var(--anime-accent-orange) 100%);
-  color: white;
+  color: var(--al-text-on-accent);
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 0.85rem;
   font-weight: 600;
   animation: pulse 2s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+/* 已看过标签样式 */
+.anime-watched-tag {
+  display: inline-block;
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--al-success);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -204,18 +198,18 @@ const playEpisode = (ep) => {
 /* 当前播放状态下的按钮样式 */
 .anime-episode-card.is-current .anime-watch-btn {
   background: linear-gradient(135deg, var(--anime-accent-red) 0%, var(--anime-accent-orange) 100%) !important;
-  color: white !important;
-  box-shadow: 0 4px 12px rgba(196, 93, 43, 0.3) !important;
+  color: var(--al-text-on-accent) !important;
+  box-shadow: 0 4px 12px rgba(var(--al-accent-rgb), 0.3) !important;
 }
 
 .anime-episode-card.is-current .anime-watch-btn:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 0 6px 16px rgba(196, 93, 43, 0.4) !important;
+  box-shadow: 0 6px 16px rgba(var(--al-accent-rgb), 0.4) !important;
 }
 
 .anime-watch-btn.disabled {
-  background: #d4d4d8;
-  color: #71717a;
+  background: var(--al-gray-chip);
+  color: var(--al-gray-chip-text);
   cursor: not-allowed;
   box-shadow: none;
 }

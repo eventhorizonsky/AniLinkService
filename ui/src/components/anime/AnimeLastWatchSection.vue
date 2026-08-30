@@ -79,8 +79,8 @@ defineEmits(['continue', 'next'])
 
 <style scoped>
 .last-watch-card {
-  background: linear-gradient(135deg, #fffaf6 0%, #fff5ec 100%);
-  border: 1px solid #ead9c8;
+  background: linear-gradient(135deg, var(--al-bg-watch) 0%, var(--al-bg-watch-2) 100%);
+  border: 1px solid var(--al-border-warm);
   border-radius: 16px;
   padding: 16px 18px;
   margin-bottom: 18px;
@@ -94,14 +94,14 @@ defineEmits(['continue', 'next'])
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
-  color: #3d2f26;
+  color: var(--al-text-brown-19);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .last-watch-title .mdi {
-  color: #c45d2b;
+  color: var(--al-accent);
   font-size: 1.25rem;
 }
 
@@ -109,14 +109,14 @@ defineEmits(['continue', 'next'])
   margin: 0 0 6px;
   font-size: 0.98rem;
   font-weight: 600;
-  color: #2f2b28;
+  color: var(--al-text-brown-20);
   line-height: 1.45;
 }
 
 .last-watch-meta {
   margin: 0 0 4px;
   font-size: 0.88rem;
-  color: #6b5f55;
+  color: var(--al-text-secondary);
 }
 
 .last-watch-actions {
@@ -146,27 +146,27 @@ defineEmits(['continue', 'next'])
 }
 
 .last-watch-btn--primary {
-  background: #c45d2b;
-  color: #fff;
+  background: var(--al-accent);
+  color: var(--al-text-on-accent);
 }
 
 .last-watch-btn--primary:not(:disabled):hover {
-  background: #a84e24;
+  background: var(--al-accent-strong-3);
 }
 
 .last-watch-btn--secondary {
-  background: #fff;
-  color: #5c4032;
-  border: 1px solid #d4c4b8;
+  background: var(--al-bg);
+  color: var(--al-text-brown-18);
+  border: 1px solid var(--al-border-soft-6);
 }
 
 .last-watch-btn--secondary:not(:disabled):hover {
-  background: #fff8f2;
+  background: var(--al-bg-hover-soft);
 }
 
 .last-watch-skeleton .sk-line {
   height: 12px;
-  background: #ecdfd4;
+  background: var(--al-bg-beige-9);
   border-radius: 6px;
   margin-bottom: 10px;
   animation: last-watch-pulse 1.2s ease-in-out infinite;
@@ -190,7 +190,7 @@ defineEmits(['continue', 'next'])
   width: 108px;
   height: 36px;
   border-radius: 999px;
-  background: #ecdfd4;
+  background: var(--al-bg-beige-9);
   animation: last-watch-pulse 1.2s ease-in-out infinite;
 }
 

@@ -1,15 +1,15 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import axios from 'axios'
-import { showAppMessage } from '../../utils/ui-feedback'
+import { getMessages, getMessagesByType, removeMessage as apiRemoveMessage } from '../../api/messages'
+import PaginationBar from '../../components/PaginationBar.vue'
+import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
+import { usePagination } from '../../composables/usePagination'
+import { useMessageActions } from '../../composables/useMessageActions'
+import { formatMonthDayTime } from '../../utils/format'
 
-const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(20)
 const total = ref(0)
 const filterType = ref('')
 
@@ -19,36 +19,28 @@ const typeFilters = [
   { label: '系统通知', value: 'system' }
 ]
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  const arr = []
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
 const unreadCount = computed(() => list.value.filter((m) => !m.isRead).length)
 
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
     const params = { page: page.value, pageSize: pageSize.value }
-    const url = filterType.value ? `/api/messages/type/${filterType.value}` : '/api/messages'
-    const res = await axios.get(url, { params })
-    if (res.data?.code === 200) {
-      list.value = res.data.data?.content || []
-      total.value = Number(res.data.data?.totalElements || 0)
-    } else error.value = res.data?.msg || '加载消息列表失败'
+    const res = filterType.value
+      ? await getMessagesByType(filterType.value, params)
+      : await getMessages(params)
+    if (res?.code === 200) {
+      list.value = res.data?.content || []
+      total.value = Number(res.data?.totalElements || 0)
+    } else error.value = res?.msg || '加载消息列表失败'
   } catch (e) { console.error('加载消息列表失败:', e); error.value = '加载消息列表失败' }
   finally { loading.value = false }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 20,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
 const applyFilter = (value) => {
   filterType.value = value
@@ -56,56 +48,26 @@ const applyFilter = (value) => {
   fetchData()
 }
 
-const openMessage = async (msg) => {
-  if (!msg.isRead) {
-    try { await axios.put(`/api/messages/${msg.id}/read`) } catch (e) { /* ignore */ }
-    msg.isRead = true
-  }
-  if (msg.type === 'episode_update' && msg.videoId) {
-    const routeData = router.resolve({
-      name: 'Player',
-      params: { videoId: String(msg.videoId) },
-      query: {
-        animeId: msg.animeId ? String(msg.animeId) : undefined,
-        episodeId: msg.episodeId ? String(msg.episodeId) : undefined
-      }
-    })
-    window.open(routeData.href, '_blank')
-  } else if (msg.animeId) {
-    router.push(`/anime/${msg.animeId}`)
-  }
-}
+const { openMessage, markAllRead } = useMessageActions()
 
-const markAllRead = async () => {
-  try {
-    const res = await axios.put('/api/messages/mark-all-read')
-    if (res.data?.code === 200 || res.data?.code === 0) {
-      showAppMessage('已全部标记为已读', 'success')
-      await fetchData()
-    } else showAppMessage(res.data?.msg || '一键已读失败', 'error')
-  } catch (e) { showAppMessage('一键已读失败，请稍后重试', 'error') }
+const markAllReadLocal = async () => {
+  const ok = await markAllRead()
+  if (ok) await fetchData()
 }
 
 const removeMessage = async (id) => {
-  const ok = window.confirm('确定要删除这条消息吗？')
+  const ok = await askAppConfirm({ title: '删除消息', message: '确定要删除这条消息吗？' })
   if (!ok) return
   try {
-    const res = await axios.delete(`/api/messages/${id}`)
-    if (res.data?.code === 200) {
+    const res = await apiRemoveMessage(id)
+    if (res?.code === 200) {
       if (list.value.length === 1 && page.value > 1) page.value -= 1
       await fetchData()
-    } else showAppMessage(res.data?.msg || '删除失败', 'error')
+    } else showAppMessage(res?.msg || '删除失败', 'error')
   } catch (e) { showAppMessage('删除失败', 'error') }
 }
 
 const typeLabel = (type) => typeFilters.find((t) => t.value === type)?.label || type || '通知'
-
-const formatTime = (v) => {
-  if (!v) return '--'
-  return new Date(v).toLocaleString('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-  })
-}
 
 onMounted(fetchData)
 </script>
@@ -116,7 +78,7 @@ onMounted(fetchData)
       <h2><i class="mdi mdi-bell-outline"></i> 消息中心</h2>
       <div class="page-head-actions">
         <span v-if="unreadCount > 0" class="unread-summary">{{ unreadCount }} 条未读</span>
-        <button class="btn btn-ghost" :disabled="unreadCount === 0" @click="markAllRead">
+        <button class="btn btn-ghost" :disabled="unreadCount === 0" @click="markAllReadLocal">
           <i class="mdi mdi-check-all"></i> 一键已读
         </button>
       </div>
@@ -157,7 +119,7 @@ onMounted(fetchData)
             <span class="msg-type" :class="msg.type === 'episode_update' ? 'type-update' : 'type-system'">{{ typeLabel(msg.type) }}</span>
           </div>
           <p class="msg-content">{{ msg.content }}</p>
-          <span class="msg-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(msg.createdAt) }}</span>
+          <span class="msg-time"><i class="mdi mdi-clock-outline"></i> {{ formatMonthDayTime(msg.createdAt) }}</span>
         </div>
         <button class="msg-delete" title="删除" @click.stop="removeMessage(msg.id)">
           <i class="mdi mdi-delete-outline"></i>
@@ -165,12 +127,7 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-      <span class="info">共 {{ total }} 条</span>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 条`" @change="changePage" />
   </div>
 </template>
 
@@ -180,7 +137,7 @@ onMounted(fetchData)
 
 .sk-row {
   height: 96px; border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -189,14 +146,14 @@ onMounted(fetchData)
 
 .filter-pills { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
 .pill {
-  border: 1px solid #e5e7eb; background: #fff;
+  border: 1px solid var(--al-border-input); background: var(--al-bg);
   color: var(--anime-text-secondary);
   padding: 7px 16px; border-radius: 999px;
   font-size: 13px; font-weight: 500; cursor: pointer;
   transition: all 0.2s; font-family: inherit;
 }
 .pill:hover { border-color: var(--anime-accent-red); color: var(--anime-accent-red); }
-.pill.active { background: rgba(196, 93, 43, 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
+.pill.active { background: rgba(var(--al-accent-rgb), 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -208,32 +165,32 @@ onMounted(fetchData)
 .message-list { display: flex; flex-direction: column; gap: 10px; }
 .message-card {
   display: flex; align-items: flex-start; gap: 12px;
-  background: #fff; border: 1px solid #eceff3; border-radius: 14px;
+  background: var(--al-bg); border: 1px solid var(--al-border-panel); border-radius: 14px;
   padding: 14px 16px; cursor: pointer; position: relative;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.25s, border-color 0.25s;
 }
-.message-card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07); border-color: rgba(196, 93, 43, 0.18); }
-.message-card.unread { background: rgba(196, 93, 43, 0.04); border-color: rgba(196, 93, 43, 0.15); }
+.message-card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07); border-color: rgba(var(--al-accent-rgb), 0.18); }
+.message-card.unread { background: rgba(var(--al-accent-rgb), 0.04); border-color: rgba(var(--al-accent-rgb), 0.15); }
 
 .msg-indicator { flex-shrink: 0; padding-top: 5px; }
-.unread-dot { display: inline-block; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; }
+.unread-dot { display: inline-block; width: 8px; height: 8px; background: var(--al-danger-bright); border-radius: 50%; }
 
 .msg-main { flex: 1; min-width: 0; }
 .msg-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
 .msg-title { font-size: 0.95rem; font-weight: 600; color: var(--anime-text-main); }
 .msg-type { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
-.type-update { background: rgba(196, 93, 43, 0.12); color: var(--anime-accent-red); }
-.type-system { background: #f0f0f0; color: var(--anime-text-secondary); }
+.type-update { background: rgba(var(--al-accent-rgb), 0.12); color: var(--anime-accent-red); }
+.type-system { background: var(--al-border-neutral); color: var(--anime-text-secondary); }
 .msg-content { margin: 0 0 6px; font-size: 0.88rem; color: var(--anime-text-secondary); line-height: 1.55; }
 .msg-time { font-size: 12px; color: var(--anime-text-secondary); opacity: 0.75; display: inline-flex; align-items: center; gap: 4px; }
 
 .msg-delete {
   flex-shrink: 0; border: none; background: none;
-  color: #b3b3b3; font-size: 18px; cursor: pointer;
+  color: var(--al-gray-faint); font-size: 18px; cursor: pointer;
   padding: 4px; border-radius: 8px; transition: all 0.2s;
   opacity: 0;
 }
 .message-card:hover .msg-delete { opacity: 1; }
-.msg-delete:hover { color: #dc2626; background: #fef2f2; }
+.msg-delete:hover { color: var(--al-danger); background: var(--al-danger-soft); }
 </style>

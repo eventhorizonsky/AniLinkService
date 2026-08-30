@@ -1,41 +1,30 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
-import { showAppMessage } from '../../utils/ui-feedback'
+import { getPlayHistory, removePlayHistory, clearPlayHistory } from '../../api/playHistory'
+import PaginationBar from '../../components/PaginationBar.vue'
+import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
+import { usePagination } from '../../composables/usePagination'
+import { DEFAULT_POSTER } from '../../utils/constants'
+import { formatMonthDayTime } from '../../utils/format'
+import { clampProgressPercent, formatPlayProgressText } from '../../utils/playProgress'
 
 const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const error = ref('')
-const page = ref(1)
-const pageSize = ref(12)
 const total = ref(0)
 
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
-
-const progressPercent = (item) => Math.min(100, Math.max(0, Number(item?.progressPercentage || 0)))
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const pages = computed(() => {
-  const t = totalPages.value
-  const cur = page.value
-  const arr = []
-  const start = Math.max(1, Math.min(cur - 2, t - 4))
-  for (let i = start; i <= Math.min(t, start + 4); i++) arr.push(i)
-  return arr
-})
+const progressPercent = (item) => clampProgressPercent(item?.progressPercentage)
 
 const fetchData = async () => {
   loading.value = true; error.value = ''
   try {
-    const res = await axios.get('/api/play-history', {
-      params: { page: page.value, pageSize: pageSize.value }
-    })
-    if (res.data?.code === 200) {
-      list.value = res.data.data?.content || []
-      total.value = Number(res.data.data?.totalElements || 0)
-    } else error.value = res.data?.msg || '加载播放历史失败'
+    const res = await getPlayHistory({ page: page.value, pageSize: pageSize.value })
+    if (res?.code === 200) {
+      list.value = res.data?.content || []
+      total.value = Number(res.data?.totalElements || 0)
+    } else error.value = res?.msg || '加载播放历史失败'
   } catch (e) { console.error('加载播放历史失败:', e); error.value = '加载播放历史失败' }
   finally { loading.value = false }
 }
@@ -58,49 +47,36 @@ const goToAnime = (item) => {
 
 const deleteItem = async (id) => {
   if (!id) return
-  const ok = window.confirm('确定删除这条播放历史吗？')
+  const ok = await askAppConfirm({ title: '删除播放历史', message: '确定删除这条播放历史吗？' })
   if (!ok) return
   try {
-    const res = await axios.delete(`/api/play-history/${id}`)
-    if (res.data?.code === 200) {
+    const res = await removePlayHistory(id)
+    if (res?.code === 200) {
       if (list.value.length === 1 && page.value > 1) page.value -= 1
       await fetchData()
-    } else showAppMessage(res.data?.msg || '删除失败', 'error')
+    } else showAppMessage(res?.msg || '删除失败', 'error')
   } catch (e) { console.error('删除播放历史失败:', e); showAppMessage('删除播放历史失败', 'error') }
 }
 
 const clearAll = async () => {
-  const ok = window.confirm('确定清空所有播放历史吗？该操作不可恢复。')
+  const ok = await askAppConfirm({ title: '清空播放历史', message: '确定清空所有播放历史吗？该操作不可恢复。', color: 'error' })
   if (!ok) return
   try {
-    const res = await axios.delete('/api/play-history/clear')
-    if (res.data?.code === 200) {
+    const res = await clearPlayHistory()
+    if (res?.code === 200) {
       page.value = 1
       await fetchData()
-    } else showAppMessage(res.data?.msg || '清空失败', 'error')
+    } else showAppMessage(res?.msg || '清空失败', 'error')
   } catch (e) { console.error('清空播放历史失败:', e); showAppMessage('清空播放历史失败', 'error') }
 }
 
-const changePage = (p) => {
-  if (p < 1 || p > totalPages.value || p === page.value) return
-  page.value = p
-  fetchData()
-}
+const { page, pageSize, totalPages, pages, changePage } = usePagination({
+  pageSize: 12,
+  getTotal: () => total.value,
+  onPageChange: fetchData,
+})
 
-const formatTime = (v) => {
-  if (!v) return '--'
-  return new Date(v).toLocaleString('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-  })
-}
-
-const progressText = (item) => {
-  const p = Number(item?.progressSeconds || 0)
-  const d = Number(item?.durationSeconds || 0)
-  const percent = Number(item?.progressPercentage || 0)
-  if (!d) return `${p}s`
-  return `${p}s / ${d}s · ${Math.min(100, Math.max(0, percent))}%`
-}
+const progressText = (item) => formatPlayProgressText(item)
 
 onMounted(fetchData)
 </script>
@@ -131,7 +107,7 @@ onMounted(fetchData)
     <div v-else class="history-list">
       <div v-for="item in list" :key="item.id" class="history-card">
         <div class="hc-poster" @click="goToAnime(item)">
-          <img :src="item.imageUrl || defaultPoster" :alt="item.animeTitle" loading="lazy" />
+          <img :src="item.imageUrl || DEFAULT_POSTER" :alt="item.animeTitle" loading="lazy" />
           <div class="hc-poster-shade"></div>
           <div class="hc-poster-play"><i class="mdi mdi-play"></i></div>
           <div class="hc-poster-progress">
@@ -144,7 +120,7 @@ onMounted(fetchData)
           <p class="hc-episode">{{ item.videoName || `视频 #${item.videoId || '-'}` }}</p>
 
           <div class="hc-meta">
-            <span class="hc-time"><i class="mdi mdi-clock-outline"></i> {{ formatTime(item.lastPlayTime) }}</span>
+            <span class="hc-time"><i class="mdi mdi-clock-outline"></i> {{ formatMonthDayTime(item.lastPlayTime) }}</span>
             <span class="hc-progress-text">{{ progressText(item) }}</span>
           </div>
 
@@ -158,12 +134,7 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <div v-if="totalPages > 1" class="pager">
-      <button :disabled="page <= 1" @click="changePage(page - 1)"><i class="mdi mdi-chevron-left"></i></button>
-      <button v-for="p in pages" :key="p" :class="{ active: p === page }" @click="changePage(p)">{{ p }}</button>
-      <button :disabled="page >= totalPages" @click="changePage(page + 1)"><i class="mdi mdi-chevron-right"></i></button>
-      <span class="info">共 {{ total }} 条</span>
-    </div>
+    <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 条`" @change="changePage" />
   </div>
 </template>
 
@@ -174,7 +145,7 @@ onMounted(fetchData)
 .sk-row {
   height: 108px;
   border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }
@@ -195,8 +166,8 @@ onMounted(fetchData)
 .history-card {
   display: flex;
   gap: 16px;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 16px;
   padding: 14px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -204,7 +175,7 @@ onMounted(fetchData)
 }
 .history-card:hover {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
-  border-color: rgba(196, 93, 43, 0.2);
+  border-color: rgba(var(--al-accent-rgb), 0.2);
   transform: translateY(-2px);
 }
 

@@ -1,15 +1,14 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { useIsMobile } from '../../composables/useIsMobile'
+import { getScheduledTasks, triggerScheduledTask, setScheduledTaskEnabled } from '../../api/system'
 
 const loading = ref(false)
 const tasks = ref([])
 const triggeringId = ref('')
 const togglingId = ref('')
-const isMobile = ref(false)
+const { isMobile } = useIsMobile(768)
 let pollTimer = null
 
 const TYPE_LABELS = {
@@ -25,12 +24,6 @@ const STATUS_META = {
 }
 
 const anyRunning = computed(() => tasks.value.some(t => t.running))
-
-const checkViewport = () => {
-  isMobile.value = typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(max-width: 768px)').matches
-}
 
 // 展示调度方式（尽量用用户能理解的说法）
 const scheduleText = (t) => {
@@ -52,10 +45,11 @@ const formatDuration = (ms) => {
 const statusMeta = (status) => STATUS_META[status] || STATUS_META.never
 
 const fetchTasks = async () => {
+  loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/admin/scheduled-tasks`)
-    if (res.data?.code === 200) {
-      tasks.value = res.data.data || []
+    const res = await getScheduledTasks()
+    if (res?.code === 200) {
+      tasks.value = res.data || []
     }
   } catch (error) {
     console.error('获取定时任务列表失败:', error)
@@ -68,12 +62,12 @@ const fetchTasks = async () => {
 const triggerTask = async (task) => {
   triggeringId.value = task.id
   try {
-    const res = await axios.post(`${API_BASE}/admin/scheduled-tasks/${task.id}/trigger`)
-    if (res.data?.code === 200) {
+    const res = await triggerScheduledTask(task.id)
+    if (res?.code === 200) {
       showAppMessage(`已触发任务「${task.name}」`, 'success')
       await fetchTasks()
     } else {
-      showAppMessage(res.data?.msg || '触发失败', 'error')
+      showAppMessage(res?.msg || '触发失败', 'error')
     }
   } catch (error) {
     console.error('触发定时任务失败:', error)
@@ -87,12 +81,12 @@ const triggerTask = async (task) => {
 const toggleTask = async (task, enabled) => {
   togglingId.value = task.id
   try {
-    const res = await axios.put(`${API_BASE}/admin/scheduled-tasks/${task.id}/enabled?enabled=${enabled}`)
-    if (res.data?.code === 200) {
+    const res = await setScheduledTaskEnabled(task.id, enabled)
+    if (res?.code === 200) {
       showAppMessage(`已${enabled ? '开启' : '关闭'}任务「${task.name}」`, 'success')
       await fetchTasks()
     } else {
-      showAppMessage(res.data?.msg || '操作失败', 'error')
+      showAppMessage(res?.msg || '操作失败', 'error')
       await fetchTasks()
     }
   } catch (error) {
@@ -122,14 +116,11 @@ const stopPolling = () => {
 }
 
 onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
   fetchTasks()
   startPolling()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
   stopPolling()
 })
 </script>

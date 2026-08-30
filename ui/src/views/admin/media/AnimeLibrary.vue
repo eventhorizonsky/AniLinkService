@@ -1,36 +1,92 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import { ref, onMounted, watch } from 'vue'
 import { formatAnimeType } from '../../../utils/animeType'
 import MediaRematchDialog from '../../../components/admin/media/MediaRematchDialog.vue'
 import SubtitleManager from '../../../components/admin/media/SubtitleManager.vue'
-
-const API_BASE = '/api'
+import { formatDuration, formatFileSize } from '../../../utils/format'
+import { getMatchStatusMeta } from '../../../utils/mediaMatchStatus'
+import { getAnimeList, getAnimeEpisodes } from '../../../api/anime'
+import { useServerPagination } from '../../../composables/useServerPagination'
 
 const animes = ref([])
-const loading = ref(false)
 const selectedAnime = ref(null)
 const episodes = ref([])
-const episodesLoading = ref(false)
 const dialogOpen = ref(false)
 const rematchDialog = ref(false)
 const rematchTargetFile = ref(null)
 const subtitleDialog = ref(false)
 const selectedEpisodeForSubtitle = ref(null)
 
-// episodes pagination state for server-side paging
-const episodesPagination = ref({
-  page: 1,
-  itemsPerPage: 10,
-  pageCount: 0
+const search = ref('')
+
+// 动漫列表分页（服务端）
+const {
+  page: animePage,
+  pageSize: animePageSize,
+  totalElements: animeTotalElements,
+  pageCount: animePageCount,
+  loading,
+  fetchPage: fetchAnimePage
+} = useServerPagination({
+  pageSize: 10,
+  fetchFn: async (query) => {
+    try {
+      const params = {
+        page: query.page + 1,
+        pageSize: query.pageSize
+      }
+      if (search.value.trim()) {
+        params.keyword = search.value.trim()
+      }
+      const res = await getAnimeList(params)
+      if (res?.code === 200 && res.data) {
+        animes.value = res.data.content || []
+      }
+      return res
+    } catch (error) {
+      console.error('获取动漫列表失败:', error)
+      return null
+    }
+  }
 })
 
-const search = ref('')
-const sortBy = ref([])
-const pagination = ref({
-  page: 1,
-  itemsPerPage: 10,
-  pageCount: 1
+// 剧集列表分页（服务端，弹窗内）
+const {
+  page: episodesPage,
+  pageSize: episodesPageSize,
+  totalElements: episodesTotalElements,
+  loading: episodesLoading,
+  onOptionsChange: onEpisodesOptionsChange,
+  fetchPage: fetchEpisodesPage
+} = useServerPagination({
+  pageSize: 10,
+  enabled: () => !!selectedAnime.value,
+  fetchFn: async (query) => {
+    try {
+      const res = await getAnimeEpisodes(selectedAnime.value?.animeId, {
+        page: query.page + 1,
+        pageSize: query.pageSize
+      })
+      if (res?.code === 200 && res.data) {
+        episodes.value = (res.data.content || []).map(ep => ({
+          ...ep,
+          resolution: ep.width && ep.height ? `${ep.width}x${ep.height}` : '未知',
+          durationStr: formatDuration(ep.duration),
+          sizeStr: formatFileSize(ep.size),
+          videoFormat: formatVideoCodec(ep.videoCodec, ep.audioCodec)
+        }))
+      }
+      return res
+    } catch (error) {
+      console.error('获取剧集列表失败:', error)
+      episodes.value = []
+      return null
+    }
+  }
+})
+
+watch([episodesPage, episodesPageSize], () => {
+  fetchEpisodesPage()
 })
 
 const episodeHeaders = [
@@ -44,98 +100,20 @@ const episodeHeaders = [
   { title: '操作', key: 'actions', sortable: false }
 ]
 
-// 获取所有动漫
-const fetchAnimes = async (pageNum = 1) => {
-  loading.value = true
-  try {
-    const params = {
-      page: pageNum,
-      pageSize: pagination.value.itemsPerPage
-    }
-    
-    // 如果有搜索关键词，添加到参数
-    if (search.value.trim()) {
-      params.keyword = search.value.trim()
-    }
-    
-    const res = await axios.get(`${API_BASE}/animes`, { params })
-    if (res.data?.code === 200 && res.data.data) {
-      animes.value = res.data.data.content || []
-      pagination.value.pageCount = res.data.data.totalElements || 0
-      pagination.value.page = pageNum
-      console.log('获取动漫列表成功:', pagination.value)
-    }
-  } catch (error) {
-    console.error('获取动漫列表失败:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
 // 获取动漫的剧集（服务端分页）
-const fetchEpisodes = async (animeId, page = episodesPagination.value.page) => {
-  episodesLoading.value = true
-  try {
-    const params = {
-      page,
-      pageSize: episodesPagination.value.itemsPerPage
-    }
-    const res = await axios.get(`${API_BASE}/animes/${animeId}/episodes`, { params })
-    if (res.data?.code === 200 && res.data.data) {
-      const data = res.data.data
-      episodes.value = (data.content || []).map(ep => ({
-        ...ep,
-        resolution: ep.width && ep.height ? `${ep.width}x${ep.height}` : '未知',
-        durationStr: formatDuration(ep.duration),
-        sizeStr: formatFileSize(ep.size),
-        videoFormat: formatVideoCodec(ep.videoCodec, ep.audioCodec)
-      }))
-      episodesPagination.value.pageCount = data.totalElements || 0
-      episodesPagination.value.page = data.currentPage || page
-    }
-  } catch (error) {
-    console.error('获取剧集列表失败:', error)
-    episodes.value = []
-  } finally {
-    episodesLoading.value = false
-  }
-}
-
-// 选择动漫并获取其剧集
 const selectAnime = async (anime) => {
   selectedAnime.value = anime
-  // reset pagination
-  episodesPagination.value.page = 1
   dialogOpen.value = true
-  await fetchEpisodes(anime.animeId, 1)
+  if (episodesPage.value === 1) {
+    await fetchEpisodesPage()
+  } else {
+    episodesPage.value = 1
+  }
 }
 
 // 关闭详情弹窗
 const closeDetails = () => {
   dialogOpen.value = false
-}
-
-// 格式化时长
-const formatDuration = (ms) => {
-  if (!ms) return '未知'
-  const seconds = Math.floor(ms / 1000)
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-  }
-  return `${minutes}:${String(secs).padStart(2, '0')}`
-}
-
-// 格式化文件大小
-const formatFileSize = (bytes) => {
-  if (!bytes) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
 // 格式化视频编码信息
@@ -148,69 +126,25 @@ const formatVideoCodec = (video, audio) => {
 
 // 搜索时重新加载列表
 const onSearch = () => {
-  pagination.value.page = 1
-  fetchAnimes(1)
+  animePage.value = 1
+  fetchAnimePage()
 }
 
 // 重置搜索
 const resetSearch = () => {
   search.value = ''
-  pagination.value.page = 1
-  fetchAnimes(1)
+  animePage.value = 1
+  fetchAnimePage()
 }
 
-// 表格分页/排序/过滤变化（动漫列表）
-const onTableOptionsChange = (options) => {
-  const page = options.page || 1
-  const pageSize = options.itemsPerPage || 10
-  
-  // 如果每页大小改变，重置到第一页
-  if (pageSize !== pagination.value.itemsPerPage) {
-    pagination.value.itemsPerPage = pageSize
-    pagination.value.page = 1
-    fetchAnimes(1)
-  } else {
-    // 只改变页码
-    pagination.value.page = page
-    pagination.value.itemsPerPage = pageSize
-    fetchAnimes(page)
-  }
+const onAnimePageChange = (newPage) => {
+  animePage.value = newPage
+  fetchAnimePage()
 }
 
 onMounted(() => {
-  pagination.value.page = 1
-  fetchAnimes(1)
+  fetchAnimePage()
 })
-
-// 监听剧集表格分页变化
-const onEpisodesOptionsChange = (options) => {
-  const page = options.page || 1
-  const pageSize = options.itemsPerPage || episodesPagination.value.itemsPerPage
-
-  if (pageSize !== episodesPagination.value.itemsPerPage) {
-    episodesPagination.value.itemsPerPage = pageSize
-    episodesPagination.value.page = 1
-    if (selectedAnime.value) {
-      fetchEpisodes(selectedAnime.value.animeId, 1)
-    }
-  } else {
-    episodesPagination.value.page = page
-    episodesPagination.value.itemsPerPage = pageSize
-    if (selectedAnime.value) {
-      fetchEpisodes(selectedAnime.value.animeId, page)
-    }
-  }
-}
-
-const getMatchStatusMeta = (status) => {
-  if (status === 'MATCHED') {
-    return { color: 'success', text: '已匹配' }
-  }
-  if (status === 'NO_MATCH_FOUND') {
-    return { color: 'warning', text: '无匹配' }
-  }
-  return { color: 'grey', text: '未匹配' }
-}
 
 const openRematchDialog = (episode) => {
   rematchTargetFile.value = episode
@@ -224,7 +158,7 @@ const closeRematchDialog = () => {
 
 const handleRematchApplied = async () => {
   if (selectedAnime.value) {
-    await fetchEpisodes(selectedAnime.value.animeId, episodesPagination.value.page)
+    await fetchEpisodesPage()
   }
 }
 
@@ -244,7 +178,7 @@ const closeSubtitleDialog = () => {
   <div>
     <v-card elevation="2" class="mb-6">
       <v-card-title class="d-flex align-center ga-2">
-        <i class="mdi mdi-library" style="color: #c45d2b;"></i>
+        <i class="mdi mdi-library" style="color: var(--al-accent);"></i>
         动漫库管理
       </v-card-title>
 
@@ -316,13 +250,13 @@ const closeSubtitleDialog = () => {
           </div>
 
           <div
-            v-if="pagination.pageCount > pagination.itemsPerPage"
+            v-if="animeTotalElements > animePageSize"
             class="d-flex justify-center mt-4"
           >
             <v-pagination
-              v-model="pagination.page"
-              :length="Math.max(1, Math.ceil(pagination.pageCount / pagination.itemsPerPage))"
-              @update:model-value="(p) => onTableOptionsChange({ page: p, itemsPerPage: pagination.itemsPerPage })"
+              v-model="animePage"
+              :length="animePageCount"
+              @update:model-value="onAnimePageChange"
             />
           </div>
         </template>
@@ -396,7 +330,7 @@ const closeSubtitleDialog = () => {
                   </div>
                   <div class="flex items-center gap-1">
                     <span class="font-medium text-sm text-gray-700 min-w-[60px]">本地：</span>
-                    <span class="text-sm text-gray-900">{{ episodesPagination.pageCount }}</span>
+                    <span class="text-sm text-gray-900">{{ episodesTotalElements }}</span>
                   </div>
                   <div class="flex items-center gap-1" v-if="selectedAnime.duration">
                     <span class="font-medium text-sm text-gray-700 min-w-[60px]">片长：</span>
@@ -439,14 +373,14 @@ const closeSubtitleDialog = () => {
 
           <!-- 下方：剧集列表 -->
           <div>
-            <h4 class="mb-3">本地剧集列表 (共 {{ episodesPagination.pageCount }} 集)</h4>
+            <h4 class="mb-3">本地剧集列表 (共 {{ episodesTotalElements }} 集)</h4>
             <v-data-table-server
               :headers="episodeHeaders"
               :items="episodes"
               :loading="episodesLoading"
-              :items-per-page="episodesPagination.itemsPerPage"
-              :items-length="episodesPagination.pageCount"
-              :page="episodesPagination.page"
+              v-model:page="episodesPage"
+              v-model:items-per-page="episodesPageSize"
+              :items-length="episodesTotalElements"
               density="compact"
               class="elevation-1"
               hover
@@ -553,15 +487,6 @@ const closeSubtitleDialog = () => {
 </template>
 
 <style scoped>
-/* Tailwind CSS 补充定义 */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
-}
-
 /* 动漫封面卡片网格 */
 .anime-card-grid {
   display: grid;
@@ -586,8 +511,8 @@ const closeSubtitleDialog = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f4f4f5;
-  color: #c3b7ab;
+  background: rgb(var(--v-theme-surface-variant));
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .anime-card-body {
   padding: 10px 12px 12px;
@@ -596,7 +521,7 @@ const closeSubtitleDialog = () => {
   font-size: 0.85rem;
   font-weight: 600;
   line-height: 1.4;
-  color: #1f2937;
+  color: rgb(var(--v-theme-on-surface));
   margin-bottom: 6px;
   display: -webkit-box;
   -webkit-line-clamp: 2;

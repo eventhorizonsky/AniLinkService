@@ -1,29 +1,26 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { getScheduleRawJson } from '../api/anime'
+import { DEFAULT_POSTER, WEEKDAY_LABELS } from '../utils/constants'
+import { formatScore } from '../utils/format'
+import AnimeCard from '../components/AnimeCard.vue'
 
 const router = useRouter()
-const API_BASE = '/api'
-
-const defaultPoster = 'https://assets.anixplayer.net/image/poster/default.jpg'
 
 const bangumiList = ref([])
 const scheduleLoading = ref(false)
 const scheduleError = ref('')
 const activeDay = ref(new Date().getDay())
 
-const weekTabs = [
-  { label: '日', key: 0 }, { label: '一', key: 1 },
-  { label: '二', key: 2 }, { label: '三', key: 3 },
-  { label: '四', key: 4 }, { label: '五', key: 5 },
-  { label: '六', key: 6 }
-]
+const weekTabs = Object.entries(WEEKDAY_LABELS)
+  .filter(([key]) => Number(key) >= 0 && Number(key) <= 6)
+  .map(([key, label]) => ({ label, key: Number(key) }))
 
 const fetchSchedule = async () => {
   scheduleLoading.value = true; scheduleError.value = ''
   try {
-    const res = await fetch(`${API_BASE}/animes/shin/raw-json`)
-    const result = await res.json()
+    const result = await getScheduleRawJson()
     if (result.code !== 200 || !result.data || !Array.isArray(result.data.bangumiList))
       throw new Error('新番接口返回结构不正确')
     const nd = (d) => { if (d === 7) return 0; return Number.isInteger(d) ? d : -1 }
@@ -38,11 +35,6 @@ const filteredBangumi = computed(() =>
   bangumiList.value.filter(i => i.airDay === activeDay.value).sort((a, b) => (b.rating || 0) - (a.rating || 0))
 )
 const dayCount = (d) => bangumiList.value.filter(i => i.airDay === d).length
-
-const fmtScore = (v) => {
-  if (v == null || v === '') return '-'
-  const n = Number(v); return Number.isNaN(n) ? '-' : n.toFixed(1)
-}
 
 const goToDetail = (a) => { if (a?.animeId) router.push('/anime/' + a.animeId) }
 
@@ -78,19 +70,22 @@ onMounted(() => { fetchSchedule() })
     <div v-else-if="scheduleError" class="br-empty error"><i class="mdi mdi-alert-circle-outline"></i> {{ scheduleError }}</div>
     <div v-else-if="!filteredBangumi.length" class="br-empty"><i class="mdi mdi-coffee-outline"></i> 该日暂无新番</div>
     <div v-else class="br-grid">
-      <div v-for="a in filteredBangumi" :key="a.animeId" class="br-card" @click="goToDetail(a)">
-        <div class="br-card-image">
-          <img :src="a.imageUrl || defaultPoster" :alt="a.animeTitle" loading="lazy" />
-          <span class="br-badge-score"><i class="mdi mdi-star"></i> {{ fmtScore(a.rating) }}</span>
+      <AnimeCard
+        v-for="a in filteredBangumi"
+        :key="a.animeId"
+        :image-url="a.imageUrl || DEFAULT_POSTER"
+        :alt="a.animeTitle"
+        :title="a.animeTitle"
+        @click="goToDetail(a)"
+      >
+        <template #badges>
+          <span class="br-badge-score"><i class="mdi mdi-star"></i> {{ formatScore(a.rating) }}</span>
           <span v-if="a.isOnAir" class="br-badge-dot" title="连载中"></span>
-        </div>
-        <div class="br-card-body">
-          <h4>{{ a.animeTitle }}</h4>
-          <div class="br-card-meta">
-            <span class="genre">{{ a.isOnAir ? '连载中' : '已完结' }}</span>
-          </div>
-        </div>
-      </div>
+        </template>
+        <template #meta>
+          <span class="genre">{{ a.isOnAir ? '连载中' : '已完结' }}</span>
+        </template>
+      </AnimeCard>
     </div>
   </div>
 </template>

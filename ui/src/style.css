@@ -1,47 +1,53 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import './styles/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background-color: var(--al-bg);
+    color: var(--al-text);
+  }
+
+  #app {
+    width: 100%;
+    min-height: 100%;
+  }
+
+  body {
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
 }
 
-html, body {
-  width: 100%;
-  min-height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
+@layer components {
+  /* 让 vuetify 容器在前台/后台中占满宽度（后台与安装页仍使用 vuetify） */
+  .v-container {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    width: 100%;
+  }
 
-#app {
-  width: 100%;
-  min-height: 100%;
-}
-
-.v-container {
-  max-width: none !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  width: 100%;
-}
-
-.unified-page-shell {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 8px 0 14px;
-}
-
-.unified-panel {
-  border: 1px solid #eceff3;
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 6px 24px rgba(0, 0, 0, 0.05);
-}
-
-.unified-panel-title {
-  background: transparent;
-  border-bottom: 1px solid #f0f0f0;
-  color: #2f2b28;
+  /* 前台页面统一外壳（RemoteAccess 等使用） */
+  .unified-page-shell {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 8px 0 14px;
+  }
 }
 
 @media (max-width: 760px) {

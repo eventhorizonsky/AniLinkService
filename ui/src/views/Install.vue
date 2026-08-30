@@ -1,13 +1,12 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
 import InstallStep1 from '../components/InstallStep1.vue'
 import InstallStep2 from '../components/InstallStep2.vue'
 import InstallStep3 from '../components/InstallStep3.vue'
+import { initSiteConfig } from '../api/site'
+import { DEFAULT_DANDAN_BASE_URL } from '../utils/constants'
 
-const API_BASE = '/api'
-const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 const router = useRouter()
 
 const currentStep = ref(1)
@@ -21,12 +20,10 @@ const form = ref({
   siteUrl: window.location.origin,
   adminUsername: '',
   adminPassword: '',
-  dandanBaseUrl: DEFAULT_DANDAN_BASE_URL
+  dandanBaseUrl: DEFAULT_DANDAN_BASE_URL,
+  dandanAppId: '',
+  dandanAppSecret: ''
 })
-
-// 增加 Dandan 字段
-form.value.dandanAppId = ''
-form.value.dandanAppSecret = ''
 
 const nextStep = () => {
   errorMessage.value = ''
@@ -91,19 +88,18 @@ const submitInstallation = async () => {
   loading.value = true
 
   try {
-    const res = await axios.post(`${API_BASE}/init/site-config`, {
+    const res = await initSiteConfig({
       siteName: form.value.siteName,
       siteDescription: form.value.siteDescription,
       siteUrl: form.value.siteUrl,
       adminUsername: form.value.adminUsername,
-      adminPassword: form.value.adminPassword
-        ,
+      adminPassword: form.value.adminPassword,
         dandanAppId: form.value.dandanAppId,
         dandanAppSecret: form.value.dandanAppSecret,
         dandanBaseUrl: form.value.dandanBaseUrl
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       success.value = true
       localStorage.setItem('installed', 'true')
       localStorage.setItem('siteConfig', JSON.stringify({
@@ -111,7 +107,7 @@ const submitInstallation = async () => {
         siteUrl: form.value.siteUrl
       }))
     } else {
-      errorMessage.value = res.data?.msg || '安装失败'
+      errorMessage.value = res?.msg || '安装失败'
     }
   } catch (error) {
     errorMessage.value = error.response?.data?.msg || '安装失败，请稍后重试'
@@ -133,7 +129,7 @@ const steps = [
 
 <template>
   <v-app>
-    <v-main class="bg-grey-lighten-5 install-main">
+    <v-main class="bg-background install-main">
       <v-container fluid class="fill-height d-flex justify-center install-container">
 
         <!-- 安装成功 -->
@@ -146,7 +142,7 @@ const steps = [
             <h2 class="text-h4 mt-4 mb-2">恭喜！安装完成</h2>
             <p class="text-body-1 text-grey mb-6">AniLinkService 已成功安装</p>
             <v-divider class="my-4" />
-            <div class="text-left bg-grey-lighten-4 rounded-lg pa-4">
+            <div class="text-left bg-surface rounded-lg pa-4">
               <p class="mb-2"><strong>站点名称：</strong>{{ form.siteName }}</p>
               <p><strong>管理员账号：</strong>{{ form.adminUsername }}</p>
             </div>

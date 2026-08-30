@@ -1,14 +1,20 @@
 <script setup>
-import { ref, computed, onMounted, watch, defineAsyncComponent, provide } from 'vue'
+import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import { useTheme } from '../composables/useTheme'
+import { useAuth } from '../composables/useAuth'
+import { useIsMobile } from '../composables/useIsMobile'
+import { isSuperAdmin as checkSuperAdmin } from '../utils/constants'
+import { getCurrentUser } from '../api/auth'
 
-const API_BASE = '/api'
+const { isDark } = useTheme()
+const { userInfo, setUserInfo, clearAuth } = useAuth()
+
 const router = useRouter()
 
 // 移动端默认收起侧边栏，桌面端默认展开
-const isMobile = () => typeof window !== 'undefined' && window.innerWidth <= 1280
-const drawer = ref(!isMobile())
+const { isMobile } = useIsMobile(1280, { useInnerWidth: true })
+const drawer = ref(!isMobile.value)
 const selectedItem = ref('system')
 
 const SystemInfo = defineAsyncComponent(() => import('./admin/SystemInfo.vue'))
@@ -53,13 +59,7 @@ const componentMap = Object.fromEntries(
   [...mainMenuItems, ...systemSettingsMenuItems, ...mediaMenuItems].map(item => [item.id, item.component])
 )
 
-const userInfo = ref(null)
-
-const isSuperAdmin = computed(() =>
-  Array.isArray(userInfo.value?.roleCodeList) && userInfo.value.roleCodeList.includes('super-admin')
-)
-
-const visibleMainMenuItems = computed(() => mainMenuItems)
+const isSuperAdmin = computed(() => checkSuperAdmin(userInfo.value))
 
 const visibleSystemSettingsItems = computed(() =>
   systemSettingsMenuItems.filter((item) => item.id !== 'mcp' || isSuperAdmin.value)
@@ -68,11 +68,10 @@ const visibleSystemSettingsItems = computed(() =>
 // 获取当前用户信息
 const fetchUserInfo = async () => {
   try {
-    const res = await axios.post(`${API_BASE}/auth/currentUser`)
-    if (res.data?.code === 200 && res.data?.data) {
-      const userData = res.data.data
-      localStorage.setItem('userInfo', JSON.stringify(userData))
-      userInfo.value = userData
+    const res = await getCurrentUser()
+    if (res?.code === 200 && res?.data) {
+      const userData = res.data
+      setUserInfo(userData)
     }
   } catch (error) {
     console.error('获取用户信息失败:', error)
@@ -81,26 +80,15 @@ const fetchUserInfo = async () => {
 }
 
 const checkLoginStatus = () => {
-  const token = localStorage.getItem('token')
-  const user = localStorage.getItem('userInfo')
-  if (!token || !user) {
+  if (!userInfo.value) {
     router.push('/')
     return
   }
-  try {
-    userInfo.value = JSON.parse(user)
-    // 获取最新的用户信息
-    fetchUserInfo()
-  } catch (e) {
-    console.error('解析用户信息失败:', e)
-    router.push('/')
-  }
+  fetchUserInfo()
 }
 
 const handleLogout = () => {
-  localStorage.removeItem('token')
-  localStorage.removeItem('userInfo')
-  userInfo.value = null
+  clearAuth()
   router.push('/')
 }
 
@@ -108,15 +96,13 @@ const currentComponent = computed(() => {
   return componentMap[selectedItem.value] || mainMenuItems[0].component
 })
 
-const fallbackMenuId = computed(() => visibleMainMenuItems.value[0]?.id || 'system')
+const fallbackMenuId = computed(() => mainMenuItems[0]?.id || 'system')
 
 // 移动端选中导航后收起侧边栏（分组子项同样生效，分组头展开不触发）
 const handleSelectMenu = (id) => {
   selectedItem.value = id
-  if (isMobile()) drawer.value = false
+  if (isMobile.value) drawer.value = false
 }
-
-provide('navigateTo', handleSelectMenu)
 
 onMounted(() => {
   checkLoginStatus()
@@ -150,7 +136,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
 
       <v-list density="compact" nav>
         <v-list-item
-          v-for="item in visibleMainMenuItems"
+          v-for="item in mainMenuItems"
           :key="item.id"
           :value="item.id"
           :active="selectedItem === item.id"
@@ -218,7 +204,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
       </template>
     </v-navigation-drawer>
 
-    <v-app-bar color="primary" elevation="2">
+    <v-app-bar :color="isDark ? 'surface' : 'primary'" elevation="2">
       <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
       <v-app-bar-title class="text-white">管理后台</v-app-bar-title>
       <v-spacer />
@@ -228,7 +214,7 @@ watch([isSuperAdmin, () => selectedItem.value], () => {
       </v-btn>
     </v-app-bar>
 
-    <v-main class="bg-grey-lighten-5">
+    <v-main class="bg-background">
       <v-container class="pa-6">
         <component :is="currentComponent" />
       </v-container>

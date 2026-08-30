@@ -26,6 +26,9 @@ public class SiteConfigService {
     
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private BangumiImageSelfHealService bangumiImageSelfHealService;
     
     // 配置键常量
     private static final String SITE_NAME = "site_name";
@@ -317,7 +320,11 @@ public class SiteConfigService {
             saveOrUpdateConfig(RSS_PROXY_PORT, String.valueOf(Math.max(0, request.getRssProxyPort())), "RSS 请求代理端口");
         }
         if (request.getBangumiMirrorBaseUrl() != null) {
-            saveOrUpdateConfig(BANGUMI_MIRROR_BASE_URL, request.getBangumiMirrorBaseUrl().trim(), "Bangumi API 镜像地址");
+            String oldMirror = getBangumiMirrorBaseUrl();
+            String newMirror = request.getBangumiMirrorBaseUrl().trim();
+            saveOrUpdateConfig(BANGUMI_MIRROR_BASE_URL, newMirror, "Bangumi API 镜像地址");
+            // 镜像地址变化后自愈旧镜像 CDN 入库的封面地址（异步 best-effort）
+            bangumiImageSelfHealService.healAfterMirrorChange(oldMirror, newMirror);
         }
         if (request.getBangumiNextMirrorBaseUrl() != null) {
             saveOrUpdateConfig(BANGUMI_NEXT_MIRROR_BASE_URL, request.getBangumiNextMirrorBaseUrl().trim(), "Bangumi Next API 镜像地址");

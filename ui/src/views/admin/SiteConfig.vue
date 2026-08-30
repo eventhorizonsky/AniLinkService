@@ -1,10 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
 import { showAppMessage } from '../../utils/ui-feedback'
-
-const API_BASE = '/api'
-const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
+import { getUserRoles } from '../../api/system'
+import { getSiteConfig, saveSiteConfig, healBangumiImages as apiHealBangumiImages, sendTestEmail as apiSendTestEmail } from '../../api/site'
+import { updateSiteConfig } from '../../utils/siteConfig'
+import { DEFAULT_DANDAN_BASE_URL } from '../../utils/constants'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -12,6 +12,7 @@ const activeTab = ref('basic')
 const showTestEmailDialog = ref(false)
 const testEmail = ref('')
 const sendingTestEmail = ref(false)
+const healingImages = ref(false)
 const roleOptions = ref([])
 
 const form = ref({
@@ -46,9 +47,9 @@ form.value.smtpPasswordConfigured = false
 
 const fetchRoleOptions = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/users/roles`)
-    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
-      roleOptions.value = res.data.data
+    const res = await getUserRoles()
+    if (res?.code === 200 && Array.isArray(res.data)) {
+      roleOptions.value = res.data
       return
     }
     roleOptions.value = []
@@ -61,32 +62,32 @@ const fetchRoleOptions = async () => {
 const fetchConfig = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/site/config`)
-    if (res.data?.data) {
+    const res = await getSiteConfig()
+    if (res?.data) {
       form.value = {
-        siteName: res.data.data.siteName || '',
-        siteDescription: res.data.data.siteDescription || '',
-        siteUrl: res.data.data.siteUrl || '',
-        dandanAppId: res.data.data.dandanAppId || '',
+        siteName: res.data.siteName || '',
+        siteDescription: res.data.siteDescription || '',
+        siteUrl: res.data.siteUrl || '',
+        dandanAppId: res.data.dandanAppId || '',
         dandanAppSecret: '',
-        dandanBaseUrl: res.data.data.dandanBaseUrl || DEFAULT_DANDAN_BASE_URL,
-        dandanAppSecretConfigured: !!res.data.data.dandanAppSecretConfigured,
-        authRegisterEnabled: !!res.data.data.authRegisterEnabled,
-        remoteAccessEnabled: !!res.data.data.remoteAccessEnabled,
-        remoteAccessTokenRequired: !!res.data.data.remoteAccessTokenRequired,
-        remoteAccessRequiredRole: res.data.data.remoteAccessRequiredRole || 'user',
-        smtpHost: res.data.data.smtpHost || '',
-        smtpPort: res.data.data.smtpPort || 465,
-        smtpUsername: res.data.data.smtpUsername || '',
+        dandanBaseUrl: res.data.dandanBaseUrl || DEFAULT_DANDAN_BASE_URL,
+        dandanAppSecretConfigured: !!res.data.dandanAppSecretConfigured,
+        authRegisterEnabled: !!res.data.authRegisterEnabled,
+        remoteAccessEnabled: !!res.data.remoteAccessEnabled,
+        remoteAccessTokenRequired: !!res.data.remoteAccessTokenRequired,
+        remoteAccessRequiredRole: res.data.remoteAccessRequiredRole || 'user',
+        smtpHost: res.data.smtpHost || '',
+        smtpPort: res.data.smtpPort || 465,
+        smtpUsername: res.data.smtpUsername || '',
         smtpPassword: '',
-        smtpFromEmail: res.data.data.smtpFromEmail || '',
-        smtpFromName: res.data.data.smtpFromName || '',
-        smtpSslEnabled: res.data.data.smtpSslEnabled !== false,
-        smtpStarttlsEnabled: !!res.data.data.smtpStarttlsEnabled,
-        smtpPasswordConfigured: !!res.data.data.smtpPasswordConfigured,
-        thumbnailPlaybackEnabled: !!res.data.data.thumbnailPlaybackEnabled,
-        bangumiMirrorBaseUrl: res.data.data.bangumiMirrorBaseUrl || '',
-        bangumiNextMirrorBaseUrl: res.data.data.bangumiNextMirrorBaseUrl || ''
+        smtpFromEmail: res.data.smtpFromEmail || '',
+        smtpFromName: res.data.smtpFromName || '',
+        smtpSslEnabled: res.data.smtpSslEnabled !== false,
+        smtpStarttlsEnabled: !!res.data.smtpStarttlsEnabled,
+        smtpPasswordConfigured: !!res.data.smtpPasswordConfigured,
+        thumbnailPlaybackEnabled: !!res.data.thumbnailPlaybackEnabled,
+        bangumiMirrorBaseUrl: res.data.bangumiMirrorBaseUrl || '',
+        bangumiNextMirrorBaseUrl: res.data.bangumiNextMirrorBaseUrl || ''
       }
     }
   } catch (error) {
@@ -106,36 +107,33 @@ const saveConfig = async () => {
   saving.value = true
 
   try {
-    const res = await axios.put(`${API_BASE}/site/config`, {
+    const res = await saveSiteConfig({
       siteName: form.value.siteName,
       siteDescription: form.value.siteDescription,
-      siteUrl: form.value.siteUrl
-        ,
-        dandanAppId: form.value.dandanAppId,
-        dandanAppSecret: form.value.dandanAppSecret || null,
-        dandanBaseUrl: form.value.dandanBaseUrl,
-        authRegisterEnabled: form.value.authRegisterEnabled,
-        remoteAccessEnabled: form.value.remoteAccessEnabled,
-        remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
-        remoteAccessRequiredRole: form.value.remoteAccessRequiredRole,
-        smtpHost: form.value.smtpHost,
-        smtpPort: form.value.smtpPort,
-        smtpUsername: form.value.smtpUsername,
-        smtpPassword: form.value.smtpPassword || null,
-        smtpFromEmail: form.value.smtpFromEmail,
-        smtpFromName: form.value.smtpFromName,
-        smtpSslEnabled: form.value.smtpSslEnabled,
-        smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
-        thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
-        bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null,
-        bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
+      siteUrl: form.value.siteUrl,
+      dandanAppId: form.value.dandanAppId,
+      dandanAppSecret: form.value.dandanAppSecret || null,
+      dandanBaseUrl: form.value.dandanBaseUrl,
+      authRegisterEnabled: form.value.authRegisterEnabled,
+      remoteAccessEnabled: form.value.remoteAccessEnabled,
+      remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
+      remoteAccessRequiredRole: form.value.remoteAccessRequiredRole,
+      smtpHost: form.value.smtpHost,
+      smtpPort: form.value.smtpPort,
+      smtpUsername: form.value.smtpUsername,
+      smtpPassword: form.value.smtpPassword || null,
+      smtpFromEmail: form.value.smtpFromEmail,
+      smtpFromName: form.value.smtpFromName,
+      smtpSslEnabled: form.value.smtpSslEnabled,
+      smtpStarttlsEnabled: form.value.smtpStarttlsEnabled,
+      thumbnailPlaybackEnabled: form.value.thumbnailPlaybackEnabled,
+      bangumiMirrorBaseUrl: form.value.bangumiMirrorBaseUrl || null,
+      bangumiNextMirrorBaseUrl: form.value.bangumiNextMirrorBaseUrl || null
     })
 
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('保存成功', 'success')
-      const localConfig = JSON.parse(localStorage.getItem('siteConfig') || '{}')
-      localStorage.setItem('siteConfig', JSON.stringify({
-        ...localConfig,
+      updateSiteConfig({
         siteName: form.value.siteName,
         siteDescription: form.value.siteDescription,
         siteUrl: form.value.siteUrl,
@@ -143,14 +141,31 @@ const saveConfig = async () => {
         remoteAccessEnabled: form.value.remoteAccessEnabled,
         remoteAccessTokenRequired: form.value.remoteAccessTokenRequired,
         remoteAccessRequiredRole: form.value.remoteAccessRequiredRole
-      }))
+      })
     } else {
-      showAppMessage(res.data?.msg || '保存失败', 'error')
+      showAppMessage(res?.msg || '保存失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '保存失败，请稍后重试', 'error')
   } finally {
     saving.value = false
+  }
+}
+
+const handleHealBangumiImages = async () => {
+  if (healingImages.value) return
+  healingImages.value = true
+  try {
+    const res = await apiHealBangumiImages()
+    if (res?.code === 200) {
+      showAppMessage(res?.msg || '封面修复已触发，正在后台执行', 'success')
+    } else {
+      showAppMessage(res?.msg || '触发失败', 'error')
+    }
+  } catch (error) {
+    showAppMessage(error.response?.data?.msg || '触发失败', 'error')
+  } finally {
+    healingImages.value = false
   }
 }
 
@@ -168,14 +183,14 @@ const sendTestEmail = async () => {
   sendingTestEmail.value = true
 
   try {
-    const res = await axios.post(`${API_BASE}/site/test-email`, {
+    const res = await apiSendTestEmail({
       toEmail: testEmail.value
     })
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('测试邮件已发送，请检查邮箱', 'success')
       showTestEmailDialog.value = false
     } else {
-      showAppMessage(res.data?.msg || '测试邮件发送失败', 'error')
+      showAppMessage(res?.msg || '测试邮件发送失败', 'error')
     }
   } catch (error) {
     showAppMessage(error.response?.data?.msg || '测试邮件发送失败，请稍后重试', 'error')
@@ -438,10 +453,33 @@ onMounted(() => {
                 variant="outlined"
                 color="primary"
                 placeholder="https://next.bgm.tv"
-                hint="例如 https://next.bangumi.lol，用于 next.bgm.tv (p1) 接口，如单集吐槽"
+                hint="例如 https://next.bangumi.pro，用于 next.bgm.tv (p1) 接口，如单集吐槽"
                 persistent-hint
                 class="mb-3"
               />
+
+              <v-alert
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="mb-2"
+              >
+                <div class="d-flex align-center flex-wrap ga-2">
+                  <span class="text-body-2 flex-grow-1">
+                    切换镜像地址后，如果出现追番封面图裂情况，可以点击此按钮修复存量封面地址。
+                  </span>
+                  <v-btn
+                    color="primary"
+                    size="small"
+                    :loading="healingImages"
+                    :disabled="healingImages"
+                    prepend-icon="mdi-image-refresh"
+                    @click="handleHealBangumiImages"
+                  >
+                    {{ healingImages ? '修复中...' : '修复封面图片' }}
+                  </v-btn>
+                </div>
+              </v-alert>
             </v-window-item>
 
             <v-window-item value="remote-access">

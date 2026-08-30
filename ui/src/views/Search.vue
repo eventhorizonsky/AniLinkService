@@ -1,12 +1,15 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
+import { getAnimeList, getSeasonList, getSeasonAnime, searchDandanAnimes } from '../api/anime'
 import { formatAnimeType } from '../utils/animeType'
+import { formatScore } from '../utils/format'
+import { useIsMobile } from '../composables/useIsMobile'
+import AnimeCard from '../components/AnimeCard.vue'
 
 const route = useRoute()
 const router = useRouter()
-const API_BASE = '/api'
+const { isMobile } = useIsMobile(768)
 
 const activeTab = ref('library')
 
@@ -22,18 +25,22 @@ const libHasMore = ref(false)
 const libScrollEl = ref(null)
 const libPageSize = 24
 
+// 请求序号，防止快速切换关键词时过期响应覆盖新数据
+let libFetchSeq = 0
+
 const libHasResult = computed(() => libList.value.length > 0)
 
 const fetchLibrary = async (append = false) => {
   if (append) libLoadingMore.value = true
   else { libLoading.value = true; libError.value = '' }
 
+  const seq = ++libFetchSeq
   try {
     const params = { page: libPage.value, pageSize: libPageSize }
     if (libKeyword.value.trim()) params.keyword = libKeyword.value.trim()
-    const res = await axios.get(`${API_BASE}/animes`, { params })
-    if (res.data?.code !== 200) throw new Error(res.data?.msg || '请求失败')
-    const data = res.data?.data
+    const res = await getAnimeList(params)
+    if (seq !== libFetchSeq) return
+    const data = res?.data
     const items = Array.isArray(data?.content) ? data.content : []
     if (append) libList.value.push(...items)
     else libList.value = items
@@ -41,11 +48,14 @@ const fetchLibrary = async (append = false) => {
     const totalPages = Number(data?.totalPages || 0)
     libHasMore.value = libPage.value < totalPages
   } catch (e) {
+    if (seq !== libFetchSeq) return
     libError.value = e?.response?.data?.msg || e?.message || '加载失败'
     if (!append) { libList.value = []; libTotal.value = 0; libHasMore.value = false }
   } finally {
-    if (append) libLoadingMore.value = false
-    else libLoading.value = false
+    if (seq === libFetchSeq) {
+      if (append) libLoadingMore.value = false
+      else libLoading.value = false
+    }
   }
 }
 
@@ -59,8 +69,7 @@ const libSearch = () => {
 const libOuterEl = ref(null)
 
 const onLibScroll = () => {
-  const isMobile = window.matchMedia('(max-width: 768px)').matches
-  const el = isMobile ? libOuterEl.value : libScrollEl.value
+  const el = isMobile.value ? libOuterEl.value : libScrollEl.value
   if (!el || libLoadingMore.value || !libHasMore.value) return
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
     libPage.value++
@@ -82,62 +91,83 @@ const dbMonths = computed(() => {
   return dbSeasons.value.filter(s => s.year === dbYear.value).map(s => s.month).sort((a, b) => a - b)
 })
 
+let seasonFetchSeq = 0
+
 const fetchSeasons = async () => {
+  const seq = ++seasonFetchSeq
   try {
-    const res = await axios.get(`${API_BASE}/v2/bangumi/season/anime`)
-    const data = res.data
+    const res = await getSeasonList()
+    if (seq !== seasonFetchSeq) return
+    const data = res
     if (Array.isArray(data?.seasons)) dbSeasons.value = data.seasons
     else if (Array.isArray(data)) dbSeasons.value = data
     if (dbSeasons.value.length) {
       const latest = dbSeasons.value.reduce((a, b) =>
         b.year > a.year || (b.year === a.year && b.month > a.month) ? b : a)
       dbYear.value = latest.year; dbMonth.value = latest.month
-      await fetchSeasonAnime()
+      await fetchSeasonAnime(seq)
     }
-  } catch (e) { dbError.value = '获取季度列表失败'; console.error(e) }
+  } catch (e) {
+    if (seq !== seasonFetchSeq) return
+    dbError.value = '获取季度列表失败'; console.error(e)
+  }
 }
 
-const fetchSeasonAnime = async () => {
+const fetchSeasonAnime = async (expectedSeq = seasonFetchSeq) => {
   if (dbYear.value == null || dbMonth.value == null) return
+  const seq = ++seasonFetchSeq
   dbLoading.value = true; dbError.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/v2/bangumi/season/anime/${dbYear.value}/${dbMonth.value}`)
-    const data = res.data
+    const res = await getSeasonAnime(dbYear.value, dbMonth.value)
+    if (seq !== seasonFetchSeq) return
+    const data = res
     if (Array.isArray(data?.bangumiList)) dbList.value = data.bangumiList
     else if (Array.isArray(data)) dbList.value = data
     else dbList.value = []
-  } catch (e) { dbError.value = '获取季度番剧失败'; dbList.value = [] }
-  finally { dbLoading.value = false }
+  } catch (e) {
+    if (seq !== seasonFetchSeq) return
+    dbError.value = '获取季度番剧失败'; dbList.value = []
+  }
+  finally { if (seq === seasonFetchSeq) dbLoading.value = false }
 }
 
 const selectSeason = async (year, month) => { dbYear.value = year; dbMonth.value = month; await fetchSeasonAnime() }
-const toAnime = (id) => { if (id) router.push(`/anime/${id}`) }
 
 // ===================== Database Search (弹弹番剧库) =====================
 const dbKeyword = ref('')
 const dbSearching = ref(false)
 const dbSearchResults = ref([])
 const dbSearched = ref(false)
+const dbSearchError = ref('')
+
+let dbSearchSeq = 0
 
 const dbSearch = async () => {
   const kw = dbKeyword.value.trim()
   if (kw.length < 2) {
+    dbSearchSeq++
     dbSearched.value = true
     dbSearchResults.value = []
+    dbSearchError.value = ''
     return
   }
+  const seq = ++dbSearchSeq
   dbSearching.value = true
   dbSearched.value = true
+  dbSearchError.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/animes/search-dandan`, { params: { keyword: kw } })
-    const raw = res.data?.data
+    const res = await searchDandanAnimes(kw)
+    if (seq !== dbSearchSeq) return
+    const raw = res?.data
     const listRaw = raw?.animes || raw?.data?.animes || []
     dbSearchResults.value = Array.isArray(listRaw) ? listRaw : []
   } catch (e) {
+    if (seq !== dbSearchSeq) return
     console.error('搜索弹弹番剧失败:', e)
     dbSearchResults.value = []
+    dbSearchError.value = e?.response?.data?.msg || '搜索失败，请稍后重试'
   } finally {
-    dbSearching.value = false
+    if (seq === dbSearchSeq) dbSearching.value = false
   }
 }
 
@@ -145,6 +175,7 @@ const dbClearSearch = () => {
   dbKeyword.value = ''
   dbSearchResults.value = []
   dbSearched.value = false
+  dbSearchError.value = ''
 }
 
 // Season label
@@ -230,19 +261,20 @@ onBeforeUnmount(() => {
         </div>
         <template v-else>
           <div class="br-grid">
-            <router-link v-for="a in libList" :key="a.id || a.animeId" :to="'/anime/' + a.animeId" class="br-card">
-              <div class="br-card-image">
-                <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.title" loading="lazy" />
-                <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
-                <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-              </div>
-              <div class="br-card-body">
-                <h4 :title="a.title">{{ a.title || '未命名动漫' }}</h4>
-                <div class="br-card-meta">
-                  <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
-                </div>
-              </div>
-            </router-link>
+            <AnimeCard
+              v-for="a in libList"
+              :key="a.id || a.animeId"
+              :to="'/anime/' + a.animeId"
+              :image-url="a.imageUrl"
+              :alt="a.title"
+              :title="a.title || '未命名动漫'"
+              :title-attr="a.title"
+              hover
+            >
+              <template #meta>
+                <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
+              </template>
+            </AnimeCard>
           </div>
           <div v-if="libLoadingMore" class="load-more"><i class="mdi mdi-loading mdi-spin"></i> 加载更多...</div>
           <div v-else-if="!libHasMore && libList.length > libPageSize" class="load-more load-done">— 已加载全部 {{ libTotal }} 条 —</div>
@@ -298,21 +330,30 @@ onBeforeUnmount(() => {
         <div v-if="dbSearching" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
 
         <div v-else-if="dbKeyword && dbSearchResults.length" class="br-grid">
-          <router-link v-for="a in dbSearchResults" :key="a.animeId" :to="'/anime/' + a.animeId" class="br-card">
-            <div class="br-card-image">
-              <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle || a.title" loading="lazy" decoding="async" />
-              <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
-              <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
-              <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-            </div>
-            <div class="br-card-body">
-              <h4 :title="a.animeTitle || a.title">{{ a.animeTitle || a.title || '未命名番剧' }}</h4>
-              <div class="br-card-meta">
-                <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
-                <span v-else-if="a.year" class="genre">{{ a.year }}</span>
-              </div>
-            </div>
-          </router-link>
+          <AnimeCard
+            v-for="a in dbSearchResults"
+            :key="a.animeId"
+            :to="'/anime/' + a.animeId"
+            :image-url="a.imageUrl"
+            :alt="a.animeTitle || a.title"
+            :title="a.animeTitle || a.title || '未命名番剧'"
+            :title-attr="a.animeTitle || a.title"
+            hover
+          >
+            <template #badges>
+              <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ formatScore(a.rating) }}</span>
+            </template>
+            <template #meta>
+              <span v-if="a.type" class="genre">{{ formatAnimeType(a.type) }}</span>
+              <span v-else-if="a.year" class="genre">{{ a.year }}</span>
+            </template>
+          </AnimeCard>
+        </div>
+
+        <div v-else-if="dbKeyword && dbSearchError" class="empty-block error">
+          <i class="mdi mdi-alert-circle empty-icon"></i>
+          <p class="empty-title">搜索失败</p>
+          <p class="empty-hint">{{ dbSearchError }}</p>
         </div>
 
         <div v-else-if="dbKeyword" class="empty-block">
@@ -334,17 +375,20 @@ onBeforeUnmount(() => {
             <p class="empty-title">该季度暂无番剧</p>
           </div>
           <div v-else class="br-grid">
-            <router-link v-for="a in dbList" :key="a.animeId" :to="'/anime/' + a.animeId" class="br-card">
-              <div class="br-card-image">
-                <img v-if="a.imageUrl" :src="a.imageUrl" :alt="a.animeTitle" loading="lazy" decoding="async" />
-                <div v-else class="rc-no-img"><i class="mdi mdi-image-off"></i></div>
-                <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ Number(a.rating).toFixed(1) }}</span>
-                <div class="rc-hover"><i class="mdi mdi-play-circle-outline"></i></div>
-              </div>
-              <div class="br-card-body">
-                <h4 :title="a.animeTitle">{{ a.animeTitle }}</h4>
-              </div>
-            </router-link>
+            <AnimeCard
+              v-for="a in dbList"
+              :key="a.animeId"
+              :to="'/anime/' + a.animeId"
+              :image-url="a.imageUrl"
+              :alt="a.animeTitle"
+              :title="a.animeTitle"
+              :title-attr="a.animeTitle"
+              hover
+            >
+              <template #badges>
+                <span class="br-badge-score" v-if="a.rating"><i class="mdi mdi-star"></i>{{ formatScore(a.rating) }}</span>
+              </template>
+            </AnimeCard>
           </div>
         </template>
       </div>
@@ -368,7 +412,7 @@ onBeforeUnmount(() => {
 .discover-tabs {
   display: flex;
   gap: 6px;
-  background: #f4f4f5;
+  background: var(--al-border-extra);
   border-radius: 12px;
   padding: 4px;
   width: fit-content;
@@ -391,7 +435,7 @@ onBeforeUnmount(() => {
 }
 .discover-tab:hover { color: var(--anime-accent-red); }
 .discover-tab.active {
-  background: #fff;
+  background: var(--al-bg);
   color: var(--anime-accent-red);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
@@ -409,8 +453,8 @@ onBeforeUnmount(() => {
 /* ========================= TOOLBAR ========================= */
 .toolbar {
   flex-shrink: 0;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 14px;
   padding: 12px 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -424,12 +468,12 @@ onBeforeUnmount(() => {
 .toolbar-row + .toolbar-row {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed #f0f0f0;
+  border-top: 1px dashed var(--al-border-neutral);
 }
 .toolbar-meta {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--al-border-neutral);
   font-size: 0.78rem;
   color: var(--anime-text-secondary);
 }
@@ -463,18 +507,18 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #f9fafb;
-  border: 1.5px solid #e5e7eb;
+  background: var(--al-bg-soft);
+  border: 1.5px solid var(--al-border-input);
   border-radius: 999px;
   padding: 0 16px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .search-box:focus-within {
   border-color: var(--anime-accent-red);
-  background: #fff;
-  box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12);
+  background: var(--al-bg);
+  box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12);
 }
-.search-box i { color: #9ca3af; font-size: 1rem; flex-shrink: 0; }
+.search-box i { color: var(--al-text-placeholder); font-size: 1rem; flex-shrink: 0; }
 .search-box input {
   flex: 1;
   border: none;
@@ -485,8 +529,8 @@ onBeforeUnmount(() => {
   padding: 10px 0;
   font-family: inherit;
 }
-.search-box input::placeholder { color: #9ca3af; }
-.search-clear { border: none; background: none; color: #9ca3af; cursor: pointer; padding: 2px; font-size: 0.9rem; }
+.search-box input::placeholder { color: var(--al-text-placeholder); }
+.search-clear { border: none; background: none; color: var(--al-text-placeholder); cursor: pointer; padding: 2px; font-size: 0.9rem; }
 .search-clear:hover { color: var(--anime-accent-red); }
 
 .btn-search {
@@ -495,7 +539,7 @@ onBeforeUnmount(() => {
   gap: 5px;
   border: none;
   background: var(--anime-accent-red);
-  color: #fff;
+  color: var(--al-text-on-accent);
   font-weight: 600;
   padding: 0 22px;
   border-radius: 999px;
@@ -505,9 +549,9 @@ onBeforeUnmount(() => {
   font-family: inherit;
   height: 42px;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--al-accent-rgb), 0.3);
 }
-.btn-search:hover:not(:disabled) { background: #a65628; }
+.btn-search:hover:not(:disabled) { background: var(--al-accent-strong); }
 .btn-search:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ---- season selects ---- */
@@ -515,12 +559,12 @@ onBeforeUnmount(() => {
 .ss-field { display: flex; align-items: center; gap: 6px; }
 .ss-field label { font-size: 0.95rem; color: var(--anime-text-secondary); }
 .ss-field select {
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--al-border-input);
   border-radius: 10px;
   padding: 9px 32px 9px 12px;
   font-size: 0.9rem;
   color: var(--anime-text-main);
-  background: #fff;
+  background: var(--al-bg);
   cursor: pointer;
   outline: none;
   font-family: inherit;
@@ -536,36 +580,7 @@ onBeforeUnmount(() => {
 .ss-sep { font-size: 0.85rem; color: var(--anime-text-secondary); font-weight: 500; }
 
 /* ========================= RESULT CARD ========================= */
-/* 复用 browse.css 的 .br-card 卡片样式，这里仅保留缺失图占位与播放遮罩 */
-
-.rc-no-img {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c3b7ab;
-  font-size: 2rem;
-  background: linear-gradient(135deg, #f4eee7, #e8e0d6);
-}
-
-.rc-hover {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-  pointer-events: none;
-}
-.rc-hover i {
-  font-size: 2rem;
-  color: #fff;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
-}
-.br-card:hover .rc-hover { opacity: 1; }
+/* 复用 browse.css 的 .br-card 卡片样式与 AnimeCard 组件内的占位/遮罩 */
 
 /* ========================= EMPTY BLOCK ========================= */
 .empty-block {
@@ -577,8 +592,8 @@ onBeforeUnmount(() => {
   padding: 60px 20px;
   color: var(--anime-text-secondary);
   text-align: center;
-  background: #fff;
-  border: 1px solid #eceff3;
+  background: var(--al-bg);
+  border: 1px solid var(--al-border-panel);
   border-radius: 14px;
 }
 .empty-block.error { color: var(--anime-accent-red); }
@@ -591,32 +606,13 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 14px 0 4px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
 }
-.load-done { color: #b3b3b3; font-size: 0.74rem; }
-
-/* ========================= PAGER (database) ========================= */
-.pager {
-  flex-shrink: 0;
-  margin-top: 4px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-}
-.pager button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border: 1px solid #e5e7eb; background: #fff;
-  border-radius: 10px; cursor: pointer; font-size: 1rem; color: var(--anime-text-main);
-  transition: all 0.2s;
-}
-.pager button:hover:not(:disabled) { border-color: var(--anime-accent-red); color: var(--anime-accent-red); }
-.pager button:disabled { opacity: 0.35; cursor: not-allowed; }
-.pager-num { font-size: 0.85rem; color: var(--anime-text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.load-done { color: var(--al-gray-faint); font-size: 0.74rem; }
 
 /* ========================= SKELETON ========================= */
 .sk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
 .sk-card {
   aspect-ratio: 2 / 3; border-radius: 14px;
-  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, #ede3d8 50%, var(--anime-bg-beige) 75%);
+  background: linear-gradient(135deg, var(--anime-bg-beige) 25%, var(--al-bg-beige-7) 50%, var(--anime-bg-beige) 75%);
   background-size: 200% 100%;
   animation: br-shim 1.4s ease-in-out infinite;
 }

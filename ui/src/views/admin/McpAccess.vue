@@ -1,13 +1,11 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
-
-const API_BASE = '/api'
+import { showAppMessage } from '../../utils/ui-feedback'
+import { copyText as copyTextUtil } from '../../utils/clipboard'
+import { getMcpConfig, regenerateMcpConfig } from '../../api/system'
 
 const loading = ref(false)
 const regenerating = ref(false)
-const snackbar = ref(false)
-const snackText = ref('')
 const config = ref(null)
 const showKey = ref(false)
 const confirmRegen = ref(false)
@@ -15,50 +13,35 @@ const confirmRegen = ref(false)
 const fetchConfig = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/mcp/config`)
-    if (res.data?.code === 200 && res.data?.data) {
-      config.value = res.data.data
+    const res = await getMcpConfig()
+    if (res?.code === 200 && res?.data) {
+      config.value = res.data
     } else {
-      snackText.value = res.data?.message || '加载失败'
-      snackbar.value = true
+      showAppMessage(res?.msg || '加载失败')
     }
   } catch (e) {
     console.error(e)
-    snackText.value = e.response?.data?.message || '加载 MCP 配置失败'
-    snackbar.value = true
+    showAppMessage(e.response?.data?.msg || '加载 MCP 配置失败')
   } finally {
     loading.value = false
   }
 }
 
-const copyText = async (text, label) => {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    snackText.value = `${label} 已复制`
-    snackbar.value = true
-  } catch {
-    snackText.value = '复制失败，请手动选择文本复制'
-    snackbar.value = true
-  }
-}
+const copyText = (text, label) => copyTextUtil(text, `${label} 已复制`)
 
 const doRegenerate = async () => {
   confirmRegen.value = false
   regenerating.value = true
   try {
-    const res = await axios.post(`${API_BASE}/mcp/config/regenerate`)
-    if (res.data?.code === 200 && res.data?.data) {
-      config.value = res.data.data
-      snackText.value = res.data?.message || '已重置 API Key'
-      snackbar.value = true
+    const res = await regenerateMcpConfig()
+    if (res?.code === 200 && res?.data) {
+      config.value = res.data
+      showAppMessage(res?.msg || '已重置 API Key')
     } else {
-      snackText.value = res.data?.message || '重置失败'
-      snackbar.value = true
+      showAppMessage(res?.msg || '重置失败')
     }
   } catch (e) {
-    snackText.value = e.response?.data?.message || '重置失败'
-    snackbar.value = true
+    showAppMessage(e.response?.data?.msg || '重置失败')
   } finally {
     regenerating.value = false
   }
@@ -71,8 +54,6 @@ onMounted(() => {
 
 <template>
   <div>
-    <v-snackbar v-model="snackbar" location="top" :timeout="2800">{{ snackText }}</v-snackbar>
-
     <v-card v-if="loading" class="text-center pa-8">
       <v-progress-circular indeterminate color="primary" size="48" />
       <p class="mt-4 text-body-1">加载中...</p>

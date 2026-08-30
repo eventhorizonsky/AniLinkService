@@ -1,200 +1,48 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import axios from 'axios'
-import { askAppConfirm, showAppMessage } from '../utils/ui-feedback'
+import { useMediaLibrary } from '../composables/useMediaLibrary'
+import {
+  getInitLibraries,
+  getInitLibraryPaths,
+  createInitLibrary,
+  removeInitLibrary,
+  scanLibrary as apiScanLibrary,
+  scanAllLibraries
+} from '../api/media'
 
-const API_BASE = '/api'
-
-const mediaLibraries = ref([])
-const loading = ref(false)
-const dialog = ref(false)
-const errorMessage = ref('')
-const scanning = ref(false)
-const pathTree = ref([])
-const loadingPaths = ref(false)
-const showPathTree = ref(false)
-const rootPath = ref('/')
-
-const newLibrary = ref({
-  name: '',
-  path: ''
-})
-
-const fetchLibraries = async () => {
-  try {
-    const res = await axios.get(`${API_BASE}/init/media-library`)
-    if (res.data?.code === 200) {
-      mediaLibraries.value = res.data.data || []
-    }
-  } catch (error) {
-    console.error('获取媒体库失败:', error)
+const {
+  mediaLibraries,
+  loading,
+  dialog,
+  errorMessage,
+  scanning,
+  pathTree,
+  loadingPaths,
+  showPathTree,
+  newLibrary,
+  handleNodeSelect,
+  addLibrary,
+  deleteLibrary,
+  scanLibrary,
+  scanAll,
+  openAddDialog,
+  closeDialog,
+  togglePathTree,
+  onPathSelect
+} = useMediaLibrary({
+  api: {
+    getLibraries: getInitLibraries,
+    getPaths: getInitLibraryPaths,
+    createLibrary: createInitLibrary,
+    removeLibrary: removeInitLibrary,
+    scanLibrary: apiScanLibrary,
+    scanAll: scanAllLibraries
+  },
+  texts: {
+    scanSuccess: () => '扫描已触发',
+    scanError: (error) => '扫描失败：' + (error.response?.data?.msg || '请稍后重试'),
+    scanAllSuccess: () => '扫描已触发',
+    scanAllError: (error) => '扫描失败：' + (error.response?.data?.msg || '请稍后重试')
   }
-}
-
-const fetchPaths = async (path = rootPath.value) => {
-  loadingPaths.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/init/media-library/paths`, {
-      params: {
-        rootPath: path,
-        onlyDir: true
-      }
-    })
-    if (res.data?.code === 200) {
-      const items = res.data.data || []
-      pathTree.value = items.map(item => ({
-        id: item.path,
-        title: item.name,
-        children: []
-      }))
-    }
-  } catch (error) {
-    console.error('获取路径失败:', error)
-  } finally {
-    loadingPaths.value = false
-  }
-}
-
-const handleNodeSelect = async (item) => {
-  loadingPaths.value = true
-  try {
-    const res = await axios.get(`${API_BASE}/init/media-library/paths`, {
-      params: {
-        rootPath: item.id,
-        onlyDir: true
-      }
-    })
-    if (res.data?.code === 200) {
-      const items = res.data.data || []
-      if (items.length > 0) {
-        item.children = items.map(child => ({
-          id: child.path,
-          title: child.name,
-          children: []
-        }))
-      }
-    }
-  } catch (error) {
-    console.error('获取子路径失败:', error)
-  } finally {
-    loadingPaths.value = false
-  }
-}
-
-const addLibrary = async () => {
-  if (!newLibrary.value.name || !newLibrary.value.path) {
-    errorMessage.value = '请填写媒体库名称和路径'
-    return
-  }
-
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    const res = await axios.post(`${API_BASE}/init/media-library`, newLibrary.value)
-    if (res.data?.code === 200) {
-      dialog.value = false
-      newLibrary.value = { name: '', path: '' }
-      showPathTree.value = false
-      await fetchLibraries()
-    } else {
-      errorMessage.value = res.data?.msg || '添加媒体库失败'
-    }
-  } catch (error) {
-    errorMessage.value = error.response?.data?.msg || '添加媒体库失败，请稍后重试'
-  } finally {
-    loading.value = false
-  }
-}
-
-const deleteLibrary = async (id) => {
-  const confirmed = await askAppConfirm({
-    title: '删除媒体库',
-    message: '确定要删除这个媒体库吗？',
-    color: 'error'
-  })
-  if (!confirmed) return
-
-  try {
-    const res = await axios.delete(`${API_BASE}/init/media-library/${id}`)
-    if (res.data?.code === 200) {
-      await fetchLibraries()
-    }
-  } catch (error) {
-    showAppMessage('删除失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  }
-}
-
-const scanLibrary = async (id) => {
-  scanning.value = true
-  try {
-    const res = await axios.post(`${API_BASE}/media-library/scan/${id}`)
-    if (res.data?.code === 200) {
-      showAppMessage('扫描已触发', 'success')
-      await fetchLibraries()
-    }
-  } catch (error) {
-    showAppMessage('扫描失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  } finally {
-    scanning.value = false
-  }
-}
-
-const scanAll = async () => {
-  const confirmed = await askAppConfirm({
-    title: '扫描所有媒体库',
-    message: '确定要扫描所有媒体库吗？',
-    color: 'warning'
-  })
-  if (!confirmed) return
-
-  scanning.value = true
-  try {
-    const res = await axios.post(`${API_BASE}/media-library/scan-all`)
-    if (res.data?.code === 200) {
-      showAppMessage('扫描已触发', 'success')
-      await fetchLibraries()
-    }
-  } catch (error) {
-    showAppMessage('扫描失败：' + (error.response?.data?.msg || '请稍后重试'), 'error')
-  } finally {
-    scanning.value = false
-  }
-}
-
-const openAddDialog = () => {
-  errorMessage.value = ''
-  showPathTree.value = false
-  newLibrary.value = { name: '', path: '' }
-  dialog.value = true
-}
-
-const closeDialog = () => {
-  dialog.value = false
-  errorMessage.value = ''
-  showPathTree.value = false
-  pathTree.value = []
-}
-
-const togglePathTree = () => {
-  if (!showPathTree.value) {
-    fetchPaths(rootPath.value)
-  }
-  showPathTree.value = !showPathTree.value
-}
-
-const onPathSelect = (selected) => {
-  if (selected && selected.length > 0) {
-    newLibrary.value.path = selected[0]
-    showPathTree.value = false
-  }
-}
-
-onMounted(() => {
-  fetchLibraries()
-})
-
-defineExpose({
-  mediaLibraries
 })
 </script>
 

@@ -1,10 +1,10 @@
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
-import axios from 'axios'
 import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
 import DownloadTaskTable from '../../../components/admin/download/DownloadTaskTable.vue'
-
-const API_BASE = '/api'
+import { formatSpeed } from '../../../utils/format'
+import { ACTIVE_TASK_STATUSES } from '../../../utils/taskStatus'
+import { getDownloadTasks, cancelDownloadTask, deleteDownloadTask } from '../../../api/download'
 
 const emit = defineEmits(['stats-loaded'])
 
@@ -37,7 +37,6 @@ const loading = ref(false)
 const page = ref(1)
 const size = ref(20)
 const selection = ref([])
-const deletingTarget = ref(null)
 
 const filterStatus = ref('all')
 const filterKeyword = ref('')
@@ -51,8 +50,8 @@ const fetchTasks = async () => {
     const params = { page: page.value, size: size.value }
     if (filterStatus.value !== 'all') params.status = filterStatus.value
     if (filterKeyword.value.trim()) params.keyword = filterKeyword.value.trim()
-    const res = await axios.get(`${API_BASE}/resource-search/download-tasks`, { params })
-    const data = res.data?.data || {}
+    const res = await getDownloadTasks(params)
+    const data = res?.data || {}
     tasks.value = data.items || []
     total.value = data.total || 0
     emit('stats-loaded', data.stats || null)
@@ -73,19 +72,6 @@ const scheduleRefresh = () => {
   }, 400)
 }
 
-const ACTIVE_STATUSES = ['PENDING', 'RUNNING', 'SEEDING', 'MOVING', 'SCANNING']
-
-const formatSpeed = (bps) => {
-  if (!bps || bps <= 0) return '0 B/s'
-  if (bps < 1024) return `${Math.round(bps)} B/s`
-  const kb = bps / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB/s`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(2)} MB/s`
-  const gb = mb / 1024
-  return `${gb.toFixed(2)} GB/s`
-}
-
 const statCards = computed(() => [
   { label: '活跃任务', value: props.stats?.active ?? '-', icon: 'mdi-progress-download', color: 'primary' },
   { label: '下载中', value: props.stats?.running ?? '-', icon: 'mdi-download', color: 'teal' },
@@ -100,7 +86,7 @@ const statCards = computed(() => [
 
 const matchesFilter = (task) => {
   if (filterStatus.value === 'all') return true
-  if (filterStatus.value === 'active') return ACTIVE_STATUSES.includes(task.status)
+  if (filterStatus.value === 'active') return ACTIVE_TASK_STATUSES.includes(task.status)
   return task.status === filterStatus.value
 }
 
@@ -187,19 +173,20 @@ const handleRetry = async (task) => {
   if (ok) scheduleRefresh()
 }
 
-const openDeleteDialog = (task) => {
-  deletingTarget.value = task
-}
-
-const confirmDelete = async () => {
-  const task = deletingTarget.value
+const openDeleteDialog = async (task) => {
   if (!task) return
+  const confirmed = await askAppConfirm({
+    title: '删除下载任务',
+    message: `确认删除任务「${task.title}」？对应暂存文件将一并清理，媒体库中已入库的文件不受影响。`,
+    confirmText: '删除',
+    color: 'error'
+  })
+  if (!confirmed) return
   const ok = await props.actions.deleteTask?.(task)
   if (ok) {
     selection.value = selection.value.filter((id) => id !== task.id)
     scheduleRefresh()
   }
-  deletingTarget.value = null
 }
 
 const onFilterChange = ({ status, keyword }) => {
@@ -230,7 +217,7 @@ const handleBatchCancel = async (ids) => {
   if (!confirmed) return
   for (const id of ids) {
     try {
-      await axios.post(`${API_BASE}/resource-search/download-tasks/${id}/cancel`)
+      await cancelDownloadTask(id)
     } catch (error) {
       console.error('批量取消失败:', error)
     }
@@ -250,7 +237,7 @@ const handleBatchDelete = async (ids) => {
   let failed = 0
   for (const id of ids) {
     try {
-      await axios.delete(`${API_BASE}/resource-search/download-tasks/${id}`)
+      await deleteDownloadTask(id)
     } catch (error) {
       failed += 1
       console.error('批量删除失败:', error)
@@ -316,31 +303,6 @@ onBeforeUnmount(() => {
       @batch-delete="handleBatchDelete"
       @binding="(taskId) => props.actions.openBinding?.(taskId)"
     />
-
-    <v-dialog
-      :model-value="!!deletingTarget"
-      max-width="480"
-      @update:model-value="(value) => { if (!value) deletingTarget = null }"
-    >
-      <v-card v-if="deletingTarget">
-        <v-card-title>
-          <v-icon start color="error">mdi-delete-alert-outline</v-icon>
-          删除下载任务
-        </v-card-title>
-        <v-card-text>
-          <div class="mb-2">确认删除任务「{{ deletingTarget.title }}」？</div>
-          <div class="text-body-2 text-medium-emphasis">对应暂存文件将一并清理，媒体库中已入库的文件不受影响。</div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="deletingTarget = null">取消</v-btn>
-          <v-btn color="error" @click="confirmDelete">
-            <v-icon start size="small">mdi-delete</v-icon>
-            删除
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
   </div>
 </template>
 

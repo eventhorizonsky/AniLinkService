@@ -21,16 +21,15 @@
 </template>
 
 <script setup>
+import { formatDate } from '../../utils/format';
+
 defineProps({
   trailers: {
     type: Array,
     required: true
   }
 });
-
-const formatDate = (iso) => iso ? iso.slice(0, 10) : '';
 </script>
 
 <style scoped>
-@import '../../styles/anime.css';
 </style>

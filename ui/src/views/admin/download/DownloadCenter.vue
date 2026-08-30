@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, onUnmounted, provide, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, provide, defineAsyncComponent } from 'vue'
 import { useDownloadTasks } from '../../../composables/useDownloadTasks'
+import { useIsMobile } from '../../../composables/useIsMobile'
 import DownloadTasksTab from './DownloadTasksTab.vue'
 import ResourceSearchTab from './ResourceSearchTab.vue'
 import TaskBindingDialog from '../../../components/admin/download/TaskBindingDialog.vue'
@@ -28,22 +29,14 @@ const {
 
 const activeTab = ref('tasks')
 const actions = { cancelTask, retryTask, deleteTask, openBinding, reconnect }
-const isMobile = ref(false)
-
-const checkViewport = () => {
-  isMobile.value =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 768px)').matches
-}
+const { isMobile } = useIsMobile(768)
 
 onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
+  connectProgressStream()
 })
 
-onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
+onBeforeUnmount(() => {
+  disconnectProgressStream()
 })
 
 const applyStats = (stats) => {
@@ -52,16 +45,11 @@ const applyStats = (stats) => {
   }
 }
 
-provide('navigateTo', () => {
-  activeTab.value = 'settings'
-})
-
-onMounted(() => {
-  connectProgressStream()
-})
-
-onBeforeUnmount(() => {
-  disconnectProgressStream()
+// 供子页面跳转本中心内 Tab 使用：当前仅设置页支持。
+provide('navigateTo', (target) => {
+  if (target === 'resource-download-settings' || target === 'settings') {
+    activeTab.value = 'settings'
+  }
 })
 </script>
 

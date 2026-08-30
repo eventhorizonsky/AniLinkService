@@ -10,6 +10,7 @@ import xyz.ezsky.anilink.model.dto.TestEmailRequest;
 import xyz.ezsky.anilink.model.dto.UpdateSiteConfigRequest;
 import xyz.ezsky.anilink.model.vo.SiteConfigVO;
 import xyz.ezsky.anilink.model.vo.ApiResponseVO;
+import xyz.ezsky.anilink.service.BangumiImageSelfHealService;
 import xyz.ezsky.anilink.service.EmailService;
 import xyz.ezsky.anilink.service.ResourceDownloadService;
 import xyz.ezsky.anilink.service.SiteConfigService;
@@ -24,6 +25,9 @@ public class SiteConfigController {
     
     @Autowired
     private SiteConfigService siteConfigService;
+
+    @Autowired
+    private BangumiImageSelfHealService bangumiImageSelfHealService;
 
     @Autowired
     private EmailService emailService;
@@ -53,6 +57,17 @@ public class SiteConfigController {
             resourceDownloadService.refreshGlobalRateLimit();
         }
         return ApiResponseVO.success("更新成功", "站点配置已更新");
+    }
+
+    /**
+     * 手动触发 Bangumi 镜像封面自愈
+     */
+    @PostMapping("bangumi-images/heal")
+    @SaCheckRole("super-admin")
+    @Operation(summary = "修复 Bangumi 镜像封面地址", description = "切换镜像后追番封面裂图时手动触发：将库中旧镜像 CDN 封面主机替换为当前镜像主机（异步执行）")
+    public ApiResponseVO<String> healBangumiImages() {
+        bangumiImageSelfHealService.healAllToCurrentMirror(siteConfigService.getBangumiMirrorBaseUrl());
+        return ApiResponseVO.success("ok", "封面修复已触发，正在后台执行");
     }
 
     /**

@@ -1,29 +1,15 @@
 <script setup>
-import { ref, onMounted, onUnmounted, inject } from 'vue'
-import axios from 'axios'
-import { showAppMessage } from '../../../utils/ui-feedback'
-
-const API_BASE = '/api'
+import { ref, onMounted, inject } from 'vue'
+import { showAppMessage, askAppConfirm } from '../../../utils/ui-feedback'
+import { useIsMobile } from '../../../composables/useIsMobile'
+import { formatDateTime } from '../../../utils/format'
+import { getRssSubscriptions, createRssSubscription, updateRssSubscription, deleteRssSubscription, triggerRssSubscription, getRssLastContent, previewRssSubscription } from '../../../api/download'
+import { getLibraries } from '../../../api/media'
+import { getSiteConfig } from '../../../api/site'
 
 const navigateTo = inject('navigateTo', null)
 
-const isMobile = ref(false)
-
-const checkViewport = () => {
-  isMobile.value =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 768px)').matches
-}
-
-onMounted(() => {
-  checkViewport()
-  window.addEventListener('resize', checkViewport)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkViewport)
-})
+const { isMobile } = useIsMobile(768)
 
 // RSS proxy status
 const rssProxyConfigured = ref(false)
@@ -48,24 +34,7 @@ const previewDialog = ref(false)
 const previewLoading = ref(false)
 const previewResult = ref(null)
 
-const formatLocalDateTime = (value) => {
-  if (!value) {
-    return '-'
-  }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  })
-}
+const formatLocalDateTime = (value) => formatDateTime(value, '-')
 
 const form = ref({
   name: '',
@@ -78,15 +47,15 @@ const form = ref({
 })
 
 const fetchLibraries = async () => {
-  const res = await axios.get(`${API_BASE}/media-library`)
-  libraries.value = (res.data?.data || []).map((item) => ({ ...item, id: String(item.id) }))
+  const res = await getLibraries()
+  libraries.value = (res?.data || []).map((item) => ({ ...item, id: String(item.id) }))
 }
 
 const fetchSubscriptions = async () => {
   loading.value = true
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/rss-subscriptions`)
-    subscriptions.value = res.data?.data || []
+    const res = await getRssSubscriptions()
+    subscriptions.value = res?.data || []
   } catch (error) {
     console.error('获取 RSS 订阅失败:', error)
     showAppMessage(error.response?.data?.msg || '获取 RSS 订阅失败', 'error')
@@ -142,16 +111,16 @@ const saveSubscription = async () => {
     }
     let res
     if (editingId.value) {
-      res = await axios.put(`${API_BASE}/resource-search/rss-subscriptions/${editingId.value}`, payload)
+      res = await updateRssSubscription(editingId.value, payload)
     } else {
-      res = await axios.post(`${API_BASE}/resource-search/rss-subscriptions`, payload)
+      res = await createRssSubscription(payload)
     }
-    if (res.data?.code === 200) {
+    if (res?.code === 200) {
       showAppMessage('保存成功', 'success')
       dialog.value = false
       await fetchSubscriptions()
     } else {
-      showAppMessage(res.data?.msg || '保存失败', 'error')
+      showAppMessage(res?.msg || '保存失败', 'error')
     }
   } catch (error) {
     console.error('保存 RSS 订阅失败:', error)
@@ -162,13 +131,20 @@ const saveSubscription = async () => {
 }
 
 const deleteSubscription = async (row) => {
+  const ok = await askAppConfirm({
+    title: '删除订阅',
+    message: `确定要删除订阅「${row.name || row.rssUrl || ''}」吗？`,
+    confirmText: '删除',
+    color: 'error'
+  })
+  if (!ok) return
   try {
-    const res = await axios.delete(`${API_BASE}/resource-search/rss-subscriptions/${row.id}`)
-    if (res.data?.code === 200) {
+    const res = await deleteRssSubscription(row.id)
+    if (res?.code === 200) {
       showAppMessage('删除成功', 'success')
       await fetchSubscriptions()
     } else {
-      showAppMessage(res.data?.msg || '删除失败', 'error')
+      showAppMessage(res?.msg || '删除失败', 'error')
     }
   } catch (error) {
     console.error('删除 RSS 订阅失败:', error)
@@ -179,12 +155,12 @@ const deleteSubscription = async (row) => {
 const triggerNow = async (row) => {
   triggeringId.value = row.id
   try {
-    const res = await axios.post(`${API_BASE}/resource-search/rss-subscriptions/${row.id}/trigger`)
-    if (res.data?.code === 200) {
+    const res = await triggerRssSubscription(row.id)
+    if (res?.code === 200) {
       showAppMessage('已触发检查', 'success')
       await fetchSubscriptions()
     } else {
-      showAppMessage(res.data?.msg || '触发失败', 'error')
+      showAppMessage(res?.msg || '触发失败', 'error')
     }
   } catch (error) {
     console.error('触发 RSS 检查失败:', error)
@@ -201,13 +177,13 @@ const viewLastFetchedContent = async (row) => {
   contentCheckedAt.value = null
   fetchedContent.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/resource-search/rss-subscriptions/${row.id}/last-content`)
-    if (res.data?.code === 200 && res.data?.data) {
-      contentTitle.value = res.data.data.name || contentTitle.value
-      contentCheckedAt.value = res.data.data.lastCheckedAt || null
-      fetchedContent.value = res.data.data.lastFetchedContent || ''
+    const res = await getRssLastContent(row.id)
+    if (res?.code === 200 && res?.data) {
+      contentTitle.value = res.data.name || contentTitle.value
+      contentCheckedAt.value = res.data.lastCheckedAt || null
+      fetchedContent.value = res.data.lastFetchedContent || ''
     } else {
-      showAppMessage(res.data?.msg || '获取解析结果失败', 'error')
+      showAppMessage(res?.msg || '获取解析结果失败', 'error')
     }
   } catch (error) {
     console.error('获取 RSS 解析结果失败:', error)
@@ -225,16 +201,16 @@ const runFilterPreview = async () => {
   previewLoading.value = true
   previewResult.value = null
   try {
-    const res = await axios.post(`${API_BASE}/resource-search/rss-subscriptions/preview`, {
+    const res = await previewRssSubscription({
       feedUrl: form.value.feedUrl,
       includeFilter: form.value.includeFilter || null,
       excludeFilter: form.value.excludeFilter || null
     })
-    if (res.data?.code === 200) {
-      previewResult.value = res.data.data
+    if (res?.code === 200) {
+      previewResult.value = res.data
       previewDialog.value = true
     } else {
-      showAppMessage(res.data?.msg || '预览失败', 'error')
+      showAppMessage(res?.msg || '预览失败', 'error')
     }
   } catch (error) {
     console.error('预览过滤失败:', error)
@@ -246,8 +222,8 @@ const runFilterPreview = async () => {
 
 const fetchRssProxyConfig = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/site/config`)
-    const data = res.data?.data || {}
+    const res = await getSiteConfig()
+    const data = res?.data || {}
     const host = data.rssProxyHost || ''
     const port = Number(data.rssProxyPort || 0)
     rssProxyHost.value = host
@@ -642,9 +618,10 @@ onMounted(async () => {
   max-height: 65vh;
   overflow: auto;
   padding: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   border-radius: 8px;
-  background: #fafafa;
+  background: rgb(var(--v-theme-surface-light));
+  color: rgb(var(--v-theme-on-surface));
 }
 
 .fetched-content-box pre {

@@ -131,7 +131,8 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { bangumiSmilePath } from '../../utils/bangumi-smiles.js'
+import { renderBBCode as renderBBCodeBase } from '../../utils/bbcode.js'
+import { getEpisodeComments } from '../../api/anime'
 
 const props = defineProps({
   animeId: {
@@ -199,13 +200,7 @@ const fetchComments = async () => {
 
   loading.value = true
   try {
-    const res = await fetch(
-      `/api/bangumi/episodes/comments?animeId=${encodeURIComponent(props.animeId)}&episodeNumber=${encodeURIComponent(epNum)}`
-    )
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`)
-    }
-    const json = await res.json()
+    const json = await getEpisodeComments(props.animeId, epNum)
     if (json.code !== 200) {
       throw new Error('bad response')
     }
@@ -301,99 +296,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
 })
 
-// ===== Bangumi BBCode 渲染（仅白名单标签，内容已转义） =====
-const escapeHtml = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;')
-
-const sanitizeUrl = (raw) => {
-  const url = String(raw || '').trim()
-  return /^https?:\/\//i.test(url) ? url : ''
-}
-
-const sanitizeColor = (raw) => {
-  const v = String(raw || '').trim().toLowerCase()
-  if (/^#[0-9a-f]{3,8}$/.test(v)) return v
-  if (/^[a-z]{3,20}$/.test(v)) return v
-  return ''
-}
-
-const unescapeAttr = (s) => String(s || '')
-  .replace(/&quot;/g, '"')
-  .replace(/&#39;/g, "'")
-  .replace(/&amp;/g, '&')
-
-const renderBBCode = (content) => {
-  if (!content) return ''
-  let html = escapeHtml(content)
-
-  // [img]URL[/img] -> 受限尺寸的图片，点击查看大图
-  html = html.replace(/\[img(?:=(\d{1,4})(?:,(\d{1,4}))?)?\]([^\[]*?)\[\/img\]/gi, (m, w, h, url) => {
-    const clean = sanitizeUrl(unescapeAttr(url))
-    if (!clean) return ''
-    return `<img class="bgm-ep-img" src="${escapeHtml(clean)}" alt="图片" loading="lazy" referrerpolicy="no-referrer" />`
-  })
-
-  // 行内格式
-  html = html
-    .replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<b>$1</b>')
-    .replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<i>$1</i>')
-    .replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>')
-    .replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<s>$1</s>')
-    .replace(/\[size=(\d{1,3})\]([\s\S]*?)\[\/size\]/gi, (m, size, inner) => {
-      let px = parseInt(size, 10)
-      if (!Number.isFinite(px)) return inner
-      px = Math.min(32, Math.max(10, px))
-      return `<span style="font-size:${px}px">${inner}</span>`
-    })
-    .replace(/\[color=([^\]]+)\]([\s\S]*?)\[\/color\]/gi, (m, color, inner) => {
-      const clean = sanitizeColor(unescapeAttr(color))
-      return clean ? `<span style="color:${clean}">${inner}</span>` : inner
-    })
-
-  // 链接
-  html = html
-    .replace(/\[url=([^\]]+)\]([\s\S]*?)\[\/url\]/gi, (m, url, text) => {
-      const clean = sanitizeUrl(unescapeAttr(url))
-      return clean ? `<a href="${escapeHtml(clean)}" target="_blank" rel="noopener noreferrer nofollow">${text}</a>` : text
-    })
-    .replace(/\[url\]([^\[]*?)\[\/url\]/gi, (m, url) => {
-      const clean = sanitizeUrl(unescapeAttr(url))
-      return clean ? `<a href="${escapeHtml(clean)}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(clean)}</a>` : ''
-    })
-
-  // alignment tags: [left] / [center] / [right]
-  html = html
-    .replace(/\[right\]([\s\S]*?)\[\/right\]/gi, '<div class="bgm-ep-align-right">$1</div>')
-    .replace(/\[center\]([\s\S]*?)\[\/center\]/gi, '<div class="bgm-ep-align-center">$1</div>')
-    .replace(/\[left\]([\s\S]*?)\[\/left\]/gi, '<div class="bgm-ep-align-left">$1</div>')
-
-  // markdown-style links [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, url) => {
-    const clean = sanitizeUrl(unescapeAttr(url))
-    return clean ? `<a href="${escapeHtml(clean)}" target="_blank" rel="noopener noreferrer nofollow">${text}</a>` : m
-  })
-
-  // mask spoiler tag: hidden until hover
-  html = html.replace(/\[mask\]([\s\S]*?)\[\/mask\]/gi, '<span class="bgm-ep-mask">$1</span>')
-
-  // 引用块
-  html = html.replace(/\[quote\]([\s\S]*?)\[\/quote\]/gi, '<blockquote class="bgm-ep-quote">$1</blockquote>')
-
-  // 表情：如 (bgm207)、(musume_79)，映射成功的替换为图片，未知的保留原文
-  html = html.replace(/\(([a-z0-9_]{2,20})\)/gi, (m, code) => {
-    const path = bangumiSmilePath(code)
-    if (!path) return m
-    return `<img class="bgm-ep-smile" src="${smileCdnBase.value}${path}" alt="${m}" title="${m}" loading="lazy" />`
-  })
-
-  // 换行
-  html = html.replace(/\r?\n/g, '<br>')
-  return html
-}
+// ===== Bangumi BBCode 渲染 =====
+// 白名单渲染逻辑统一收敛到 utils/bbcode.js，这里仅注入表情 CDN 基础地址。
+const renderBBCode = (content) => renderBBCodeBase(content, { smileBaseUrl: smileCdnBase.value })
 
 watch(
   () => [props.animeId, props.episodeNumber],
@@ -441,7 +346,7 @@ onMounted(fetchComments)
 }
 
 .bgm-ep-content .bgm-ep-mask {
-  background: #3c3129;
+  background: var(--al-text-brown-23);
   color: transparent;
   border-radius: 3px;
   padding: 0 4px;
@@ -454,8 +359,8 @@ onMounted(fetchComments)
 }
 
 .bgm-ep-content .bgm-ep-mask:hover {
-  background: #e8e2da;
-  color: #4a4039;
+  background: var(--al-bg-beige-12);
+  color: var(--al-text-brown-22);
 }
 
 .bgm-ep-content .bgm-ep-mask:hover img {
@@ -473,7 +378,7 @@ onMounted(fetchComments)
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #c45d2b;
+  background: var(--al-accent);
   animation: bgm-ep-bounce 1.2s ease-in-out infinite;
 }
 
@@ -487,7 +392,7 @@ onMounted(fetchComments)
 
 .bgm-ep-empty {
   text-align: center;
-  color: #8b7e74;
+  color: var(--al-text-muted);
   padding: 32px 12px;
   font-size: 0.85rem;
   line-height: 1.6;
@@ -499,14 +404,14 @@ onMounted(fetchComments)
   justify-content: space-between;
   gap: 8px;
   padding: 8px 10px 10px;
-  border-bottom: 1px solid #efe7de;
+  border-bottom: 1px solid var(--al-bg-beige-6);
   margin-bottom: 4px;
 }
 
 .bgm-ep-link {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #c45d2b;
+  color: var(--al-accent);
   text-decoration: none;
 }
 
@@ -516,7 +421,7 @@ onMounted(fetchComments)
 
 .bgm-ep-num {
   font-size: 0.75rem;
-  color: #a39386;
+  color: var(--al-text-muted-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -524,7 +429,7 @@ onMounted(fetchComments)
   display: flex;
   gap: 10px;
   padding: 12px 10px;
-  border-bottom: 1px solid #f0e8df;
+  border-bottom: 1px solid var(--al-bg-beige-5);
 }
 
 .bgm-ep-item:last-of-type {
@@ -541,7 +446,7 @@ onMounted(fetchComments)
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  background: #e8e2da;
+  background: var(--al-bg-beige-12);
 }
 
 .bgm-ep-body {
@@ -560,17 +465,17 @@ onMounted(fetchComments)
 .bgm-ep-name {
   font-weight: 600;
   font-size: 0.8rem;
-  color: #3c3129;
+  color: var(--al-text-brown-23);
   text-decoration: none;
 }
 
 .bgm-ep-name:hover {
-  color: #c45d2b;
+  color: var(--al-accent);
 }
 
 .bgm-ep-date {
   font-size: 0.7rem;
-  color: #b0a59a;
+  color: var(--al-text-muted-3);
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
@@ -578,7 +483,7 @@ onMounted(fetchComments)
 .bgm-ep-content {
   margin: 0;
   font-size: 0.82rem;
-  color: #4a4039;
+  color: var(--al-text-brown-22);
   line-height: 1.55;
   word-break: break-word;
 }
@@ -593,21 +498,21 @@ onMounted(fetchComments)
   object-fit: contain;
   margin: 6px 0;
   border-radius: 8px;
-  background: #f0e8df;
+  background: var(--al-bg-beige-5);
   cursor: zoom-in;
 }
 
 .bgm-ep-content a {
-  color: #c45d2b;
+  color: var(--al-accent);
   word-break: break-all;
 }
 
 .bgm-ep-content .bgm-ep-quote {
   margin: 6px 0;
   padding: 6px 10px;
-  border-left: 3px solid #dccfc0;
-  background: #faf5ef;
-  color: #7a6c60;
+  border-left: 3px solid var(--al-border-soft-10);
+  background: var(--al-bg-comment);
+  color: var(--al-text-brown-14);
   font-size: 0.78rem;
 }
 
@@ -619,20 +524,20 @@ onMounted(fetchComments)
   padding: 2px 0;
   font-size: 0.72rem;
   font-weight: 500;
-  color: #b0876b;
+  color: var(--al-text-brown-24);
   cursor: pointer;
   text-decoration: none;
 }
 
 .bgm-ep-replies-toggle:hover {
-  color: #c45d2b;
+  color: var(--al-accent);
   text-decoration: underline;
 }
 
 .bgm-ep-replies {
   margin: 6px 0 2px;
   padding: 4px 0 2px 8px;
-  border-left: 2px solid #ece1d6;
+  border-left: 2px solid var(--al-border-soft-12);
 }
 
 .bgm-ep-reply {

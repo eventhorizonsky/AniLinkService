@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
-
-const API_BASE = '/api'
+import { getInitSystemInfo } from '../api/site'
+import { formatUptime } from '../utils/format'
 
 const systemInfo = ref(null)
 const loading = ref(true)
@@ -12,11 +11,11 @@ const fetchSystemInfo = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    const res = await axios.get(`${API_BASE}/init/system-info`)
-    if (res.data?.code === 200) {
-      systemInfo.value = res.data.data
+    const res = await getInitSystemInfo()
+    if (res?.code === 200) {
+      systemInfo.value = res.data
     } else {
-      errorMessage.value = res.data?.msg || '获取系统信息失败'
+      errorMessage.value = res?.msg || '获取系统信息失败'
     }
   } catch (error) {
     errorMessage.value = error.response?.data?.msg || '获取系统信息失败，请稍后重试'
@@ -30,23 +29,8 @@ const getMemoryUsedPercent = () => {
   return ((systemInfo.value.totalMemoryMB / systemInfo.value.maxMemoryMB) * 100).toFixed(1)
 }
 
-const formatUptime = (seconds) => {
-  if (!seconds) return '-'
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  if (hours > 24) {
-    const days = Math.floor(hours / 24)
-    return `${days}天 ${hours % 24}小时`
-  }
-  return `${hours}小时 ${minutes}分钟`
-}
-
 onMounted(() => {
   fetchSystemInfo()
-})
-
-defineExpose({
-  systemInfo
 })
 </script>
 
