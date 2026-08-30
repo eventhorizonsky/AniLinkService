@@ -21,8 +21,6 @@ AniLinkService 适合这类场景：
 - 你希望把本地番剧文件、弹幕、追番和自动下载整合到一个服务里
 - 你可以使用 Docker，或具备基本的 Java / Node 本地开发环境
 - 你的环境可以访问 `ghcr.io`
-- 你已经申请到弹弹开放平台的 `AppId` 和 `AppSecret`
-（如果你还没有官方AppId/AppSecret，可以先参考本项目的[下游代理服务介绍](https://eventhorizonsky.github.io/ani-link-doc/ani-link-proxy.html)。）
 
 如果你只有一台电脑或手机，希望直接开箱即用，弹弹官方客户端通常会更合适：
 https://www.dandanplay.com/
@@ -51,21 +49,45 @@ https://www.dandanplay.com/
       <sub>番剧详情：海报、剧集与追番信息</sub>
     </td>
     <td align="center" width="50%">
-      <img src="doc/img/README/comments.png" alt="评论区" />
+      <img src="doc/img/README/discover.jpg" alt="发现页面" />
       <br />
-      <sub>评论区：聚合 Bangumi 讨论内容</sub>
+      <sub>发现：新番趋势、近期热门与资料库</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/resource-download.png" alt="资源搜索和下载" />
+      <img src="doc/img/README/my-follows.jpg" alt="我的追番" />
+      <br />
+      <sub>我的追番：追番进度与状态一览</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="doc/img/README/play-history.jpg" alt="播放历史" />
+      <br />
+      <sub>播放历史：断点续播与多端同步</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="doc/img/README/messages.jpg" alt="消息中心" />
+      <br />
+      <sub>消息中心：番剧更新动态一目了然</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="doc/img/README/download-center.jpg" alt="资源搜索和下载" />
       <br />
       <sub>后台：资源搜索、下载和管理</sub>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="50%">
-      <img src="doc/img/README/subtitle-management.png" alt="字幕管理" />
+      <img src="doc/img/README/admin-dashboard.jpg" alt="后台看板" />
       <br />
-      <sub>后台：内封、外挂字幕管理</sub>
+      <sub>后台看板：媒体库、任务与订阅概览</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="doc/img/README/profile.jpg" alt="个人中心" />
+      <br />
+      <sub>个人中心：账号、设置与多端信息</sub>
     </td>
   </tr>
 </table>
@@ -73,15 +95,43 @@ https://www.dandanplay.com/
 
 
 ## 核心能力
+**全自动资源流水线**  
+- 配置 RSS 订阅后，全流程自动完成：资源下载 → 媒体库入库 → 番剧/剧集智能识别与匹配 → 自动抓取封面、简介等详情信息。播放时弹幕与字幕即开即有，全程无需人工干预。  
+- 内置资源检索功能，点击下载即可自动完成入库与匹配。  
+- 自带下载器，无需额外配置下载服务。  
+- 支持媒体库目录自动扫描外挂字幕，内封与外挂字幕可快速切换
 
-- 首次安装向导，初始化站点信息、管理员账号和媒体库
-- 本地媒体库扫描，支持常见视频格式，自动监听文件变化
-- 基于弹弹接口进行番剧与剧集匹配，支持重匹配
-- 播放页集成弹幕、字幕与播放进度记录
-- 番剧详情页展示新番时间表、剧集、评论和追番状态
-- RSS 订阅下载，支持代理、立即检查和自动入库匹配
-- 后台管理包含媒体库、视频文件、字幕、下载任务、RSS 和系统配置
-- 支持 H2 快速启动，也支持 PostgreSQL 部署
+**开箱即看的播放体验**  
+- 网页端直接播放，弹幕和字幕自动就位；播放进度自动记录，支持断点续播。  
+- 内封/外挂字幕自动加载，并支持随时调整字幕延迟。  
+- 深度整合弹弹 play 官方生态，一键唤起客户端播放。  
+- 提供多种主题，按需自由切换。
+
+<img src="doc/img/README/subtitle-management.png" alt="字幕管理" width="720" />
+
+**打通 Bangumi**  
+- 详情页与播放页自动聚合番剧评分及单集吐槽。  
+- 绑定 Bangumi 账号后，播放过程自动打标，追番状态实时同步。  
+- 支持一键导入 Bangumi 追番清单，轻松迁移。
+
+<img src="doc/img/README/comments.png" alt="评论区" width="720" />
+
+**追番管理**  
+- 提供新番时间表、新番趋势、近期热门、番剧资料库等多维度发现工具，助你快速定位心仪作品。  
+- 内置消息中心，番剧更新动态一目了然。
+
+**多端访问**  
+- 自适应布局，移动端推荐使用 via 播放器，避免系统播放器干扰弹幕功能。  
+- 播放进度自动云端同步，多端无缝衔接，一键继续观看。
+- 提供MCP支持，快速接入AI
+
+<p align="center">
+  <img src="doc/img/README/mcp-example.jpg" alt="AI MCP 示例" width="300" />
+</p>
+
+**省心部署**  
+- Docker 一键部署，H2 数据库零配置快速启动，亦可无缝切换至 PostgreSQL。  
+- 自带管理后台，涵盖媒体库、字幕、下载任务、订阅与定时任务，轻松掌控全局。
 
 ## 快速开始
 
@@ -95,7 +145,8 @@ https://www.dandanplay.com/
 
 开放平台申请指引：
 https://doc.dandanplay.com/open/#_3-申请-appid-和-appsecret
-（如果你无法获取官方AppId/AppSecret，可以先参考本项目的[下游代理服务介绍](https://eventhorizonsky.github.io/ani-link-doc/ani-link-proxy.html)。）
+
+考虑到官方开放平台更倾向于为开发者颁发凭证，我们也为用户提供了中转服务：[下游代理服务介绍](https://eventhorizonsky.github.io/ani-link-doc/ani-link-proxy.html)。
 
 ### 1. 拉取镜像
 

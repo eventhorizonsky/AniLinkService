@@ -39,3 +39,6 @@ swagger.json
 
 ### pnpm ###
 .pnpm-store/
+
+### scratch ###
+temp/
