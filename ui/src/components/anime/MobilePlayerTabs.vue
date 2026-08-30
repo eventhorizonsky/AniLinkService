@@ -389,7 +389,7 @@ const activeTab = ref('info')
 }
 
 .mpt-ep-item:active {
-  background: rgba(196, 93, 43, 0.08);
+  background: rgba(var(--al-accent-rgb), 0.08);
 }
 
 .mpt-ep-item.is-current {

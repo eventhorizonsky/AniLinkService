@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
   outline: none;
   border-color: var(--anime-accent-red);
   background: var(--al-bg);
-  box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12);
+  box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12);
 }
 
 .captcha-row {
@@ -416,13 +416,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 0.9rem;
   transition: 0.2s;
-  box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--al-accent-rgb), 0.3);
 }
 
 .btn-login:hover:not(:disabled) {
   background: var(--al-accent-strong);
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(196, 93, 43, 0.4);
+  box-shadow: 0 4px 16px rgba(var(--al-accent-rgb), 0.4);
 }
 
 .btn-login:disabled {

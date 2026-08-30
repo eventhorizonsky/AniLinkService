@@ -10,7 +10,11 @@ import './styles/browse.css'
 import App from './App.vue'
 import { md3 } from 'vuetify/blueprints'
 import { setupHttpInterceptors } from './utils/http'
-import { theme, isDark } from './composables/useTheme'
+import { theme, isDark, accentKey } from './composables/useTheme'
+import { getThemeColorPreset } from './utils/themeColors'
+
+// 主题色预设：Vuetify primary 与前台 CSS 强调色保持一致
+const initialPreset = getThemeColorPreset(accentKey.value) || getThemeColorPreset('ember')
 
 const vuetify = createVuetify({
   locale: {
@@ -24,14 +28,14 @@ const vuetify = createVuetify({
     themes: {
       light: {
         colors: {
-          primary: '#6750a4',
+          primary: initialPreset.light.primary,
           background: '#fafafa',
           surface: '#ffffff',
         },
       },
       dark: {
         colors: {
-          primary: '#b9774a',
+          primary: initialPreset.dark.primary,
           info: '#7fa8c9',
           background: '#1b1612',
           surface: '#201a15',
@@ -61,9 +65,14 @@ const vuetify = createVuetify({
   },
 })
 
-// 前台主题切换时同步 vuetify（后台与全局 v-app 壳、snackbar/对话框）
-watch(theme, (value) => {
-  vuetify.theme.global.name.value = value === 'dark' ? 'dark' : 'light'
+// 主题模式 / 主题色变化时同步 vuetify（后台与全局 v-app 壳、snackbar/对话框）
+watch([theme, accentKey], () => {
+  const preset = getThemeColorPreset(accentKey.value)
+  if (preset) {
+    vuetify.theme.themes.value.light.colors.primary = preset.light.primary
+    vuetify.theme.themes.value.dark.colors.primary = preset.dark.primary
+  }
+  vuetify.theme.global.name.value = theme.value === 'dark' ? 'dark' : 'light'
 })
 
 setupHttpInterceptors()

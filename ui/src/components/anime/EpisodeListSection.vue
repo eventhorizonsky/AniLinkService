@@ -144,7 +144,7 @@ const playEpisode = (ep) => {
 .anime-episode-card.is-current {
   background: linear-gradient(135deg, var(--al-bg-highlight-1) 0%, var(--al-bg-highlight-2) 100%);
   border: 2px solid var(--anime-accent-red);
-  box-shadow: 0 4px 16px rgba(196, 93, 43, 0.2);
+  box-shadow: 0 4px 16px rgba(var(--al-accent-rgb), 0.2);
   position: relative;
 }
 
@@ -174,12 +174,12 @@ const playEpisode = (ep) => {
 .anime-episode-card.is-current .anime-watch-btn {
   background: linear-gradient(135deg, var(--anime-accent-red) 0%, var(--anime-accent-orange) 100%) !important;
   color: var(--al-text-on-accent) !important;
-  box-shadow: 0 4px 12px rgba(196, 93, 43, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(var(--al-accent-rgb), 0.3) !important;
 }
 
 .anime-episode-card.is-current .anime-watch-btn:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 0 6px 16px rgba(196, 93, 43, 0.4) !important;
+  box-shadow: 0 6px 16px rgba(var(--al-accent-rgb), 0.4) !important;
 }
 
 .anime-watch-btn.disabled {

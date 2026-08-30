@@ -668,7 +668,7 @@ onBeforeUnmount(() => {
 }
 
 .episode-panel-item:hover {
-  background: rgba(196, 93, 43, 0.06);
+  background: rgba(var(--al-accent-rgb), 0.06);
 }
 
 .episode-panel-item.is-current {

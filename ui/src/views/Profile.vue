@@ -7,10 +7,16 @@ import { getPlayHistory } from '../api/playHistory'
 import { getMyDanmakuRecords } from '../api/danmaku'
 import { getUnreadCount } from '../api/messages'
 import { useAuth } from '../composables/useAuth'
-import { ACCENT_COLOR } from '../utils/constants'
+import { useTheme } from '../composables/useTheme'
+import { getThemeColorPreset } from '../utils/themeColors'
 
 const router = useRouter()
 const { userInfo, setUserInfo } = useAuth()
+const { isDark, accentKey } = useTheme()
+
+const accentColor = computed(
+  () => getThemeColorPreset(accentKey.value)?.[isDark.value ? 'dark' : 'light'].accent || '#c45d2b'
+)
 
 const loading = ref(true)
 const stats = ref({ follows: null, history: null, danmaku: null, unread: null })
@@ -24,7 +30,7 @@ const roleLabel = computed(() => {
 })
 
 const statCards = computed(() => [
-  { label: '追番', icon: 'mdi-bookmark-multiple', value: stats.value.follows, to: '/profile/follows', color: ACCENT_COLOR },
+  { label: '追番', icon: 'mdi-bookmark-multiple', value: stats.value.follows, to: '/profile/follows', color: accentColor.value },
   { label: '观看历史', icon: 'mdi-history', value: stats.value.history, to: '/profile/history', color: '#1e7b6b' },
   { label: '弹幕', icon: 'mdi-comment-text-multiple', value: stats.value.danmaku, to: '/profile/danmaku', color: '#8b5cf6' },
   { label: '未读消息', icon: 'mdi-bell-outline', value: stats.value.unread, to: '/profile/messages', color: '#ef4444' }
@@ -148,11 +154,11 @@ onMounted(fetchStats)
 }
 .user-avatar {
   width: 68px; height: 68px; border-radius: 50%;
-  background: linear-gradient(135deg, rgba(196, 93, 43, 0.2), rgba(179, 129, 91, 0.3));
+  background: linear-gradient(135deg, rgba(var(--al-accent-rgb), 0.2), rgba(var(--al-accent-brown-rgb), 0.3));
   color: var(--anime-accent-red);
   display: flex; align-items: center; justify-content: center;
   font-size: 28px; font-weight: 700;
-  border: 2px solid rgba(196, 93, 43, 0.2);
+  border: 2px solid rgba(var(--al-accent-rgb), 0.2);
   flex-shrink: 0;
 }
 .user-info { flex: 1; min-width: 200px; }
@@ -160,7 +166,7 @@ onMounted(fetchStats)
 .user-name-row h3 { margin: 0; font-size: 1.25rem; color: var(--anime-text-main); }
 .role-chip {
   font-size: 11px; font-weight: 600;
-  background: rgba(196, 93, 43, 0.12); color: var(--anime-accent-red);
+  background: rgba(var(--al-accent-rgb), 0.12); color: var(--anime-accent-red);
   padding: 2px 10px; border-radius: 999px;
 }
 .bangumi-chip {
@@ -181,7 +187,7 @@ onMounted(fetchStats)
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
 }
-.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(196, 93, 43, 0.2); }
+.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(var(--al-accent-rgb), 0.2); }
 .stat-icon {
   width: 42px; height: 42px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
@@ -201,7 +207,7 @@ onMounted(fetchStats)
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
 }
-.quick-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(196, 93, 43, 0.2); }
+.quick-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); border-color: rgba(var(--al-accent-rgb), 0.2); }
 .quick-icon {
   width: 44px; height: 44px; border-radius: 12px;
   background: var(--anime-bg-beige);

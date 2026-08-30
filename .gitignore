@@ -36,3 +36,6 @@ api/data/**
 media/**
 log
 swagger.json
+
+### pnpm ###
+.pnpm-store/

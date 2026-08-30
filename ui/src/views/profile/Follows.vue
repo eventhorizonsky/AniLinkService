@@ -365,7 +365,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   font-family: inherit;
 }
 .pill:hover { border-color: var(--anime-accent-red); color: var(--anime-accent-red); }
-.pill.active { background: rgba(196, 93, 43, 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
+.pill.active { background: rgba(var(--al-accent-rgb), 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
 
 .search-box {
   display: flex;
@@ -378,7 +378,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   min-width: 220px;
   transition: all 0.2s;
 }
-.search-box:focus-within { border-color: var(--anime-accent-red); background: var(--al-bg); box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12); }
+.search-box:focus-within { border-color: var(--anime-accent-red); background: var(--al-bg); box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12); }
 .search-box i { color: var(--al-text-placeholder); }
 .search-box input { flex: 1; border: none; outline: none; background: transparent; padding: 9px 0; font-size: 13px; font-family: inherit; color: var(--anime-text-main); }
 .search-box .clear-btn { border: none; background: none; color: var(--al-text-placeholder); cursor: pointer; padding: 0; display: flex; }

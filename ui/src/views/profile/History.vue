@@ -175,7 +175,7 @@ onMounted(fetchData)
 }
 .history-card:hover {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
-  border-color: rgba(196, 93, 43, 0.2);
+  border-color: rgba(var(--al-accent-rgb), 0.2);
   transform: translateY(-2px);
 }
 

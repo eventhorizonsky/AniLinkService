@@ -11,9 +11,6 @@ export const BANGUMI_BASE_URL = 'https://bgm.tv/'
 
 export const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 
-// 站点主题强调色（JS 侧使用，与 CSS 变量 --al-accent / --anime-accent-red 保持一致）。
-export const ACCENT_COLOR = '#c45d2b'
-
 // 星期标签（0=周日，7 也代表周日），用于放送日展示。
 export const WEEKDAY_LABELS = {
   0: '周日',

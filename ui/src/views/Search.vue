@@ -516,7 +516,7 @@ onBeforeUnmount(() => {
 .search-box:focus-within {
   border-color: var(--anime-accent-red);
   background: var(--al-bg);
-  box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12);
+  box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12);
 }
 .search-box i { color: var(--al-text-placeholder); font-size: 1rem; flex-shrink: 0; }
 .search-box input {
@@ -549,7 +549,7 @@ onBeforeUnmount(() => {
   font-family: inherit;
   height: 42px;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--al-accent-rgb), 0.3);
 }
 .btn-search:hover:not(:disabled) { background: var(--al-accent-strong); }
 .btn-search:disabled { opacity: 0.6; cursor: not-allowed; }

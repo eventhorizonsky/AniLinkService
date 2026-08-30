@@ -65,7 +65,7 @@
   .br-card:hover {
     transform: translateY(-6px);
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
-    border-color: rgba(196, 93, 43, 0.2);
+    border-color: rgba(var(--al-accent-rgb), 0.2);
   }
   .br-card-image {
     position: relative;
@@ -96,7 +96,7 @@
     padding: 3px 12px;
     border-radius: 999px;
     letter-spacing: 0.4px;
-    box-shadow: 0 2px 12px rgba(196, 93, 43, 0.35);
+    box-shadow: 0 2px 12px rgba(var(--al-accent-rgb), 0.35);
   }
   .br-badge-new--sparkle {
     background: var(--al-accent-brown-dark);
@@ -180,7 +180,7 @@
     font-size: 10px;
   }
   .br-card-meta .genre-active {
-    background: rgba(196, 93, 43, 0.12);
+    background: rgba(var(--al-accent-rgb), 0.12);
     color: var(--anime-accent-red);
   }
   .br-card-meta .genre-done {
@@ -365,7 +365,7 @@
   .btn-primary {
     background: var(--anime-accent-red);
     color: var(--al-text-on-accent);
-    box-shadow: 0 2px 8px rgba(196, 93, 43, 0.3);
+    box-shadow: 0 2px 8px rgba(var(--al-accent-rgb), 0.3);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--al-accent-strong);

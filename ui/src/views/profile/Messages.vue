@@ -153,7 +153,7 @@ onMounted(fetchData)
   transition: all 0.2s; font-family: inherit;
 }
 .pill:hover { border-color: var(--anime-accent-red); color: var(--anime-accent-red); }
-.pill.active { background: rgba(196, 93, 43, 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
+.pill.active { background: rgba(var(--al-accent-rgb), 0.1); border-color: var(--anime-accent-red); color: var(--anime-accent-red); font-weight: 600; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -170,8 +170,8 @@ onMounted(fetchData)
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.25s, border-color 0.25s;
 }
-.message-card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07); border-color: rgba(196, 93, 43, 0.18); }
-.message-card.unread { background: rgba(196, 93, 43, 0.04); border-color: rgba(196, 93, 43, 0.15); }
+.message-card:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07); border-color: rgba(var(--al-accent-rgb), 0.18); }
+.message-card.unread { background: rgba(var(--al-accent-rgb), 0.04); border-color: rgba(var(--al-accent-rgb), 0.15); }
 
 .msg-indicator { flex-shrink: 0; padding-top: 5px; }
 .unread-dot { display: inline-block; width: 8px; height: 8px; background: var(--al-danger-bright); border-radius: 50%; }
@@ -180,7 +180,7 @@ onMounted(fetchData)
 .msg-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
 .msg-title { font-size: 0.95rem; font-weight: 600; color: var(--anime-text-main); }
 .msg-type { font-size: 11px; padding: 1px 8px; border-radius: 999px; }
-.type-update { background: rgba(196, 93, 43, 0.12); color: var(--anime-accent-red); }
+.type-update { background: rgba(var(--al-accent-rgb), 0.12); color: var(--anime-accent-red); }
 .type-system { background: var(--al-border-neutral); color: var(--anime-text-secondary); }
 .msg-content { margin: 0 0 6px; font-size: 0.88rem; color: var(--anime-text-secondary); line-height: 1.55; }
 .msg-time { font-size: 12px; color: var(--anime-text-secondary); opacity: 0.75; display: inline-flex; align-items: center; gap: 4px; }

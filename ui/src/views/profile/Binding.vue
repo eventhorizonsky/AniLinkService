@@ -194,6 +194,6 @@ onMounted(fetchStatus)
   flex: 1; border: 1.5px solid var(--al-border-input); border-radius: 10px;
   padding: 10px 14px; font-size: 13px; outline: none; font-family: inherit;
 }
-.token-row input:focus { border-color: var(--anime-accent-red); box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.12); }
+.token-row input:focus { border-color: var(--anime-accent-red); box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12); }
 .token-hint { margin: 12px 0 0; font-size: 12px; color: var(--anime-text-secondary); opacity: 0.8; }
 </style>

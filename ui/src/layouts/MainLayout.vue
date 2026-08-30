@@ -84,15 +84,40 @@
         </div>
 
         <div class="topbar-actions">
-          <!-- 主题切换 -->
-          <button
-            class="theme-toggle"
-            :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
-            aria-label="切换主题"
-            @click="toggleTheme"
-          >
-            <i class="mdi" :class="isDark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"></i>
-          </button>
+          <!-- 主题设置（主题色 + 深/浅色切换） -->
+          <div class="accent-menu-wrapper">
+            <button
+              class="theme-toggle"
+              :title="'主题色：' + (currentAccentName || '')"
+              aria-label="主题设置"
+              @click="accentPopoverOpen = !accentPopoverOpen"
+            >
+              <i class="mdi mdi-palette-outline"></i>
+            </button>
+            <div v-if="accentPopoverOpen" class="accent-popover" @wheel.stop>
+              <div class="accent-popover-title">
+                <i class="mdi mdi-palette-swatch-outline"></i> 主题色
+              </div>
+              <div class="accent-swatches">
+                <button
+                  v-for="p in THEME_COLOR_PRESETS"
+                  :key="p.key"
+                  class="accent-swatch"
+                  :class="{ active: p.key === accentKey }"
+                  :title="p.name"
+                  :style="{ background: isDark ? p.dark.accent : p.light.accent }"
+                  @click="selectAccent(p.key)"
+                >
+                  <i v-if="p.key === accentKey" class="mdi mdi-check"></i>
+                </button>
+              </div>
+              <div class="accent-popover-divider"></div>
+              <button class="accent-mode-btn" @click="toggleTheme">
+                <i class="mdi" :class="isDark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"></i>
+                {{ isDark ? '深色模式' : '浅色模式' }}
+              </button>
+            </div>
+          </div>
 
           <!-- 消息铃铛和下拉 -->
           <MessageBell v-if="isLoggedIn" v-model="messageMenuOpen" />
@@ -167,13 +192,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
 import { DEFAULT_SITE_NAME, hasRoleLevel, isSuperAdmin } from '../utils/constants'
+import { THEME_COLOR_PRESETS, getThemeColorPreset } from '../utils/themeColors'
 import { getCurrentUser } from '../api/auth'
 import { readSiteConfig, remoteAccessEnabled, remoteAccessTokenRequired } from '../utils/siteConfig'
 import LoginDialog from '../components/LoginDialog.vue'
 import RegisterDialog from '../components/RegisterDialog.vue'
 import MessageBell from '../components/MessageBell.vue'
 
-const { isDark, toggleTheme } = useTheme()
+const { isDark, toggleTheme, accentKey, setAccentColor } = useTheme()
 const { token, userInfo, isLoggedIn, setUserInfo, clearAuth } = useAuth()
 const router = useRouter()
 const route = useRoute()
@@ -183,6 +209,7 @@ const showRegisterDialog = ref(false)
 const userMenuOpen = ref(false)
 const sidebarOpen = ref(false)
 const siteConfig = ref(readSiteConfig())
+const accentPopoverOpen = ref(false)
 
 // 消息下拉开关（由 MessageBell 通过 v-model 控制）
 const messageMenuOpen = ref(false)
@@ -253,6 +280,10 @@ const currentUser = computed(() => {
   return userInfo.value?.username || ''
 })
 
+const currentAccentName = computed(() => {
+  return getThemeColorPreset(accentKey.value)?.name || ''
+})
+
 const isAdmin = computed(() => isSuperAdmin(userInfo.value))
 
 const syncDocumentTitle = () => {
@@ -274,6 +305,12 @@ const handleClickOutside = (event) => {
     const userMenuWrapper = event.target.closest('.user-menu-wrapper')
     if (!userMenuWrapper) {
       userMenuOpen.value = false
+    }
+  }
+  if (accentPopoverOpen.value) {
+    const accentWrapper = event.target.closest('.accent-menu-wrapper')
+    if (!accentWrapper) {
+      accentPopoverOpen.value = false
     }
   }
 }
@@ -363,6 +400,11 @@ const goToAdmin = () => {
   userMenuOpen.value = false
   router.push('/admin')
 }
+
+const selectAccent = (key) => {
+  setAccentColor(key)
+  accentPopoverOpen.value = false
+}
 </script>
 
 <style scoped>
@@ -401,7 +443,7 @@ body {
   background: linear-gradient(180deg, var(--al-sidebar-bg-1) 0%, var(--al-sidebar-bg-2) 100%);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(196, 93, 43, 0.14);
+  border-right: 1px solid rgba(var(--al-accent-rgb), 0.14);
   padding: 28px 16px 24px;
   display: flex;
   flex-direction: column;
@@ -493,11 +535,11 @@ body {
 
 /* ★ 选中项 — 棕色胶囊 */
 .sidebar-nav a.nav-link.nav-active {
-  background: rgba(196, 93, 43, 0.13);
+  background: rgba(var(--al-accent-rgb), 0.13);
   color: var(--al-accent-deep);
   font-weight: 600;
   border-radius: 14px;
-  box-shadow: 0 2px 12px rgba(196, 93, 43, 0.15);
+  box-shadow: 0 2px 12px rgba(var(--al-accent-rgb), 0.15);
 }
 .sidebar-nav a.nav-link.nav-active i {
   color: var(--anime-accent-red);
@@ -608,7 +650,7 @@ body {
 .search-wrap input:focus {
   border-color: var(--anime-accent-red);
   background: var(--al-bg);
-  box-shadow: 0 0 0 4px rgba(196, 93, 43, 0.15);
+  box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.15);
 }
 .search-wrap .shortcut {
   position: absolute;
@@ -651,9 +693,9 @@ body {
 }
 .menu-toggle:hover,
 .theme-toggle:hover {
-  background: rgba(196, 93, 43, 0.08);
+  background: rgba(var(--al-accent-rgb), 0.08);
   color: var(--al-accent);
-  border-color: rgba(196, 93, 43, 0.2);
+  border-color: rgba(var(--al-accent-rgb), 0.2);
 }
 .menu-toggle {
   display: none;
@@ -664,7 +706,7 @@ body {
   width: 42px;
   height: 42px;
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(196, 93, 43, 0.18), rgba(179, 129, 91, 0.25));
+  background: linear-gradient(135deg, rgba(var(--al-accent-rgb), 0.18), rgba(var(--al-accent-brown-rgb), 0.25));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -672,7 +714,7 @@ body {
   font-size: 17px;
   color: var(--anime-accent-red);
   cursor: pointer;
-  border: 2px solid rgba(196, 93, 43, 0.2);
+  border: 2px solid rgba(var(--al-accent-rgb), 0.2);
   transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-family: inherit;
 }
@@ -687,6 +729,92 @@ body {
 
 .user-menu-wrapper {
   position: relative;
+}
+
+/* ===== 主题色选择弹层 ===== */
+.accent-menu-wrapper {
+  position: relative;
+}
+.accent-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--al-bg);
+  border-radius: 14px;
+  border: 1px solid var(--al-border-panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.05);
+  min-width: 218px;
+  padding: 14px;
+  z-index: 1001;
+  animation: slideDown 0.2s ease;
+}
+.accent-popover-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--anime-text-main);
+  margin-bottom: 12px;
+}
+.accent-popover-title i {
+  color: var(--anime-accent-red);
+  font-size: 15px;
+}
+.accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.accent-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--al-bg);
+  box-shadow: 0 0 0 1px var(--al-border-soft);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--al-text-on-accent);
+  font-size: 15px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.accent-swatch:hover {
+  transform: scale(1.12);
+}
+.accent-swatch.active {
+  box-shadow: 0 0 0 2px var(--anime-accent-red);
+  transform: scale(1.12);
+}
+.accent-popover-divider {
+  height: 1px;
+  background: var(--al-border-neutral);
+  margin: 12px 0;
+}
+.accent-mode-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--anime-text-secondary);
+  padding: 6px 8px;
+  border-radius: 9px;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+.accent-mode-btn:hover {
+  background: rgba(var(--al-accent-rgb), 0.08);
+  color: var(--anime-accent-red);
+}
+.accent-mode-btn i {
+  font-size: 15px;
 }
 
 /* ===== 内容区 ===== */
@@ -751,7 +879,7 @@ body {
 }
 
 .dropdown-item:hover {
-  background: rgba(196, 93, 43, 0.08);
+  background: rgba(var(--al-accent-rgb), 0.08);
   color: var(--anime-accent-red);
 }
 
@@ -813,9 +941,6 @@ body {
 @media (max-width: 600px) {
   .app-topbar {
     gap: 10px;
-  }
-  .theme-toggle {
-    display: none;
   }
   .sidebar-footer .theme-footer-btn {
     display: flex;

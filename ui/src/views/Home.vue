@@ -351,7 +351,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .home-root {
   --accent: var(--al-accent);
-  --accent-soft: rgba(196, 93, 43, 0.12);
+  --accent-soft: rgba(var(--al-accent-rgb), 0.12);
   --bg-beige: var(--al-bg-beige);
   --radius-lg: 20px;
   --radius-md: 14px;
@@ -420,7 +420,7 @@ onBeforeUnmount(() => {
 }
 .hero-content .tag {
   display: inline-block;
-  background: rgba(196, 93, 43, 0.9);
+  background: rgba(var(--al-accent-rgb), 0.9);
   backdrop-filter: blur(4px);
   padding: 3px 14px;
   border-radius: var(--radius-full);
@@ -548,7 +548,7 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 .hero-section:hover .hero-arrow { opacity: 1; }
-.hero-arrow:hover { background: rgba(196, 93, 43, 0.9); }
+.hero-arrow:hover { background: rgba(var(--al-accent-rgb), 0.9); }
 .hero-arrow:active { transform: translateY(-50%) scale(0.92); }
 .hero-arrow--prev { right: calc(88px + 172px + 14px); }
 .hero-arrow--next { right: 22px; }

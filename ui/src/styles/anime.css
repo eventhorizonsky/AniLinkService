@@ -138,7 +138,7 @@
   }
 
   .anime-follow-btn:hover:not(.loading) {
-    background: rgba(196, 93, 43, 0.1);
+    background: rgba(var(--al-accent-rgb), 0.1);
   }
 
   .anime-follow-btn.following {

@@ -6,10 +6,12 @@ import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import artplayerPluginVttThumbnail from 'artplayer-plugin-vtt-thumbnail'
 import Hls from 'hls.js'
 import { showAppMessage } from '../utils/ui-feedback'
-import { API_BASE, ACCENT_COLOR } from '../utils/constants'
+import { API_BASE } from '../utils/constants'
 import { truncateText } from '../utils/episodes'
 import { getMediaPlayInfo } from '../api/media'
 import { resolvePlayMode, canPlayMime } from '../utils/playback'
+import { theme, accentKey } from './useTheme'
+import { getThemeColorPreset } from '../utils/themeColors'
 
 const MOBILE_VIEWPORT_MAX_WIDTH = 768
 const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
@@ -476,6 +478,11 @@ export function usePlayerCore({
       const subtitleSettings = subtitle.buildSubtitleSettings(subtitles, String(activeSubtitleTrack?.id || ''))
       const episodeControls = buildEpisodeControls(mobile)
 
+      // 播放器主题色跟随当前主题色预设
+      const playerAccent =
+        getThemeColorPreset(accentKey.value)?.[theme.value === 'dark' ? 'dark' : 'light'].accent ||
+        '#c45d2b'
+
       // 初始化 Artplayer
       art.value = new Artplayer({
         container: artRef.value,
@@ -503,7 +510,7 @@ export function usePlayerCore({
         playsInline: true,
         autoPlayback: false,
         airplay: !mobile,
-        theme: ACCENT_COLOR,
+        theme: playerAccent,
         lang: 'zh-cn',
         ...(useNativeSubtitle ? { subtitleOffset: true } : {}),
         ...(nativeSubtitleOption ? { subtitle: nativeSubtitleOption } : {}),

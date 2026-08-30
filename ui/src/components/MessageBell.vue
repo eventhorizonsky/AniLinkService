@@ -240,9 +240,9 @@ start()
 }
 
 .message-btn:hover {
-  background: rgba(196, 93, 43, 0.08);
+  background: rgba(var(--al-accent-rgb), 0.08);
   color: var(--al-accent);
-  border-color: rgba(196, 93, 43, 0.2);
+  border-color: rgba(var(--al-accent-rgb), 0.2);
 }
 
 .unread-dot {
@@ -357,11 +357,11 @@ start()
 }
 
 .message-item.unread {
-  background: rgba(196, 93, 43, 0.05);
+  background: rgba(var(--al-accent-rgb), 0.05);
 }
 
 .message-item.unread:hover {
-  background: rgba(196, 93, 43, 0.1);
+  background: rgba(var(--al-accent-rgb), 0.1);
 }
 
 .message-item:last-child {
