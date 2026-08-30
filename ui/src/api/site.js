@@ -9,6 +9,9 @@ export const sendTestEmail = (data) => axios.post(`${API_BASE}/site/test-email`,
 
 export const saveSiteConfig = (data) => axios.put(`${API_BASE}/site/config`, data).then((r) => r.data)
 
+export const healBangumiImages = () =>
+  axios.post(`${API_BASE}/site/bangumi-images/heal`).then((r) => r.data)
+
 export const initSiteConfig = (data) => axios.post(`${API_BASE}/init/site-config`, data).then((r) => r.data)
 
 export const getInitSystemInfo = () => axios.get(`${API_BASE}/init/system-info`).then((r) => r.data)

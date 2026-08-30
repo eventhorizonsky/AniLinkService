@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { showAppMessage } from '../../utils/ui-feedback'
 import { getUserRoles } from '../../api/system'
-import { getSiteConfig, saveSiteConfig, sendTestEmail as apiSendTestEmail } from '../../api/site'
+import { getSiteConfig, saveSiteConfig, healBangumiImages as apiHealBangumiImages, sendTestEmail as apiSendTestEmail } from '../../api/site'
 import { updateSiteConfig } from '../../utils/siteConfig'
 import { DEFAULT_DANDAN_BASE_URL } from '../../utils/constants'
 
@@ -12,6 +12,7 @@ const activeTab = ref('basic')
 const showTestEmailDialog = ref(false)
 const testEmail = ref('')
 const sendingTestEmail = ref(false)
+const healingImages = ref(false)
 const roleOptions = ref([])
 
 const form = ref({
@@ -148,6 +149,23 @@ const saveConfig = async () => {
     showAppMessage(error.response?.data?.msg || '保存失败，请稍后重试', 'error')
   } finally {
     saving.value = false
+  }
+}
+
+const handleHealBangumiImages = async () => {
+  if (healingImages.value) return
+  healingImages.value = true
+  try {
+    const res = await apiHealBangumiImages()
+    if (res?.code === 200) {
+      showAppMessage(res?.msg || '封面修复已触发，正在后台执行', 'success')
+    } else {
+      showAppMessage(res?.msg || '触发失败', 'error')
+    }
+  } catch (error) {
+    showAppMessage(error.response?.data?.msg || '触发失败', 'error')
+  } finally {
+    healingImages.value = false
   }
 }
 
@@ -439,6 +457,29 @@ onMounted(() => {
                 persistent-hint
                 class="mb-3"
               />
+
+              <v-alert
+                type="info"
+                variant="tonal"
+                density="compact"
+                class="mb-2"
+              >
+                <div class="d-flex align-center flex-wrap ga-2">
+                  <span class="text-body-2 flex-grow-1">
+                    切换镜像地址后，如果出现追番封面图裂情况，可以点击此按钮修复存量封面地址。
+                  </span>
+                  <v-btn
+                    color="primary"
+                    size="small"
+                    :loading="healingImages"
+                    :disabled="healingImages"
+                    prepend-icon="mdi-image-refresh"
+                    @click="handleHealBangumiImages"
+                  >
+                    {{ healingImages ? '修复中...' : '修复封面图片' }}
+                  </v-btn>
+                </div>
+              </v-alert>
             </v-window-item>
 
             <v-window-item value="remote-access">
