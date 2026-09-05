@@ -332,6 +332,16 @@ const applyDbQuery = (q) => {
   dbSearch()
 }
 
+// 外部快捷跳转（?tab= / ?dbq=）在落地生效后，把这些一次性参数从 URL 移除，
+// 避免 URL 残留导致用户切换 Tab / 进入其他页面返回时被强制切回资料库 Tab 或再次触发搜索
+const clearShortcutQuery = () => {
+  const query = { ...route.query }
+  let changed = false
+  if (query.tab !== undefined) { delete query.tab; changed = true }
+  if (query.dbq !== undefined) { delete query.dbq; changed = true }
+  if (changed) router.replace({ path: route.path, query })
+}
+
 // Season label
 const seasonLabels = { 1:'冬季', 4:'春季', 7:'夏季', 10:'秋季' }
 const seasonLabel = computed(() => {
@@ -407,19 +417,25 @@ const syncAndFetch = () => {
 
 watch(() => route.query.q, () => syncAndFetch())
 
-// 外部跳转可通过 ?tab=xxx（library/database/rank）直达对应 Tab（兼容 keep-alive 复用下的二次进入）
+// 外部跳转可通过 ?tab=xxx（library/database/rank）直达对应 Tab（兼容 keep-alive 复用下的二次进入）；
+// 若同时携带 ?dbq= 则交给下方 dbq 逻辑统一处理并清理，避免此处提前清掉导致搜索不触发
 watch(
   () => route.query.tab,
   (t) => {
-    if (VALID_TABS.includes(t) && t !== activeTab.value) switchTab(t)
+    if (!VALID_TABS.includes(t)) return
+    if (t !== activeTab.value) switchTab(t)
+    if (route.query.dbq === undefined) clearShortcutQuery()
   }
 )
 
-// 外部跳转可通过 ?dbq=xxx 直达资料库搜索（追番页未绑定条目的兜底跳转）
+// 外部跳转可通过 ?dbq=xxx 直达资料库搜索（追番页未绑定条目的兜底跳转），
+// 搜索触发后把 ?tab=/?dbq= 一次性参数移除，返回时不会被强制切回资料库
 watch(
   () => route.query.dbq,
   (q) => {
-    if (q !== undefined) applyDbQuery(q)
+    if (q === undefined) return
+    applyDbQuery(q)
+    clearShortcutQuery()
   }
 )
 
@@ -470,8 +486,10 @@ onMounted(async () => {
     Object.assign(tabScroll, { library: 0, database: 0, rank: 0 }, snap.scrolls)
   }
   restoreTabScroll(activeTab.value)
-  // 首次挂载也响应 ?dbq=（追番页兜底跳转直达资料库搜索）
+  // 首次挂载也响应 ?dbq=（追番页兜底跳转直达资料库搜索）；
+  // 处理完快捷参数后即从 URL 移除，避免切换 Tab / 离开返回时被强制带回或再次触发搜索
   if (route.query.dbq !== undefined) applyDbQuery(route.query.dbq)
+  clearShortcutQuery()
 })
 
 // keep-alive 停用/复用：离开前记录各 Tab 真实滚动位置，回来由 restoreTabScroll 恢复

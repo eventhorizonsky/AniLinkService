@@ -309,6 +309,13 @@ const bgmFollowId = computed(() =>
 const bgmFollowTitle = computed(() =>
   typeof route.query.name === 'string' && route.query.name.trim() ? route.query.name.trim() : ''
 );
+// 排行榜/猜你喜欢等入口跳转到本页时随 ?title= 携带的条目标题；
+// 弹弹未命中时作为前往「番剧资料库」搜索的默认关键词（追番入口由上面的 ?name= 兜底）
+const bgmSearchTitle = computed(() => {
+  const t = route.query.title;
+  if (typeof t === 'string' && t.trim()) return t.trim();
+  return bgmFollowTitle.value;
+});
 const canManualBindBgm = computed(() => props.bgmMode && !!bgmFollowId.value && !!token.value);
 
 // 手动绑定（bgm 未命中时）：搜索弹弹条目并绑定到对应追番记录
@@ -411,8 +418,12 @@ const onBgmFetchError = (e) => {
   throw e;
 };
 const goDiscoverDatabase = () => {
-  // 直达发现页「番剧资料库」Tab（Search 按 ?tab=database 切换）
-  router.push({ path: '/search', query: { tab: 'database' } });
+  // 直达发现页「番剧资料库」Tab（Search 按 ?tab=database 切换）；
+  // 携带条目标题作 ?dbq=，由发现页自动填入搜索框并触发搜索
+  const query = { tab: 'database' };
+  const title = bgmSearchTitle.value;
+  if (title) query.dbq = title;
+  router.push({ path: '/search', query });
 };
 
 // Fetch Data

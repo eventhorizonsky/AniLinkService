@@ -109,7 +109,7 @@
           <router-link
             v-for="(a, idx) in visibleItems"
             :key="a.id"
-            :to="'/anime/bgm/' + a.id"
+            :to="bgmRoute(a)"
             class="rr-row"
           >
             <!-- 左：封面 -->
@@ -506,6 +506,15 @@ const unobserveMore = () => {
 // ===== 展示 =====
 
 const rowTitle = (a) => a?.nameCn || a?.name || '未命名动画'
+
+// 进入 Bangumi 详情页（bgmMode）时顺带携带条目名称（?title=）：
+// 弹弹未收录该条目时，详情页可将其带去「番剧资料库」自动搜索同名/同题材番剧
+const bgmRoute = (a) => {
+  const q = {}
+  const t = (a?.nameCn || a?.name || '').trim()
+  if (t) q.title = t
+  return { path: `/anime/bgm/${a.id}`, query: q }
+}
 
 const fmtRate = (v) => {
   if (v == null || v === '') return '-'

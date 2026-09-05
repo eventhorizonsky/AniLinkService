@@ -104,7 +104,7 @@
           <AnimeCard
             v-for="a in items"
             :key="a.subjectId"
-            :to="'/anime/bgm/' + a.subjectId"
+            :to="bgmRoute(a)"
             :image-url="a.cover"
             :alt="a.nameCn || a.name"
             :title="a.nameCn || a.name || '未命名动画'"
@@ -231,6 +231,16 @@ const persist = () => {
 watch(filters, persist, { deep: true })
 
 const showRankNo = computed(() => filters.value.sort === 'rank')
+
+// 点击条目进入本服务的 Bangumi 详情页（bgmMode）；顺带把条目名称放入 ?title=，
+// 若弹弹未收录该条目，详情页可将其带去「番剧资料库」自动搜索同题材/同名番剧
+const bgmRoute = (a) => {
+  const q = {}
+  const t = (a?.nameCn || a?.name || '').trim()
+  if (t) q.title = t
+  return { path: `/anime/bgm/${a.subjectId}`, query: q }
+}
+
 const hasActiveFilter = computed(() =>
   filters.value.platform !== '全部' ||
   filters.value.year !== '' ||
