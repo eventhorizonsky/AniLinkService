@@ -54,7 +54,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { formatDate } from '../../utils/format';
-import { isFuture, filterMainEpisodes, filterSpecialEpisodes, episodeNumberDisplay, truncateText } from '../../utils/episodes';
+import { isFuture, filterMainEpisodes, filterSpecialEpisodes, episodeNumberDisplay, truncateText, mainEpisodePosition } from '../../utils/episodes';
 
 const props = defineProps({
   episodes: {
@@ -114,10 +114,9 @@ const isCurrentEpisode = (ep) => {
 };
 
 const isWatched = (ep) => {
-  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) {
-    return false;
-  }
-  return props.watchedEpisodeNumbers.has(String(ep.episodeNumber));
+  const pos = mainEpisodePosition(ep, props.episodes)
+  if (pos == null) return false
+  return props.watchedEpisodeNumbers.has(String(pos))
 };
 
 const canPlay = (ep) => isEpisodeExisting(ep) && !isFuture(ep);

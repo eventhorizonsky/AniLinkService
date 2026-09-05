@@ -86,7 +86,7 @@
           <div v-else class="episode-panel-comments">
             <EpisodeComments
               :anime-id="animeId"
-              :episode-number="currentEpisodeNumber"
+              :episode-number="currentEpisodePosition"
             />
           </div>
         </div>
@@ -105,7 +105,7 @@
           :staff-list="staffList"
           :copyright-text="copyrightText"
           :current-episode-id="episodeId"
-          :current-episode-number="currentEpisodeNumber"
+          :current-episode-position="currentEpisodePosition"
           :main-episodes="mainEpisodes"
           :special-episodes="specialEpisodes"
           :watched-episode-numbers="watchedEpisodeNumbers"
@@ -153,6 +153,7 @@ import {
   formatEpisodeDate,
   buildPlayableEpisodeKeys,
   getEpisodeResources,
+  mainEpisodePosition,
 } from '../utils/episodes'
 import EpisodeComments from '../components/anime/EpisodeComments.vue'
 import MobilePlayerTabs from '../components/anime/MobilePlayerTabs.vue'
@@ -229,11 +230,12 @@ const displayedEpisodes = computed(() => {
   return [...eps].sort((a, b) => new Date(a.airDate) - new Date(b.airDate))
 })
 
-const currentEpisodeNumber = computed(() => {
+const currentEpisodePosition = computed(() => {
   const currentEp = animeData.value?.episodes?.find(
     ep => String(ep.episodeId) === String(episodeId.value)
   )
-  return currentEp?.episodeNumber != null ? String(currentEp.episodeNumber) : ''
+  const pos = mainEpisodePosition(currentEp, animeData.value?.episodes)
+  return pos != null ? String(pos) : ''
 })
 
 const canPlayEpisode = (ep) => {
@@ -248,8 +250,9 @@ const { watchedEpisodeNumbers, refresh: refreshWatchedEpisodes, markWatchedLocal
 )
 
 const isWatchedEpisode = (ep) => {
-  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) return false
-  return watchedEpisodeNumbers.value.has(String(ep.episodeNumber))
+  const pos = mainEpisodePosition(ep, animeData.value?.episodes)
+  if (pos == null) return false
+  return watchedEpisodeNumbers.value.has(String(pos))
 }
 
 const {
@@ -299,11 +302,13 @@ const syncEpisodeWatchedToBangumi = async () => {
   const key = `${animeId.value}:${episodeId.value}`
   if (key === _lastSyncedKey) return
 
-  // 找到当前播放的剧集
+  // 找到当前播放的剧集（按正片序列位置同步，而非 episodeNumber 标签）
   const currentEp = animeData.value?.episodes?.find(
     ep => String(ep.episodeId) === String(episodeId.value)
   )
-  if (!currentEp?.episodeNumber) return
+  // 非正片（特典/短片等）不参与 Bangumi 剧集同步
+  const episodePos = mainEpisodePosition(currentEp, animeData.value?.episodes)
+  if (episodePos == null) return
 
   // 播放 >= 80% 才同步
   const currentTime = art.value?.currentTime || 0
@@ -314,13 +319,13 @@ const syncEpisodeWatchedToBangumi = async () => {
 
   // 立即在本地标记"看过"，选集面板实时响应（乐观标记与后端数据合并展示，不会被刷新抹掉）
   if (userInfo.value?.bangumiBound) {
-    markWatchedLocally(currentEp.episodeNumber)
+    markWatchedLocally(episodePos)
   }
 
   try {
     await syncEpisodeWatched({
       animeId: animeId.value,
-      episodeNumber: String(currentEp.episodeNumber)
+      episodeNumber: String(episodePos)
     })
     // 稍后从服务端核对一次，将后端已写入的结果合并进来
     setTimeout(() => refreshWatchedEpisodes(), 3000)

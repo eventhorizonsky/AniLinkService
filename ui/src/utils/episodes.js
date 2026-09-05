@@ -57,3 +57,24 @@ export const truncateText = (text, maxLen) => {
   }
   return `${str.slice(0, maxLen)}...`
 }
+
+/**
+ * 计算某集在其"正片"序列中的位置（1-based）。
+ * <p>
+ * 弹弹的 episodeNumber 未必从 1 开始（如某季标注为第 11 集起），而 Bangumi 的
+ * episodes 数组是按 sort 排序的序列。两者都以"正片"的排列顺序对应，因此用
+ * 该集在正片数组中的位置作为统一标识，而非把 episodeNumber 直接当索引。
+ * 这样同步"已看"与拉取单集吐槽时都能对齐到 Bangumi 的同一集。
+ *
+ * @param {object|null} ep 剧集对象
+ * @param {Array} episodes 番剧的全部 episodes 数组
+ * @returns {number|null} 1-based 位置；不是正片或找不到时返回 null
+ */
+export const mainEpisodePosition = (ep, episodes) => {
+  if (!ep) return null
+  const mains = filterMainEpisodes(episodes || [])
+    .slice()
+    .sort((a, b) => Number(a?.episodeNumber) - Number(b?.episodeNumber))
+  const idx = mains.findIndex((e) => String(e?.episodeId) === String(ep?.episodeId))
+  return idx >= 0 ? idx + 1 : null
+}
