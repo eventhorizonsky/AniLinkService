@@ -50,10 +50,14 @@ export function useAnimeData({
       loading.value = true
       error.value = null
 
-      const [animeResp, episodesResp] = await Promise.allSettled([
-        fetchAnime ? fetchAnime() : getAnimeRawJson(animeId),
-        getAnimeEpisodes(animeId, { page: 1, pageSize: EPISODES_PAGE_SIZE }),
-      ])
+      // 初始拿不到 animeId（如 bgmMode 需从 bgmtv 响应解析）时，先不请求分集，
+      // 待下方解析出 id 后再拉取，避免发起 /animes/undefined/episodes
+      const animePromise = fetchAnime ? fetchAnime() : getAnimeRawJson(animeId)
+      const episodesPromise = animeId
+        ? getAnimeEpisodes(animeId, { page: 1, pageSize: EPISODES_PAGE_SIZE })
+        : Promise.resolve({ code: 0, data: null })
+
+      const [animeResp, episodesResp] = await Promise.allSettled([animePromise, episodesPromise])
 
       if (seq !== fetchSeq.value) return
 

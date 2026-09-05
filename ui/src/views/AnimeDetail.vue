@@ -41,6 +41,27 @@
       </div>
     </div>
   </div>
+  <div class="page-wrapper" v-else-if="bgmMiss">
+    <div class="bgm-miss">
+      <i class="mdi mdi-movie-open-off-outline bgm-miss-icon"></i>
+      <h3 class="bgm-miss-title">弹弹暂无该番剧数据</h3>
+      <p class="bgm-miss-hint">
+        Bangumi 条目 #{{ bgmMissSubjectId }} 在弹弹番剧库中没有找到对应片源，可能该条目未被收录或暂无可播放资源。
+      </p>
+      <p class="bgm-miss-hint">可以前往「番剧资料库」按名称搜索同题材或同名番剧。</p>
+      <div class="bgm-miss-actions">
+        <button class="bgm-miss-btn primary" @click="goDiscoverDatabase">
+          <i class="mdi mdi-database-search"></i>前往番剧资料库
+        </button>
+        <a class="bgm-miss-btn ghost" :href="bgmMissSubjectUrl" target="_blank" rel="noopener noreferrer">
+          <i class="mdi mdi-open-in-new"></i>查看 Bangumi 原条目
+        </a>
+        <button class="bgm-miss-btn ghost" @click="router.back()">
+          <i class="mdi mdi-arrow-left"></i>返回
+        </button>
+      </div>
+    </div>
+  </div>
   <div class="page-wrapper" v-else-if="error">
     <div class="error">数据加载失败: {{ error }}</div>
   </div>
@@ -245,12 +266,46 @@ const resumeLoading = ref(false);
 // bgmMode 下 animeId 来自 API 响应，否则来自路由参数
 const resolvedAnimeId = ref(null);
 
+// ===== bgmMode：弹弹未收录该 Bangumi 条目的引导状态 =====
+// 弹弹 bgmtv 未命中时上游仍返回 HTTP 200：{ "bangumi": null, "success": false, "errorCode": 7, ... }，
+// 借此识别"该条目在弹弹无数据"，展示专属引导（前往番剧资料库搜索），而不是通用报错。
+const bgmMiss = ref(false);
+const bgmMissSubjectId = ref(null);
+const bgmMissSubjectUrl = computed(() =>
+  bgmMissSubjectId.value ? `${BANGUMI_BASE_URL}subject/${bgmMissSubjectId.value}` : BANGUMI_BASE_URL
+);
+
+// 响应返回后标记是否"弹弹未找到"；上游/网络异常时清空标记并继续按普通错误处理
+const markBgmMiss = (subjectId) => (res) => {
+  const upstream = res && res.code === 200 ? res.data : null;
+  const miss = !!(upstream && upstream.bangumi == null && upstream.success === false);
+  bgmMiss.value = miss;
+  bgmMissSubjectId.value = miss ? subjectId : null;
+  return res;
+};
+const onBgmFetchError = (e) => {
+  bgmMiss.value = false;
+  bgmMissSubjectId.value = null;
+  throw e;
+};
+const goDiscoverDatabase = () => {
+  // 直达发现页「番剧资料库」Tab（Search 按 ?tab=database 切换）
+  router.push({ path: '/search', query: { tab: 'database' } });
+};
+
 // Fetch Data
 const { animeData, existingEpisodes, loading, error, fetchAnimeData, fetchSeq } = useAnimeData({
   getAnimeId: () => resolvedAnimeId.value || route.params.animeId,
-  fetchAnime: () => (props.bgmMode && route.params.subjectId
-    ? getAnimeRawJsonBySubject(route.params.subjectId)
-    : getAnimeRawJson(resolvedAnimeId.value || route.params.animeId)),
+  fetchAnime: () => {
+    if (props.bgmMode && route.params.subjectId) {
+      return getAnimeRawJsonBySubject(route.params.subjectId)
+        .then(markBgmMiss(route.params.subjectId))
+        .catch(onBgmFetchError);
+    }
+    return getAnimeRawJson(resolvedAnimeId.value || route.params.animeId)
+      .then(markBgmMiss(null))
+      .catch(onBgmFetchError);
+  },
   initialLoading: true,
   onDataLoaded: (animeId) => {
     // bgmMode 下从响应中提取 animeId 用于后续接口调用
@@ -302,6 +357,8 @@ watch(
   () => [props.bgmMode, route.params.animeId, route.params.subjectId],
   () => {
     resolvedAnimeId.value = null;
+    bgmMiss.value = false;
+    bgmMissSubjectId.value = null;
     closeResourceDialog();
     isSummaryExpanded.value = false;
     activeSection.value = 'episodes';
@@ -708,6 +765,77 @@ const watchNextEpisode = () => {
 
 .comments-source-hint a:hover {
   text-decoration: underline;
+}
+
+/* ===== bgmMode：弹弹未收录该条目的引导 ===== */
+.bgm-miss {
+  text-align: center;
+  padding: 56px 24px;
+  color: var(--al-text-secondary);
+}
+
+.bgm-miss-icon {
+  font-size: 3.6rem;
+  opacity: 0.35;
+  color: var(--al-accent);
+}
+
+.bgm-miss-title {
+  margin: 16px 0 10px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--al-text-main, var(--al-text-secondary));
+}
+
+.bgm-miss-hint {
+  margin: 4px auto 0;
+  max-width: 480px;
+  font-size: 0.92rem;
+  line-height: 1.8;
+}
+
+.bgm-miss-actions {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bgm-miss-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 9px 22px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: filter 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.bgm-miss-btn.primary {
+  background: var(--al-accent);
+  color: var(--al-text-on-accent, #fff);
+}
+
+.bgm-miss-btn.primary:hover {
+  filter: brightness(1.08);
+}
+
+.bgm-miss-btn.ghost {
+  background: transparent;
+  border-color: var(--al-border);
+  color: var(--al-text-secondary);
+}
+
+.bgm-miss-btn.ghost:hover {
+  color: var(--al-accent);
+  border-color: var(--al-accent);
 }
 
 /* Responsive */

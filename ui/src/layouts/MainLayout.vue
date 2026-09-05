@@ -148,7 +148,9 @@
         </div>
         </header>
 
-        <router-view />
+        <keep-alive :include="['Search']">
+          <router-view />
+        </keep-alive>
       </div>
     </main>
 
@@ -323,6 +325,8 @@ watch(
   () => route.fullPath,
   () => {
     const contentEl = document.querySelector('.app-content')
+    // 切页默认回到顶部；进入「发现」页时不重置，由其自身按会话快照还原浏览位置
+    if (route.name === 'Search') return
     if (contentEl) {
       contentEl.scrollTop = 0
     }
