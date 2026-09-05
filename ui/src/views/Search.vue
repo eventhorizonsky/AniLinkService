@@ -297,6 +297,15 @@ const dbClearSearch = () => {
   dbSearchError.value = ''
 }
 
+// 路由 ?dbq=xxx 直达资料库搜索（如追番页未绑定条目的兜底跳转）
+const applyDbQuery = (q) => {
+  if (typeof q !== 'string' || !q.trim()) return
+  const kw = q.trim()
+  if (kw === dbKeyword.value) return
+  dbKeyword.value = kw
+  dbSearch()
+}
+
 // Season label
 const seasonLabels = { 1:'冬季', 4:'春季', 7:'夏季', 10:'秋季' }
 const seasonLabel = computed(() => {
@@ -380,6 +389,14 @@ watch(
   }
 )
 
+// 外部跳转可通过 ?dbq=xxx 直达资料库搜索（追番页未绑定条目的兜底跳转）
+watch(
+  () => route.query.dbq,
+  (q) => {
+    if (q !== undefined) applyDbQuery(q)
+  }
+)
+
 onMounted(async () => {
   libOuterEl.value = document.querySelector('.app-content')
   document.addEventListener('scroll', onDocScrollCapture, { capture: true, passive: true })
@@ -427,6 +444,8 @@ onMounted(async () => {
     Object.assign(tabScroll, { library: 0, database: 0, rank: 0 }, snap.scrolls)
   }
   restoreTabScroll(activeTab.value)
+  // 首次挂载也响应 ?dbq=（追番页兜底跳转直达资料库搜索）
+  if (route.query.dbq !== undefined) applyDbQuery(route.query.dbq)
 })
 
 // keep-alive 停用/复用：离开前记录各 Tab 真实滚动位置，回来由 restoreTabScroll 恢复

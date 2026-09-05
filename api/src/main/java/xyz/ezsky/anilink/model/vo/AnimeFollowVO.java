@@ -21,7 +21,13 @@ public class AnimeFollowVO {
     private Long userId;
     
     private Long animeId;
-    
+
+    /**
+     * Bangumi subject ID（从 Bangumi 拉取或绑定后回写）；
+     * animeId 为空时前端据此进入 bgmMode 详情 /anime/bgm/{bangumiSubjectId}
+     */
+    private Long bangumiSubjectId;
+
     private String animeTitle;
     
     private String imageUrl;

@@ -44,11 +44,36 @@
   <div class="page-wrapper" v-else-if="bgmMiss">
     <div class="bgm-miss">
       <i class="mdi mdi-movie-open-off-outline bgm-miss-icon"></i>
-      <h3 class="bgm-miss-title">弹弹暂无该番剧数据</h3>
+      <h3 class="bgm-miss-title">未匹配到对应的弹弹番剧</h3>
       <p class="bgm-miss-hint">
-        Bangumi 条目 #{{ bgmMissSubjectId }} 在弹弹番剧库中没有找到对应片源，可能该条目未被收录或暂无可播放资源。
+        Bangumi 条目 #{{ bgmMissSubjectId }} 在弹弹play 中暂无对应番剧，可能是弹弹play 未维护与该条目的绑定关系。
       </p>
-      <p class="bgm-miss-hint">可以前往「番剧资料库」按名称搜索同题材或同名番剧。</p>
+      <p v-if="canManualBindBgm" class="bgm-miss-hint">可以按名称手动搜索同名番剧并绑定后播放，也可以前往「番剧资料库」查询。</p>
+      <p v-else class="bgm-miss-hint">可前往「番剧资料库」按名称查询同题材或同名番剧。</p>
+      <div v-if="canManualBindBgm" class="bgm-bind-panel">
+        <p class="bgm-bind-tip">如果该条目在弹弹中实际存在，也可以直接搜索并绑定到你当前的追番记录：</p>
+        <div class="bgm-bind-search">
+          <input
+            v-model="bgmBindKeyword"
+            type="text"
+            :placeholder="bgmFollowTitle ? `搜索「${bgmFollowTitle}」` : '输入番剧名搜索弹弹'"
+            @keyup.enter="bgmBindSearch"
+          />
+          <button class="bgm-miss-btn primary" :disabled="bgmBindSearching" @click="bgmBindSearch">
+            {{ bgmBindSearching ? '搜索中...' : '搜索' }}
+          </button>
+        </div>
+        <div v-if="bgmBindResults.length" class="bgm-bind-results">
+          <button v-for="a in bgmBindResults" :key="a.animeId" class="bgm-bind-item" @click="bgmBindPick(a)">
+            <img v-if="a.imageUrl" :src="a.imageUrl" alt="" loading="lazy" />
+            <span class="bgm-bind-item-main">
+              <span class="bgm-bind-title">{{ a.animeTitle || a.title }}</span>
+              <span class="bgm-bind-id">ID: {{ a.animeId }}</span>
+            </span>
+          </button>
+        </div>
+        <p v-else-if="bgmBindSearched && !bgmBindSearching" class="bgm-bind-empty">未找到相关番剧，可尝试更换关键词</p>
+      </div>
       <div class="bgm-miss-actions">
         <button class="bgm-miss-btn primary" @click="goDiscoverDatabase">
           <i class="mdi mdi-database-search"></i>前往番剧资料库
@@ -197,7 +222,8 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showAppMessage } from '../utils/ui-feedback';
-import { getAnimeRawJson, getAnimeRawJsonBySubject } from '../api/anime';
+import { getAnimeRawJson, getAnimeRawJsonBySubject, searchDandanAnimes } from '../api/anime';
+import { bindFollow } from '../api/follows';
 import { getPlayResume } from '../api/playHistory';
 import { getCurrentUser } from '../api/auth';
 import { getSubjectCollection, saveSubjectCollection } from '../api/bangumi';
@@ -273,6 +299,102 @@ const bgmMiss = ref(false);
 const bgmMissSubjectId = ref(null);
 const bgmMissSubjectUrl = computed(() =>
   bgmMissSubjectId.value ? `${BANGUMI_BASE_URL}subject/${bgmMissSubjectId.value}` : BANGUMI_BASE_URL
+);
+
+// bgmMode 下从追番页带入的追番记录上下文：
+// followId 用于把"仅关联 Bangumi"的追番绑定到弹弹番剧；name 是追番标题，作手动搜索默认词
+const bgmFollowId = computed(() =>
+  props.bgmMode && route.query.follow ? Number(route.query.follow) || null : null
+);
+const bgmFollowTitle = computed(() =>
+  typeof route.query.name === 'string' && route.query.name.trim() ? route.query.name.trim() : ''
+);
+const canManualBindBgm = computed(() => props.bgmMode && !!bgmFollowId.value && !!token.value);
+
+// 手动绑定（bgm 未命中时）：搜索弹弹条目并绑定到对应追番记录
+const bgmBindKeyword = ref('');
+const bgmBindSearching = ref(false);
+const bgmBindSearched = ref(false);
+const bgmBindResults = ref([]);
+
+const bgmBindSearch = async () => {
+  const kw = bgmBindKeyword.value.trim();
+  if (!kw) return;
+  bgmBindSearching.value = true;
+  bgmBindSearched.value = true;
+  try {
+    const res = await searchDandanAnimes(kw);
+    const raw = res?.data;
+    const listRaw = raw?.animes || raw?.data?.animes || [];
+    bgmBindResults.value = Array.isArray(listRaw) ? listRaw : [];
+  } catch (e) {
+    bgmBindResults.value = [];
+    showAppMessage('搜索失败，请稍后重试', 'error');
+  } finally {
+    bgmBindSearching.value = false;
+  }
+};
+
+const bgmBindPick = async (anime) => {
+  const followId = bgmFollowId.value;
+  if (!followId) return;
+  const title = anime.animeTitle || anime.title;
+  try {
+    const res = await bindFollow(followId, {
+      animeId: anime.animeId,
+      animeTitle: title,
+      imageUrl: anime.imageUrl,
+    });
+    if (res?.code !== 200) {
+      showAppMessage(res?.msg || '绑定失败', 'error');
+      return;
+    }
+    showAppMessage(`已绑定「${title}」，正在打开详情...`, 'success');
+    bgmBindKeyword.value = '';
+    bgmBindResults.value = [];
+    bgmBindSearched.value = false;
+    // 跳到该弹弹番剧的常规详情页继续浏览/播放
+    router.replace(`/anime/${anime.animeId}`);
+  } catch (e) {
+    showAppMessage(e.response?.data?.msg || '绑定失败', 'error');
+  }
+};
+
+// bgmMode 未命中且带追番上下文时：把追番标题默认填入搜索框并自动搜一次，省去手动输入
+watch(
+  () => [bgmMiss.value, bgmFollowId.value, token.value],
+  () => {
+    const want = bgmFollowTitle.value;
+    if (bgmMiss.value && bgmFollowId.value && token.value && want && bgmBindKeyword.value !== want) {
+      bgmBindKeyword.value = want;
+      bgmBindSearch();
+    }
+  }
+);
+
+// bgmMode 查到弹弹数据后，把从追番页带入的未绑定记录自动绑定（等效旧的"自动匹配"，无需用户再点一次）
+const tryAutoBindFollow = async () => {
+  const followId = bgmFollowId.value;
+  const animeId = resolvedAnimeId.value;
+  if (!props.bgmMode || !followId || !animeId || !token.value || !animeData.value) return;
+  try {
+    const payload = { animeId, imageUrl: animeData.value.imageUrl || '' };
+    const t = animeData.value.titles?.[0]?.title || animeData.value.title;
+    if (t) payload.animeTitle = t;
+    const res = await bindFollow(followId, payload);
+    if (res?.code === 200) {
+      // 绑定后再确认一次追番状态，避免详情页按钮状态滞后
+      checkFollowStatus(animeId);
+    }
+  } catch (e) {
+    // 未登录或接口异常不影响浏览，静默处理
+  }
+};
+watch(
+  () => resolvedAnimeId.value,
+  (id) => {
+    if (id) tryAutoBindFollow();
+  }
 );
 
 // 响应返回后标记是否"弹弹未找到"；上游/网络异常时清空标记并继续按普通错误处理
@@ -359,6 +481,9 @@ watch(
     resolvedAnimeId.value = null;
     bgmMiss.value = false;
     bgmMissSubjectId.value = null;
+    bgmBindKeyword.value = '';
+    bgmBindResults.value = [];
+    bgmBindSearched.value = false;
     closeResourceDialog();
     isSummaryExpanded.value = false;
     activeSection.value = 'episodes';
@@ -836,6 +961,112 @@ const watchNextEpisode = () => {
 .bgm-miss-btn.ghost:hover {
   color: var(--al-accent);
   border-color: var(--al-accent);
+}
+
+/* ===== bgmMode：未命中时的手动搜索绑定 ===== */
+.bgm-bind-panel {
+  margin: 22px auto 0;
+  max-width: 560px;
+  text-align: left;
+  background: var(--al-bg-soft, var(--al-bg));
+  border: 1px dashed var(--al-border, var(--al-border-neutral));
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.bgm-bind-tip {
+  margin: 0 0 10px;
+  font-size: 0.88rem;
+  color: var(--al-text-secondary);
+}
+
+.bgm-bind-search {
+  display: flex;
+  gap: 10px;
+}
+
+.bgm-bind-search input {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px solid var(--al-border-input);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-size: 0.9rem;
+  outline: none;
+  font-family: inherit;
+  color: var(--anime-text-main, var(--al-text-secondary));
+  background: var(--al-bg);
+}
+
+.bgm-bind-search input:focus {
+  border-color: var(--al-accent);
+}
+
+.bgm-bind-search .bgm-miss-btn {
+  flex-shrink: 0;
+}
+
+.bgm-bind-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.bgm-bind-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--al-border-panel, var(--al-border-neutral));
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: var(--al-bg);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.2s;
+}
+
+.bgm-bind-item:hover {
+  border-color: var(--al-accent);
+}
+
+.bgm-bind-item img {
+  width: 36px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--al-border-neutral);
+  flex-shrink: 0;
+}
+
+.bgm-bind-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bgm-bind-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--al-text-main, var(--al-text-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bgm-bind-id {
+  font-size: 0.75rem;
+  color: var(--al-text-secondary);
+}
+
+.bgm-bind-empty {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  color: var(--al-text-secondary);
 }
 
 /* Responsive */

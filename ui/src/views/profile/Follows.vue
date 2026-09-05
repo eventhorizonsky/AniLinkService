@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import PaginationBar from '../../components/PaginationBar.vue'
 import { showAppMessage, askAppConfirm } from '../../utils/ui-feedback'
 import {
@@ -9,10 +9,10 @@ import {
   FOLLOW_STATUS_COLORS as STATUS_COLORS,
 } from '../../utils/followStatus'
 import { usePagination } from '../../composables/usePagination'
-import { getFollows, getActiveFollows, getFollowsByStatus, setFollowStatus, removeFollow, bindFollow, matchFollow } from '../../api/follows'
-import { searchDandanAnimes } from '../../api/anime'
+import { getFollows, getActiveFollowsPage, getFollowsByStatusPage, setFollowStatus, removeFollow } from '../../api/follows'
 import { pullBangumiCollections } from '../../api/bangumi'
 
+const route = useRoute()
 const router = useRouter()
 
 const list = ref([])
@@ -24,10 +24,6 @@ const keyword = ref('')
 const updatingId = ref(null)
 const menuId = ref(null) // 当前展开状态菜单的 follow.id
 const pulling = ref(false)
-
-// 绑定 / 匹配
-const bindDialog = ref({ show: false, follow: null, keyword: '', results: [], searched: false, searching: false })
-const matchDialog = ref({ show: false, follow: null })
 
 const statusOptions = [
   { label: '活跃', value: 'active' },
@@ -44,19 +40,20 @@ const fetchData = async () => {
   try {
     const params = { page: page.value, pageSize: pageSize.value, keyword: keyword.value.trim() }
     const res = statusFilter.value === 'active'
-      ? await getActiveFollows(params)
+      ? await getActiveFollowsPage(params)
       : statusFilter.value
-        ? await getFollowsByStatus(statusFilter.value, params)
+        ? await getFollowsByStatusPage(statusFilter.value, params)
         : await getFollows(params)
     if (res?.code !== 200) throw new Error(res?.msg || '加载追番失败')
 
-    let items
-    if (Array.isArray(res.data)) {
-      items = [...res.data]
-      total.value = items.length
-    } else {
-      items = [...(res.data?.content || [])]
-      total.value = Number(res.data?.totalElements || 0)
+    const data = res.data || {}
+    const items = [...(data.content || [])]
+    total.value = Number(data.totalElements || 0)
+    // 当前页超出总页数（如末页仅剩的条目被移除/改状态）时，回退到最后一页重取
+    if (!items.length && total.value > 0 && page.value > totalPages.value) {
+      page.value = totalPages.value
+      syncQuery()
+      return fetchData()
     }
     // 活跃视图保持接口的更新时间倒序（新更新的在前），不按状态重排
     if (statusFilter.value !== 'active') {
@@ -72,23 +69,93 @@ const fetchData = async () => {
 const { page, pageSize, totalPages, pages, changePage } = usePagination({
   pageSize: 24,
   getTotal: () => total.value,
-  onPageChange: fetchData,
+  onPageChange: () => { syncQuery(); fetchData() },
 })
+
+// 视图状态（tab/页码/搜索词）写入 URL query：进入详情后返回、或刷新页面都能还原
+// query 中「全部」用 all 表示（避免空值），其余与 statusFilter 值一致
+const statusFromQuery = (q) => {
+  if (q === 'all') return ''
+  return statusOptions.some((o) => o.value === q) ? q : 'active'
+}
+const pageFromQuery = (q) => {
+  const n = parseInt(q, 10)
+  return Number.isFinite(n) && n >= 1 ? n : 1
+}
+const buildQuery = () => {
+  const q = {}
+  if (statusFilter.value !== 'active') q.status = statusFilter.value === '' ? 'all' : statusFilter.value
+  if (page.value > 1) q.page = String(page.value)
+  const kw = keyword.value.trim()
+  if (kw) q.kw = kw
+  return q
+}
+const syncQuery = () => {
+  const next = buildQuery()
+  const keys = Object.keys(next)
+  const same = keys.length === Object.keys(route.query).length
+    && keys.every((k) => String(route.query[k]) === next[k])
+  if (!same) router.replace({ query: next })
+}
+
+// 首次挂载从 URL 还原视图状态（默认视图无 query）
+statusFilter.value = statusFromQuery(route.query.status)
+keyword.value = typeof route.query.kw === 'string' ? route.query.kw : ''
+page.value = pageFromQuery(route.query.page)
 
 const applyFilter = (value) => {
   statusFilter.value = value
   page.value = 1
+  syncQuery()
   fetchData()
 }
 
 const doSearch = () => {
   page.value = 1
+  syncQuery()
   fetchData()
 }
 
-const goToAnime = (follow) => {
-  if (follow?.animeId) router.push(`/anime/${follow.animeId}`)
+// 返回本页时恢复离开前的滚动位置：点击卡片离开前记录 {路径, 滚动位置}（sessionStorage 一次），
+// 挂载后路径一致（从详情返回/刷新）才恢复，从菜单重新进入则不恢复
+const RETURN_KEY = 'follows:return'
+const currentScrollTop = () => document.querySelector('.app-content')?.scrollTop || 0
+const saveReturnView = () => {
+  try {
+    sessionStorage.setItem(RETURN_KEY, JSON.stringify({ path: route.fullPath, top: currentScrollTop() }))
+  } catch (e) { /* 存储不可用时跳过 */ }
 }
+const restoreReturnView = async () => {
+  let saved = null
+  try { saved = JSON.parse(sessionStorage.getItem(RETURN_KEY) || 'null') } catch (e) { saved = null }
+  sessionStorage.removeItem(RETURN_KEY)
+  if (!saved || saved.path !== route.fullPath || !saved.top) return
+  await nextTick()
+  const el = document.querySelector('.app-content')
+  if (el) el.scrollTop = saved.top
+}
+
+// 进入详情：已绑定本地番剧直接看；仅有 Bangumi 关联时走 bgmMode 详情路由，
+// 由详情页按 bgmid 查询弹弹并（找到时）自动绑定到本追番记录；
+// 两者都没有（老数据或后端未返回 bangumiSubjectId）时兜底跳资料库按标题搜索
+const goToAnime = (follow) => {
+  saveReturnView()
+  if (follow?.animeId) {
+    router.push(`/anime/${follow.animeId}`)
+    return
+  }
+  if (follow?.bangumiSubjectId) {
+    router.push({
+      path: `/anime/bgm/${follow.bangumiSubjectId}`,
+      query: { follow: follow.id, name: follow.animeTitle || '' },
+    })
+    return
+  }
+  router.push({ path: '/search', query: { tab: 'database', dbq: follow.animeTitle || '' } })
+}
+
+const isBgmOnly = (follow) => !follow?.animeId && Boolean(follow?.bangumiSubjectId)
+const navIcon = (follow) => (follow?.animeId ? 'mdi-play-circle-outline' : follow?.bangumiSubjectId ? 'mdi-open-in-new' : 'mdi-magnify')
 
 const statusLabel = (s) => STATUS_LABEL[s] || s || '-'
 const statusColor = (s) => STATUS_COLORS[s] || '#9e8c7e'
@@ -119,53 +186,6 @@ const unfollow = async (follow) => {
   } catch (e) { showAppMessage('取消追番失败', 'error') }
 }
 
-const openBindDialog = (follow) => {
-  menuId.value = null
-  bindDialog.value = { show: true, follow, keyword: follow.animeTitle || '', results: [], searched: false, searching: false }
-}
-
-const searchBindAnime = async () => {
-  if (!bindDialog.value.keyword.trim()) return
-  bindDialog.value.searching = true
-  try {
-    const res = await searchDandanAnimes(bindDialog.value.keyword)
-    const raw = res?.data
-    const listRaw = raw?.animes || raw?.data?.animes || []
-    bindDialog.value.results = Array.isArray(listRaw) ? listRaw : []
-  } catch (e) { bindDialog.value.results = [] }
-  finally { bindDialog.value.searching = false; bindDialog.value.searched = true }
-}
-
-const bindAnime = async (follow, anime) => {
-  try {
-    const title = anime.animeTitle || anime.title
-    await bindFollow(follow.id, { animeId: anime.animeId, animeTitle: title, imageUrl: anime.imageUrl })
-    showAppMessage(`已绑定「${title}」`, 'success')
-    bindDialog.value.show = false
-    await fetchData()
-  } catch (e) { showAppMessage('绑定失败', 'error') }
-}
-
-const autoMatch = async (follow) => {
-  menuId.value = null
-  matchDialog.value = { show: true, follow }
-  try {
-    const body = await matchFollow(follow.id)
-    if (body?.code === 200 && body.data?.matched) {
-      matchDialog.value.show = false
-      showAppMessage(`已匹配并绑定「${body.data.animeTitle || follow.animeTitle}」`, 'success')
-      await fetchData()
-      return
-    }
-    matchDialog.value.show = false
-    if (body?.code === 200) openBindDialog(follow)
-    else showAppMessage(body?.msg || '自动匹配失败', 'error')
-  } catch (err) {
-    matchDialog.value.show = false
-    showAppMessage(err.response?.data?.msg || '自动匹配失败', 'error')
-  }
-}
-
 const pullBangumi = async () => {
   const ok = await askAppConfirm({
     title: '拉取 Bangumi 追番',
@@ -189,9 +209,10 @@ const pullBangumi = async () => {
 const closeMenu = (e) => {
   if (menuId.value && !e.target.closest('.follow-menu-wrap')) menuId.value = null
 }
-onMounted(() => {
-  fetchData()
+onMounted(async () => {
   document.addEventListener('click', closeMenu)
+  await fetchData()
+  restoreReturnView()
 })
 onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 </script>
@@ -246,12 +267,12 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
         class="br-card follow-card"
         :class="{ 'menu-open': menuId === follow.id }"
       >
-        <div class="br-card-image" :class="{ unbound: !follow.animeId }" @click="follow.animeId ? goToAnime(follow) : autoMatch(follow)">
+        <div class="br-card-image" :class="{ 'bgm-only': isBgmOnly(follow) }" @click="goToAnime(follow)">
           <img v-if="follow.imageUrl" :src="follow.imageUrl" :alt="follow.animeTitle" loading="lazy" />
           <div v-else class="poster-ph"><i class="mdi mdi-image-off-outline"></i></div>
-          <div class="poster-hover"><i class="mdi" :class="follow.animeId ? 'mdi-play-circle-outline' : 'mdi-link-variant'"></i></div>
+          <div class="poster-hover"><i class="mdi" :class="navIcon(follow)"></i></div>
           <span v-if="follow.unreadEpisodeCount > 0" class="follow-unread" title="未读新剧集">{{ follow.unreadEpisodeCount }}</span>
-          <span v-if="!follow.animeId" class="unbound-tag">未绑定</span>
+          <span v-if="isBgmOnly(follow)" class="unbound-tag" title="仅关联了 Bangumi，点击进入详情将自动查询并绑定弹弹片源">Bangumi</span>
         </div>
         <div class="br-card-body">
           <h4 :title="follow.animeTitle">{{ follow.animeTitle }}</h4>
@@ -259,7 +280,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
             <span class="genre" :style="{ background: statusColor(follow.status) + '22', color: statusColor(follow.status), fontWeight: 600 }">
               {{ statusLabel(follow.status) }}
             </span>
-            <div class="follow-menu-wrap" @click.stop>
+            <div v-if="follow.animeId" class="follow-menu-wrap" @click.stop>
               <button class="more-btn" :disabled="updatingId === follow.animeId" @click="toggleMenu(follow.id)">
                 <i class="mdi mdi-dots-horizontal"></i>
               </button>
@@ -274,15 +295,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
                 >
                   <span class="dot" :style="{ background: STATUS_COLORS[s.value] }"></span>{{ s.label }}
                 </button>
-                <template v-if="follow.animeId">
-                  <div class="menu-divider"></div>
-                  <button class="menu-item danger" @click="unfollow(follow)"><i class="mdi mdi-close"></i> 取消追番</button>
-                </template>
-                <template v-else>
-                  <div class="menu-divider"></div>
-                  <button class="menu-item" @click="openBindDialog(follow)"><i class="mdi mdi-link-variant"></i> 手动绑定</button>
-                  <button class="menu-item" @click="autoMatch(follow)"><i class="mdi mdi-auto-fix"></i> 自动匹配</button>
-                </template>
+                <div class="menu-divider"></div>
+                <button class="menu-item danger" @click="unfollow(follow)"><i class="mdi mdi-close"></i> 取消追番</button>
               </div>
             </div>
           </div>
@@ -291,50 +305,6 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
     </div>
 
     <PaginationBar :page="page" :total-pages="totalPages" :pages="pages" :total-text="`共 ${total} 部`" @change="changePage" />
-
-    <!-- 手动绑定弹窗 -->
-    <div v-if="bindDialog.show" class="dialog-overlay" @click.self="bindDialog.show = false">
-      <div class="dialog">
-        <div class="dialog-head">
-          <h3>绑定番剧</h3>
-          <button class="dialog-close" @click="bindDialog.show = false"><i class="mdi mdi-close"></i></button>
-        </div>
-        <div class="dialog-body">
-          <p class="dialog-hint">「{{ bindDialog.follow?.animeTitle }}」尚未匹配到本地番剧，手动选择后即可播放。</p>
-          <div class="bind-search">
-            <input v-model="bindDialog.keyword" placeholder="输入番剧名搜索" @keyup.enter="searchBindAnime" />
-            <button class="btn btn-primary" :disabled="bindDialog.searching" @click="searchBindAnime">
-              {{ bindDialog.searching ? '搜索中...' : '搜索' }}
-            </button>
-          </div>
-          <div v-if="bindDialog.results.length" class="bind-results">
-            <button
-              v-for="anime in bindDialog.results"
-              :key="anime.animeId"
-              class="bind-result"
-              @click="bindAnime(bindDialog.follow, anime)"
-            >
-              <img v-if="anime.imageUrl" :src="anime.imageUrl" alt="" loading="lazy" />
-              <div>
-                <div class="bind-result-title">{{ anime.animeTitle || anime.title }}</div>
-                <div class="bind-result-meta">ID: {{ anime.animeId }}</div>
-              </div>
-            </button>
-          </div>
-          <div v-else-if="bindDialog.searched" class="bind-empty">未找到相关番剧</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 自动匹配弹窗 -->
-    <div v-if="matchDialog.show" class="dialog-overlay">
-      <div class="dialog">
-        <div class="dialog-body match-loading">
-          <i class="mdi mdi-loading mdi-spin"></i>
-          <p>正在自动匹配「{{ matchDialog.follow?.animeTitle }}」...</p>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -393,7 +363,7 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
   cursor: pointer;
   border-radius: 14px 14px 0 0;
 }
-.follow-card .br-card-image.unbound { opacity: 0.82; }
+.follow-card .br-card-image.bgm-only { opacity: 0.85; }
 .poster-ph {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
@@ -471,62 +441,4 @@ onBeforeUnmount(() => document.removeEventListener('click', closeMenu))
 }
 .empty-state i { font-size: 3rem; opacity: 0.35; color: var(--anime-accent-red); }
 .empty-state p { margin: 0; font-size: 14px; }
-
-/* 弹窗 */
-.dialog-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 2000; animation: fade 0.2s ease;
-}
-@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-.dialog {
-  background: var(--al-bg); border-radius: 16px;
-  width: 90%; max-width: 460px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
-  animation: rise 0.25s ease;
-}
-@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-.dialog-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--al-border-neutral);
-}
-.dialog-head h3 { margin: 0; font-size: 16px; }
-.dialog-close { border: none; background: none; color: var(--anime-text-secondary); font-size: 20px; cursor: pointer; }
-.dialog-body { padding: 20px; }
-.confirm-message { margin: 0; font-size: 14px; color: var(--anime-text-secondary); line-height: 1.6; }
-.dialog-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--al-border-neutral);
-}
-.dialog-hint { margin: 0 0 14px; font-size: 13px; color: var(--anime-text-secondary); line-height: 1.6; }
-
-.bind-search { display: flex; gap: 8px; }
-.bind-search input {
-  flex: 1; border: 1.5px solid var(--al-border-input); border-radius: 10px;
-  padding: 9px 12px; font-size: 13px; outline: none; font-family: inherit;
-}
-.bind-search input:focus { border-color: var(--anime-accent-red); }
-
-.bind-results { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; max-height: 300px; overflow-y: auto; }
-.bind-result {
-  display: flex; align-items: center; gap: 10px;
-  border: 1px solid var(--al-border-panel); border-radius: 12px;
-  padding: 8px; background: var(--al-bg); cursor: pointer;
-  transition: border-color 0.2s;
-  text-align: left;
-}
-.bind-result:hover { border-color: var(--anime-accent-red); }
-.bind-result img { width: 42px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--al-border-neutral); }
-.bind-result-title { font-size: 13px; font-weight: 600; color: var(--anime-text-main); }
-.bind-result-meta { font-size: 12px; color: var(--anime-text-secondary); margin-top: 2px; }
-.bind-empty { padding: 20px; text-align: center; color: var(--anime-text-secondary); font-size: 13px; }
-
-.match-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 30px; }
-.match-loading i { font-size: 2rem; color: var(--anime-accent-red); }
-.match-loading p { margin: 0; font-size: 13px; color: var(--anime-text-secondary); }
 </style>

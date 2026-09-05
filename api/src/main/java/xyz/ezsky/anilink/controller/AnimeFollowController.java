@@ -83,9 +83,9 @@ public class AnimeFollowController {
     }
     
     /**
-     * 获取用户指定状态的追番列表
+     * 获取用户指定状态的追番列表（不分页）
      */
-    @Operation(summary = "按状态获取追番", description = "获取用户指定状态的追番列表(wish/watched/watching/on_hold/dropped)")
+    @Operation(summary = "按状态获取追番", description = "获取用户指定状态的追番列表(wish/watched/watching/on_hold/dropped)，不分页，按更新时间倒序")
     @GetMapping("/status/{status}")
     public ApiResponseVO<List<AnimeFollowVO>> getUserFollowsByStatus(
             @Parameter(description = "追番状态：wish(想看)/watched(看过)/watching(在看)/on_hold(搁置)/dropped(抛弃)", required = true)
@@ -94,6 +94,26 @@ public class AnimeFollowController {
             @RequestParam(required = false) String keyword) {
         Long userId = StpUtil.getLoginIdAsLong();
         List<AnimeFollowVO> result = animeFollowService.getUserFollowsByStatus(userId, status, keyword);
+        return ApiResponseVO.success(result);
+    }
+
+    /**
+     * 分页获取用户指定状态的追番列表（追番页用）
+     */
+    @Operation(summary = "按状态分页获取追番", description = "分页获取用户指定状态的追番列表(wish/watched/watching/on_hold/dropped)，按更新时间倒序")
+    @GetMapping("/status/{status}/page")
+    public ApiResponseVO<PageVO<AnimeFollowVO>> getUserFollowsByStatusPage(
+            @Parameter(description = "追番状态：wish(想看)/watched(看过)/watching(在看)/on_hold(搁置)/dropped(抛弃)", required = true)
+            @PathVariable String status,
+            @Parameter(description = "标题搜索关键词", required = false)
+            @RequestParam(required = false) String keyword,
+            @Parameter(description = "页码，从1开始", required = false)
+            @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页大小", required = false)
+            @RequestParam(required = false) Integer pageSize) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        PageVO<AnimeFollowVO> result = animeFollowService.getUserFollowsByStatusPage(
+                userId, status, keyword, page, resolvePageSize(pageSize));
         return ApiResponseVO.success(result);
     }
     
@@ -144,7 +164,10 @@ public class AnimeFollowController {
         return ApiResponseVO.success(result);
     }
 
-    @Operation(summary = "获取活跃追番", description = "获取用户想看+在看状态的追番（首页用）")
+    /**
+     * 获取活跃追番（不分页，首页用）
+     */
+    @Operation(summary = "获取活跃追番", description = "获取用户想看+在看状态的追番（不分页，首页用），按更新时间倒序")
     @GetMapping("/active")
     public ApiResponseVO<List<AnimeFollowVO>> getActiveFollows(
             @Parameter(description = "标题搜索关键词", required = false)
@@ -152,6 +175,32 @@ public class AnimeFollowController {
         Long userId = StpUtil.getLoginIdAsLong();
         List<AnimeFollowVO> result = animeFollowService.getActiveFollows(userId, keyword);
         return ApiResponseVO.success(result);
+    }
+
+    /**
+     * 分页获取活跃追番（追番页用）
+     */
+    @Operation(summary = "分页获取活跃追番", description = "分页获取用户想看+在看状态的追番，按更新时间倒序")
+    @GetMapping("/active/page")
+    public ApiResponseVO<PageVO<AnimeFollowVO>> getActiveFollowsPage(
+            @Parameter(description = "标题搜索关键词", required = false)
+            @RequestParam(required = false) String keyword,
+            @Parameter(description = "页码，从1开始", required = false)
+            @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页大小", required = false)
+            @RequestParam(required = false) Integer pageSize) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        PageVO<AnimeFollowVO> result = animeFollowService.getActiveFollowsPage(
+                userId, keyword, page, resolvePageSize(pageSize));
+        return ApiResponseVO.success(result);
+    }
+
+    /**
+     * 解析分页大小：非法值回落 24，上限 100
+     */
+    private static int resolvePageSize(Integer pageSize) {
+        if (pageSize == null || pageSize < 1) return 24;
+        return Math.min(pageSize, 100);
     }
 
     @Operation(summary = "绑定未匹配追番", description = "为从 Bangumi 拉取但未匹配的追番记录绑定本地番剧")
@@ -165,23 +214,6 @@ public class AnimeFollowController {
         String animeTitle = body.get("animeTitle") != null ? body.get("animeTitle").toString() : null;
         String imageUrl = body.get("imageUrl") != null ? body.get("imageUrl").toString() : null;
         AnimeFollowVO result = animeFollowService.bindFollow(userId, followId, animeId, animeTitle, imageUrl);
-        if (result == null) {
-            return ApiResponseVO.fail(404, "追番记录不存在");
-        }
-        return ApiResponseVO.success(result);
-    }
-
-    /**
-     * 自动匹配未绑定追番：通过 Bangumi subjectId 查询弹弹并绑定本地番剧。
-     * 查不到（matched=false）时由前端弹出手动绑定。
-     */
-    @Operation(summary = "自动匹配并绑定未匹配追番", description = "通过 Bangumi subjectId 查询弹弹，若找到对应番剧则自动绑定到本地番剧库；查不到时返回 matched=false，由前端弹出手动绑定")
-    @PostMapping("/{followId}/match")
-    public ApiResponseVO<Map<String, Object>> matchFollow(
-            @Parameter(description = "追番记录ID", required = true)
-            @PathVariable Long followId) {
-        Long userId = StpUtil.getLoginIdAsLong();
-        Map<String, Object> result = animeFollowService.matchAndBindFollow(userId, followId);
         if (result == null) {
             return ApiResponseVO.fail(404, "追番记录不存在");
         }
