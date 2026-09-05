@@ -36,3 +36,17 @@ export const pullBangumiCollections = () =>
 
 export const getBgmRankSubjects = (params) =>
   axios.get(`${API_BASE}/bangumi/rank/subjects`, { params }).then((r) => r.data)
+
+// ============ 猜你喜欢（全站个性化推荐，需绑定 Bangumi） ============
+// 算法参考 czy0729/Bangumi 客户端：每次生成实时重拉用户收藏（v0 分状态分页），
+// 逐条目取官方推荐（next /p1/subjects/{id}/recs），按 10 个可开关维度加权评分，
+// 结果落库；异步执行，进度经 /status 轮询。
+
+export const getBangumiRecommendStatus = () =>
+  axios.get(`${API_BASE}/bangumi/recommend/status`).then((r) => r.data)
+
+export const generateBangumiRecommend = (data) =>
+  axios.post(`${API_BASE}/bangumi/recommend/generate`, data || {}).then((r) => r.data)
+
+export const getBangumiRecommendResult = () =>
+  axios.get(`${API_BASE}/bangumi/recommend/result`).then((r) => r.data)

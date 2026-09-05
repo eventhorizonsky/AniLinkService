@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { askAppConfirm, showAppMessage } from '../../utils/ui-feedback'
 import { getBangumiAccountStatus, bindBangumiAccount, unbindBangumiAccount } from '../../api/bangumi'
+import { BANGUMI_ACCESS_TOKEN_URL } from '../../utils/constants'
 
 const loading = ref(false)
 const binding = ref(false)
@@ -139,7 +140,11 @@ onMounted(fetchStatus)
             </button>
           </div>
           <p class="token-hint">
-            在 Bangumi 设置页获取 Access Token（需开启开发者权限）。
+            还没有 Token？
+            <a :href="BANGUMI_ACCESS_TOKEN_URL" target="_blank" rel="noopener noreferrer">
+              前往 Bangumi 创建 Access Token<i class="mdi mdi-open-in-new"></i>
+            </a>
+            ，登录后按页面提示生成并粘贴到上方输入框即可完成绑定。
           </p>
         </div>
       </div>
@@ -195,5 +200,11 @@ onMounted(fetchStatus)
   padding: 10px 14px; font-size: 13px; outline: none; font-family: inherit;
 }
 .token-row input:focus { border-color: var(--anime-accent-red); box-shadow: 0 0 0 4px rgba(var(--al-accent-rgb), 0.12); }
-.token-hint { margin: 12px 0 0; font-size: 12px; color: var(--anime-text-secondary); opacity: 0.8; }
+.token-hint { margin: 12px 0 0; font-size: 12px; color: var(--anime-text-secondary); opacity: 0.9; line-height: 1.7; }
+.token-hint a {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--anime-accent-red); font-weight: 600; text-decoration: none;
+  margin: 0 2px;
+}
+.token-hint a:hover { text-decoration: underline; }
 </style>

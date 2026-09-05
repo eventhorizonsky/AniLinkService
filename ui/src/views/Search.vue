@@ -20,13 +20,14 @@ import { formatScore } from '../utils/format'
 import { useIsMobile } from '../composables/useIsMobile'
 import AnimeCard from '../components/AnimeCard.vue'
 import BangumiRankTab from '../components/rank/BangumiRankTab.vue'
+import RecommendTab from '../components/recommend/RecommendTab.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { isMobile } = useIsMobile(768)
 
 const DISCOVER_STATE_KEY = 'anilink.discover.state'
-const VALID_TABS = ['library', 'database', 'rank']
+const VALID_TABS = ['library', 'database', 'rank', 'recommend']
 
 // 离开/刷新后的兜底状态：Tab 与媒体库检索关键词
 const savedState = (() => {
@@ -112,15 +113,20 @@ const libSearch = () => {
 const libOuterEl = ref(null)
 
 // ===== 滚动位置管理（按 Tab 分别记忆，恢复由父组件直接操作滚动元素，不依赖子组件生命周期）=====
-const tabScroll = { library: 0, database: 0, rank: 0 }
+const tabScroll = { library: 0, database: 0, rank: 0, recommend: 0 }
 
 const scrollEl = () => document.querySelector('.app-content') || libOuterEl.value
 const rkBodyEl = () => document.querySelector('.rk-body')
-// 各 Tab 的真实滚轴：排行榜/媒体库/资料库都可能走各自内部的滚动容器（.rk-body/.scroll-area），
-// 内层不可滚（如内容不满、空态）时才回落到外层 .app-content
+const recBodyEl = () => document.querySelector('.rec-body')
+// 各 Tab 的真实滚轴：排行榜/猜你喜欢/媒体库/资料库都可能走各自内部的滚动容器
+// （.rk-body/.rec-body/.scroll-area），内层不可滚（如内容不满、空态）时才回落到外层 .app-content
 const scrollerFor = (tab) => {
   if (tab === 'rank') {
     const r = rkBodyEl()
+    return r && r.scrollHeight > r.clientHeight + 2 ? r : scrollEl()
+  }
+  if (tab === 'recommend') {
+    const r = recBodyEl()
     return r && r.scrollHeight > r.clientHeight + 2 ? r : scrollEl()
   }
   const inner = tab === 'library' ? libScrollEl.value : dbScrollEl.value
@@ -155,8 +161,26 @@ const restoreTabScroll = async (tab) => {
     await new Promise((r) => setTimeout(r, 150))
     const el = scrollerFor(tab)
     if (!el) continue
-    if (applyTo(el, pos)) return
+    if (applyTo(el, pos)) {
+      updateBackTop()
+      return
+    }
   }
+}
+
+// ===== 回到顶部悬浮按钮（作用于当前 Tab 的真实滚动容器） =====
+const backTopVisible = ref(false)
+
+const updateBackTop = () => {
+  const el = scrollerFor(activeTab.value)
+  backTopVisible.value = !!el && el.scrollTop > 320
+}
+
+const goBackTop = () => {
+  const el = scrollerFor(activeTab.value)
+  if (!el) return
+  if (tabScroll[activeTab.value]) tabScroll[activeTab.value] = 0
+  el.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 // 任意内部/外层滚动（捕获阶段）都能实时记录当前 Tab 的真实位置
@@ -165,13 +189,14 @@ const onDocScrollCapture = (e) => {
   const t = e.target
   if (!(t instanceof Element)) return
   const el = scrollerFor(tab)
-  if (el && (t === el || (t.classList && (t.classList.contains('rk-body') || t.classList.contains('scroll-area'))))) {
+  if (el && (t === el || (t.classList && (t.classList.contains('rk-body') || t.classList.contains('rec-body') || t.classList.contains('scroll-area'))))) {
     const top = t.scrollTop
     if (top > 0) {
       tabScroll[tab] = top
       saveFull()
     }
   }
+  updateBackTop()
 }
 
 const onLibScroll = () => {
@@ -193,6 +218,7 @@ const switchTab = (tab) => {
   activeTab.value = tab
   restoreTabScroll(tab)
   saveFull()
+  updateBackTop()
 }
 
 // ===================== Database =====================
@@ -456,6 +482,7 @@ onBeforeRouteLeave(() => {
 onDeactivated(captureCurrentScroll)
 onActivated(() => {
   restoreTabScroll(activeTab.value)
+  updateBackTop()
 })
 
 onBeforeUnmount(() => {
@@ -471,7 +498,7 @@ onBeforeUnmount(() => {
     <!-- ====== 页面头部 ====== -->
     <div class="page-head">
       <h2><i class="mdi mdi-compass"></i> 发现</h2>
-      <span class="sub">浏览媒体库、番剧资料库与 Bangumi 动画排行榜</span>
+      <span class="sub">浏览媒体库、番剧资料库与 Bangumi 排行榜，登录并绑定后解锁「猜你喜欢」</span>
     </div>
 
     <!-- ====== Tab Bar ====== -->
@@ -484,6 +511,9 @@ onBeforeUnmount(() => {
       </button>
       <button class="discover-tab" :class="{ active: activeTab === 'rank' }" @click="switchTab('rank')">
         <i class="mdi mdi-equalizer"></i>排行榜
+      </button>
+      <button class="discover-tab" :class="{ active: activeTab === 'recommend' }" @click="switchTab('recommend')">
+        <i class="mdi mdi-heart-outline"></i>猜你喜欢
       </button>
     </div>
 
@@ -663,6 +693,21 @@ onBeforeUnmount(() => {
         <BangumiRankTab v-if="activeTab === 'rank'" />
       </keep-alive>
     </div>
+
+    <!-- ============================ RECOMMEND (猜你喜欢) ============================ -->
+    <div v-show="activeTab === 'recommend'" class="tab-content">
+      <!-- keep-alive：切走/返回后保留结果与生成进度；滚动位置由发现页父组件统一记录并恢复 -->
+      <keep-alive>
+        <RecommendTab v-if="activeTab === 'recommend'" />
+      </keep-alive>
+    </div>
+
+    <!-- ===== 回到顶部（随当前活动 Tab 的真实滚动容器联动） ===== -->
+    <transition name="backtop">
+      <button v-if="backTopVisible" class="discover-backtop" title="回到顶部" @click="goBackTop">
+        <i class="mdi mdi-arrow-up"></i>
+      </button>
+    </transition>
   </div>
 </template>
 
@@ -904,6 +949,51 @@ onBeforeUnmount(() => {
   .discover-tabs { width: 100%; }
   .discover-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 0.76rem; gap: 3px; }
   .toolbar { padding: 10px 12px; }
+}
+
+/* ========================= BACK TO TOP ========================= */
+.discover-backtop {
+  position: fixed;
+  right: 28px;
+  bottom: 30px;
+  z-index: 900;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--al-border-panel, rgba(128, 128, 128, 0.25));
+  background: var(--al-bg, #fff);
+  color: var(--anime-accent-red, #e0544d);
+  font-size: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+  font-family: inherit;
+}
+.discover-backtop:hover {
+  background: var(--anime-accent-red, #e0544d);
+  color: #fff;
+  transform: translateY(-2px);
+}
+.backtop-enter-active,
+.backtop-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.backtop-enter-from,
+.backtop-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+@media (max-width: 768px) {
+  .discover-backtop {
+    right: 16px;
+    bottom: 20px;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
 }
 </style>
 

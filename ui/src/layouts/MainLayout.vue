@@ -178,7 +178,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, provide, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
 import { useAuth } from '../composables/useAuth'
@@ -365,6 +365,9 @@ const openLoginDialog = () => {
   showLoginDialog.value = true
   userMenuOpen.value = false
 }
+
+// 供深层子组件（如发现页「猜你喜欢」Tab 的未登录引导）弹出登录框
+provide('openLoginDialog', openLoginDialog)
 
 const openRegisterDialog = () => {
   if (!isRegisterOpen.value) {

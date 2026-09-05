@@ -9,6 +9,12 @@ export const DEFAULT_SITE_NAME = 'AniLink'
 
 export const BANGUMI_BASE_URL = 'https://bgm.tv/'
 
+// Bangumi 官方 Access Token 申请入口（next 客户端开发用 Demo 应用，登录后即可生成）
+export const BANGUMI_ACCESS_TOKEN_URL = 'https://next.bgm.tv/demo/access-token'
+
+// 「猜你喜欢」推荐算法参考实现（czy0729/Bangumi 客户端）
+export const BANGUMI_RECOMMEND_ALGO_URL = 'https://github.com/czy0729/Bangumi'
+
 export const DEFAULT_DANDAN_BASE_URL = 'https://api.dandanplay.net'
 
 // 弹弹play 官网 / Android 客户端开源仓库（编码不支持时引导用户安装使用）

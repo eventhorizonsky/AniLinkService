@@ -240,6 +240,25 @@ public class BangumiApiService {
         return null;
     }
 
+    /**
+     * p1 条目推荐：GET /p1/subjects/{subjectID}/recs
+     * <p>官方「猜你喜欢」数据源（即条目页侧栏推荐），返回与该条目相似的条目列表（含 sim 相似度与
+     * SlimSubject 摘要：nameCN/metaTags/rating/images 等），匿名可用，无需登录态；limit 最大 10。</p>
+     *
+     * @return 原始 JSON 或 null
+     */
+    public String getP1SubjectRecsRaw(Long subjectId, int limit) {
+        List<String[]> pairs = new ArrayList<>();
+        pairs.add(new String[]{"limit", String.valueOf(Math.max(1, Math.min(limit, 10)))});
+        ResponseEntity<String> response = executeQuery(resolveBaseUrl(BANGUMI_NEXT_BASE), "GET",
+                "/p1/subjects/" + subjectId + "/recs", null, null, pairs);
+        if (response.getStatusCode().is2xxSuccessful()) {
+            return response.getBody();
+        }
+        log.debug("Bangumi /p1/subjects/{}/recs failed status={}", subjectId, response.getStatusCode().value());
+        return null;
+    }
+
     private ResponseEntity<String> execute(String baseUrl, String method, String path, String accessToken, String payloadJson,
                                            Map<String, String> queryParams) {
         List<String[]> pairs = new ArrayList<>();

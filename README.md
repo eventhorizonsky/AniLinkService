@@ -112,7 +112,8 @@ https://www.dandanplay.com/
 **打通 Bangumi**  
 - 详情页与播放页自动聚合番剧评分及单集吐槽。  
 - 绑定 Bangumi 账号后，播放过程自动打标，追番状态实时同步。  
-- 支持一键导入 Bangumi 追番清单，轻松迁移。
+- 支持一键导入 Bangumi 追番清单，轻松迁移。  
+- 发现页「猜你喜欢」基于你的收藏实时生成个性化推荐，帮你找到下一部想看的动画（算法参考 [czy0729/Bangumi](https://github.com/czy0729/Bangumi)）。
 
 <img src="doc/img/README/comments.png" alt="评论区" width="720" />
 
@@ -350,3 +351,4 @@ README 只保留项目概览和常用启动方式；更详细的部署、配置�
 - artplayer-plugin-danmuku: https://github.com/zhw2590582/ArtPlayer/tree/master/packages/artplayer-plugin-danmuku
 - jlibtorrent: https://github.com/frostwire/frostwire-jlibtorrent
 - bangumi: https://bangumi.tv/dev
+- czy0729/Bangumi（「猜你喜欢」推荐算法参考）: https://github.com/czy0729/Bangumi
