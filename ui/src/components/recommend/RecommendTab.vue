@@ -170,11 +170,14 @@
           </router-link>
         </div>
 
-        <div class="rec-loadmore" ref="recSentinel">
-          <span v-if="visibleItems.length < items.length" class="rec-loading-text hint">
-            <i class="mdi mdi-chevron-down"></i>继续下滑加载更多
-          </span>
-          <span v-else class="rec-loading-text done">— 已展示全部推荐 —</span>
+        <div v-if="items.length" class="rec-loadmore">
+          <template v-if="visibleItems.length < items.length">
+            <span class="rec-more-count">已展示 {{ visibleItems.length }} / {{ items.length }} 个推荐</span>
+            <button class="rec-more-btn" @click="showMore">
+              <i class="mdi mdi-chevron-down"></i>加载更多
+            </button>
+          </template>
+          <span v-else class="rec-loading-text done">— 已展示全部 {{ items.length }} 个推荐 —</span>
         </div>
       </template>
     </div>
@@ -218,7 +221,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, watch, nextTick, onMounted, onActivated, onBeforeUnmount } from 'vue'
+import { ref, computed, inject, watch, onMounted, onActivated, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   getBangumiRecommendStatus,
@@ -265,11 +268,6 @@ const visibleCount = ref(PAGE_STEP)
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const dims = ref(DIMENSIONS.map(() => true))
-
-// 列表底部哨兵：滚动触底（或无感临近底部）时自动追加下一批
-const recSentinel = ref(null)
-let recIo = null
-let recIoEl = null
 
 let pollTimer = null
 let pollSeq = 0
@@ -478,29 +476,11 @@ const askLogin = () => {
   }
 }
 
-// ===== 无感滚动加载（滚动临近列表底部自动追加下一批） =====
+// ===== 点击加载更多（每次追加一批） =====
 
-const observeMore = () => {
-  const el = recSentinel.value
-  if (!el) return
-  if (recIo && recIoEl === el) return
-  if (recIo) recIo.disconnect()
-  recIoEl = el
-  recIo = new IntersectionObserver((entries) => {
-    if (!entries.some((e) => e.isIntersecting)) return
-    if (visibleCount.value < items.value.length) {
-      visibleCount.value += PAGE_STEP
-    }
-  }, { rootMargin: '200px 0px' })
-  recIo.observe(el)
-}
-
-const unobserveMore = () => {
-  if (recIo) {
-    recIo.disconnect()
-    recIo = null
-    recIoEl = null
-  }
+const showMore = () => {
+  if (visibleCount.value >= items.value.length) return
+  visibleCount.value = Math.min(items.value.length, visibleCount.value + PAGE_STEP)
 }
 
 // ===== 展示 =====
@@ -555,28 +535,18 @@ watch(
       refresh()
     } else {
       resetToGuest()
-      unobserveMore()
     }
   }
-)
-
-// 列表内容/分批状态变化后重新挂上底部哨兵（flush: post 保证模板已更新）
-watch(
-  () => [items.value.length, visibleCount.value, hasResult.value, generating.value],
-  () => nextTick(observeMore),
-  { flush: 'post' }
 )
 
 onMounted(refresh)
 
 onActivated(() => {
   refresh()
-  nextTick(observeMore)
 })
 
 onBeforeUnmount(() => {
   stopPolling()
-  unobserveMore()
   refreshSeq++
   refreshing = false
 })
@@ -968,25 +938,45 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
-/* 加载更多（无感滚动加载：底部哨兵区） */
+/* 加载更多（点击按钮区） */
 .rec-loadmore {
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   gap: 6px;
   padding: 6px 0 12px;
   min-height: 32px;
 }
-.rec-loading-text.hint {
+.rec-more-count {
+  font-size: 12px;
+  color: var(--anime-text-secondary, #8a8a8a);
+}
+.rec-more-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: var(--anime-text-secondary, #8a8a8a);
-  opacity: 0.55;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(224, 84, 77, 0.5);
+  background: transparent;
+  color: var(--anime-accent-red, #e0544d);
+  border-radius: 999px;
+  padding: 7px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.rec-more-btn:hover {
+  background: var(--anime-accent-red, #e0544d);
+  color: #fff;
 }
 .rec-loading-text.done {
   opacity: 0.7;
+  color: var(--anime-text-secondary, #8a8a8a);
+  font-size: 12.5px;
 }
 
 /* ========================= 维度开关弹窗 ========================= */

@@ -121,10 +121,15 @@
           </AnimeCard>
         </div>
 
-        <div ref="rkSentinel" class="rk-loadmore">
+        <div class="rk-loadmore">
           <span v-if="loadingMore" class="rk-loading-text"><i class="mdi mdi-loading mdi-spin"></i> 加载中…</span>
-          <span v-else-if="!hasMore" class="rk-loading-text done">— 已加载至最后一页 —</span>
-          <span v-else-if="items.length" class="rk-loading-text hint"><i class="mdi mdi-chevron-down"></i>继续下滑加载更多</span>
+          <template v-else-if="hasMore">
+            <span class="rk-more-count">已加载 {{ items.length }} 部 · 第 {{ page }} / {{ totalPages }} 页</span>
+            <button class="rk-load-more-btn" @click="loadMore">
+              <i class="mdi mdi-chevron-down"></i>加载更多
+            </button>
+          </template>
+          <span v-else-if="items.length" class="rk-loading-text done">— 已加载全部 {{ items.length }} 部 —</span>
         </div>
       </template>
     </div>
@@ -132,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onActivated, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { getBgmRankSubjects } from '../../api/bangumi'
 import { formatScore } from '../../utils/format'
 import { BANGUMI_BASE_URL } from '../../utils/constants'
@@ -181,33 +186,6 @@ const loading = ref(false)
 const loadingMore = ref(false)
 const errorText = ref('')
 let fetchSeq = 0
-
-// ===== 无感滚动加载（滚动临近列表底部自动加载下一页） =====
-const rkSentinel = ref(null)
-let rkIo = null
-let rkIoEl = null
-
-const observeMore = () => {
-  const el = rkSentinel.value
-  if (!el) return
-  if (rkIo && rkIoEl === el) return
-  if (rkIo) rkIo.disconnect()
-  rkIoEl = el
-  rkIo = new IntersectionObserver((entries) => {
-    if (!entries.some((e) => e.isIntersecting)) return
-    if (loading.value || loadingMore.value || !hasMore.value) return
-    loadMore()
-  }, { rootMargin: '160px 0px' })
-  rkIo.observe(el)
-}
-
-const unobserveMore = () => {
-  if (rkIo) {
-    rkIo.disconnect()
-    rkIo = null
-    rkIoEl = null
-  }
-}
 
 // ===== 会话兜底（跨整页刷新）：只保留筛选/页码/列表数据；滚动位置由发现页父组件统一记录与恢复 =====
 const STATE_KEY = 'anilink.rank.state'
@@ -343,27 +321,13 @@ onMounted(() => {
     items.value = snap.items
     errorText.value = ''
     loading.value = false
-    nextTick(observeMore)
   } else {
     fetchRank(true)
   }
 })
 
-// 内容/加载状态变化后重新挂上底部哨兵（flush: post 保证模板已更新）
-watch(
-  () => [items.value.length, loading.value, loadingMore.value, hasMore.value],
-  () => nextTick(observeMore),
-  { flush: 'post' }
-)
-
-// keep-alive 切回本 Tab 时 DOM 重建，需重新观察哨兵
-onActivated(() => {
-  nextTick(observeMore)
-})
-
 onBeforeUnmount(() => {
   fetchSeq++
-  unobserveMore()
   persist()
 })
 
@@ -603,9 +567,10 @@ onBeforeUnmount(() => {
   padding: 1px 8px;
 }
 
-/* ========================= 加载更多（无感滚动加载哨兵区） ========================= */
+/* ========================= 加载更多（点击按钮区） ========================= */
 .rk-loadmore {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   gap: 6px;
@@ -620,10 +585,31 @@ onBeforeUnmount(() => {
   font-size: 13px;
   padding: 8px 0;
 }
-.rk-loading-text.hint {
-  opacity: 0.55;
-}
 .rk-loading-text.done {
   opacity: 0.7;
+}
+.rk-more-count {
+  font-size: 12px;
+  color: var(--anime-text-secondary, #8a8a8a);
+}
+.rk-load-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(224, 84, 77, 0.5);
+  background: transparent;
+  color: var(--anime-accent-red, #e0544d);
+  border-radius: 999px;
+  padding: 7px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.rk-load-more-btn:hover {
+  background: var(--anime-accent-red, #e0544d);
+  color: #fff;
 }
 </style>

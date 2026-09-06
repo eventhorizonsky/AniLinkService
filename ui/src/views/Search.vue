@@ -17,14 +17,12 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { getAnimeList, getSeasonList, getSeasonAnime, searchDandanAnimes } from '../api/anime'
 import { formatAnimeType } from '../utils/animeType'
 import { formatScore } from '../utils/format'
-import { useIsMobile } from '../composables/useIsMobile'
 import AnimeCard from '../components/AnimeCard.vue'
 import BangumiRankTab from '../components/rank/BangumiRankTab.vue'
 import RecommendTab from '../components/recommend/RecommendTab.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { isMobile } = useIsMobile(768)
 
 const DISCOVER_STATE_KEY = 'anilink.discover.state'
 const VALID_TABS = ['library', 'database', 'rank', 'recommend']
@@ -108,6 +106,12 @@ const libSearch = () => {
   const q = {}
   if (libKeyword.value.trim()) q.q = libKeyword.value.trim()
   router.push({ path: '/search', query: q })
+}
+
+const libLoadMore = () => {
+  if (libLoadingMore.value || !libHasMore.value) return
+  libPage.value += 1
+  fetchLibrary(true)
 }
 
 const libOuterEl = ref(null)
@@ -197,20 +201,6 @@ const onDocScrollCapture = (e) => {
     }
   }
   updateBackTop()
-}
-
-const onLibScroll = () => {
-  if (activeTab.value === 'rank') return
-  const el = scrollEl()
-  if (!el) return
-  tabScroll[activeTab.value] = el.scrollTop
-  saveFull()
-  const area = isMobile.value ? el : libScrollEl.value
-  if (!area || libLoadingMore.value || !libHasMore.value) return
-  if (area.scrollTop + area.clientHeight >= area.scrollHeight - 60) {
-    libPage.value++
-    fetchLibrary(true)
-  }
 }
 
 const switchTab = (tab) => {
@@ -442,7 +432,6 @@ watch(
 onMounted(async () => {
   libOuterEl.value = document.querySelector('.app-content')
   document.addEventListener('scroll', onDocScrollCapture, { capture: true, passive: true })
-  libOuterEl.value?.addEventListener('scroll', onLibScroll, { passive: true })
 
   const snap = loadFull()
 
@@ -506,7 +495,6 @@ onActivated(() => {
 onBeforeUnmount(() => {
   captureCurrentScroll()
   document.removeEventListener('scroll', onDocScrollCapture, { capture: true })
-  libOuterEl.value?.removeEventListener('scroll', onLibScroll)
   libOuterEl.value = null
 })
 </script>
@@ -556,7 +544,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div ref="libScrollEl" class="scroll-area" @scroll="onLibScroll">
+      <div ref="libScrollEl" class="scroll-area">
         <div v-if="libLoading" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
         <div v-else-if="libError" class="empty-block error"><i class="mdi mdi-alert-circle"></i>{{ libError }}</div>
         <div v-else-if="!libHasResult && libKeyword" class="empty-block">
@@ -586,8 +574,19 @@ onBeforeUnmount(() => {
               </template>
             </AnimeCard>
           </div>
-          <div v-if="libLoadingMore" class="load-more"><i class="mdi mdi-loading mdi-spin"></i> 加载更多...</div>
-          <div v-else-if="!libHasMore && libList.length > libPageSize" class="load-more load-done">— 已加载全部 {{ libTotal }} 条 —</div>
+          <div v-if="libHasMore || libList.length > libPageSize" class="load-more">
+            <span v-if="libHasMore" class="load-more-info">已加载 <strong>{{ libList.length }}</strong> / {{ libTotal }} 条</span>
+            <button
+              v-if="libHasMore"
+              class="load-more-btn"
+              :disabled="libLoadingMore"
+              @click="libLoadMore"
+            >
+              <i v-if="libLoadingMore" class="mdi mdi-loading mdi-spin"></i>
+              {{ libLoadingMore ? '加载中...' : '加载更多' }}
+            </button>
+            <div v-else class="load-more load-done">— 已加载全部 {{ libTotal }} 条 —</div>
+          </div>
         </template>
       </div>
     </div>
@@ -936,9 +935,26 @@ onBeforeUnmount(() => {
 
 /* ========================= LOAD MORE ========================= */
 .load-more {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 14px 0 4px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px 0 6px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
 }
+.load-more-info { font-size: 0.76rem; color: var(--anime-text-secondary); }
+.load-more-info strong { color: var(--anime-text-main); font-weight: 700; }
+.load-more-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(var(--al-accent-rgb), 0.55);
+  background: var(--al-bg);
+  color: var(--anime-accent-red);
+  border-radius: 999px;
+  padding: 8px 28px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.load-more-btn:hover:not(:disabled) { background: var(--anime-accent-red); color: #fff; border-color: var(--anime-accent-red); }
+.load-more-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .load-done { color: var(--al-gray-faint); font-size: 0.74rem; }
 
 /* ========================= SKELETON ========================= */
