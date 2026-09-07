@@ -17,6 +17,7 @@ import { getThemeColorPreset } from '../utils/themeColors'
 import { getMediaFileCodecs } from '../api/media'
 import { checkCodecSupport } from '../utils/codecSupport'
 import { decidePlaybackMode } from '../utils/playbackMode'
+import { createWasmAudioEngine } from '../utils/wasmAudioEngine'
 
 // --- WASM(mediabunny) 播放后端：仅在需要时动态加载 ---
 // ArtPlayer 的 option.proxy 播放后端为仓库内 vendored fork（上游 MIT：
@@ -107,6 +108,8 @@ export function usePlayerCore({
   let _wasmInfoAnimeId = null
   // 代理模式事件桥清理函数（libass 字幕等依赖 $video 上的 DOM 事件）
   let _proxyVideoEventBridgeCleanup = null
+  // hybrid(原生画面 + WASM AC3 音频) 引擎清理函数
+  let _hybridAudioCleanup = null
   // 媒体编码元数据缓存：videoId -> { videoCodec, audioCodec, containerFormat }
   const _codecsCache = new Map()
   const isDesktopViewport = ref(true)
@@ -300,6 +303,67 @@ export function usePlayerCore({
   }
 
   /**
+   * hybrid 模式：原生 <video> 出画面，wasmAudioEngine(@mediabunny/ac3 WASM) 从动出音轨。
+   * 异步启动：失败/不支持时只回退为原生画面播放（不阻塞、不打扰）。
+   */
+  const uninstallHybridAudio = () => {
+    if (_hybridAudioCleanup) {
+      const cleanup = _hybridAudioCleanup
+      _hybridAudioCleanup = null
+      try {
+        cleanup()
+      } catch (error) {
+        console.warn('[hybrid-audio] 清理失败:', error)
+      }
+    }
+  }
+
+  const startHybridAudioEngine = async (videoId, seq, { audioCodecNeedsWasm = false } = {}) => {
+    const animeKey = String(getAnimeId() || '')
+    const notifyOnce = (message, kind) => {
+      if (_wasmInfoAnimeId === animeKey) return
+      _wasmInfoAnimeId = animeKey
+      showAppMessage(message, kind)
+    }
+    try {
+      const artInstance = art.value
+      const videoEl = artInstance?.template?.$video
+      if (!videoEl || typeof videoEl.addEventListener !== 'function') {
+        return
+      }
+      const audioEngine = await createWasmAudioEngine({
+        url: getStreamUrl(),
+        video: videoEl,
+        getVolume: () => Number(art.value?.volume ?? 0.5),
+        isMuted: () => Boolean(art.value?.muted),
+        getPlaybackRate: () => Number(art.value?.playbackRate ?? 1),
+        onVideoError: () => {
+          notifyOnce('浏览器无法原生解码该视频画面，已停止 WASM 音频；如需观看请使用弹弹play 客户端', 'warning')
+        },
+      })
+      if (!audioEngine || seq !== playerRecreateSeq || !art.value) {
+        audioEngine?.destroy?.()
+        if (audioCodecNeedsWasm && seq === playerRecreateSeq) {
+          notifyOnce('该音轨的 WASM 解码引擎未能启用，当前保持原生画面播放（音轨可能无声）', 'warning')
+        }
+        return
+      }
+      _hybridAudioCleanup = () => audioEngine.destroy()
+      notifyOnce(
+        audioCodecNeedsWasm
+          ? '画面为原生播放，AC3/EAC3 音轨已启用浏览器内 WASM 解码'
+          : '画面为原生播放，音轨已启用浏览器内解码',
+        'info',
+      )
+    } catch (error) {
+      console.warn('[hybrid-audio] 启动失败，保持原生画面:', error)
+      if (audioCodecNeedsWasm && seq === playerRecreateSeq) {
+        notifyOnce('该音轨的 WASM 解码引擎未能启用，当前保持原生画面播放（音轨可能无声）', 'warning')
+      }
+    }
+  }
+
+  /**
    * WASM(mediabunny) 代理模式的事件桥。
    * 代理模式下 art.$video 是被替换成的 canvas（携带 video 语义的属性），引擎事件以
    * 'video:*' 转发到 art，但不会触发 canvas 上的原生 DOM 事件。libass 字幕等消费者
@@ -402,6 +466,7 @@ export function usePlayerCore({
         if (!playbackMode.videoPlayable && _wasmInfoAnimeId !== animeKey) {
           _wasmInfoAnimeId = animeKey
           const videoName = codecsMeta?.videoCodec ? `（${codecsMeta.videoCodec}）` : ''
+          const containerName = codecsMeta?.containerFormat ? `，容器 ${codecsMeta.containerFormat}` : ''
           // 区分两种"视频不可解"：非安全上下文(http 访问局域网 IP)下 WebCodecs 被禁用，
           // 与浏览器本身缺 HEVC 解码能力，给用户不同的指引
           const insecureContext = typeof window !== 'undefined' && window.isSecureContext === false
@@ -409,28 +474,16 @@ export function usePlayerCore({
             ? '当前为 http 非安全页面，浏览器禁用了 WebCodecs 视频解码；请改用 https 访问本站点。'
             : '如需完整画面请使用弹弹play。'
           showAppMessage(
-            `当前浏览器无法解码该视频编码${videoName}，已降级为仅音频播放；${guidance}`,
+            `当前浏览器无法解码该视频编码${videoName}${containerName}，已降级为仅音频播放；${guidance}`,
             'warning',
           )
         }
         return
       }
-      if (playbackMode?.kind === 'native') {
-        // wasm 解不了视频、画面回退为原生播放（如 http 非安全上下文无 WebCodecs）：
-        // 此时 AC3/EAC3 音轨在原生 <video> 下可能无声，提示一次"改用 https 可画面与声音兼得"
-        if (
-          playbackMode.nativeVideoFallback
-          && playbackMode.audioCodecNeedsWasm
-          && _wasmInfoAnimeId !== animeKey
-        ) {
-          _wasmInfoAnimeId = animeKey
-          showAppMessage(
-            '当前环境无法启用浏览器内完整解码，已按原生方式播放画面；AC3/EAC3 音轨可能无声，改用 https 访问本站点可同时获得画面与声音。',
-            'warning',
-          )
-        }
-        return
-      }
+      // native / hybrid：画面由原生 <video> 承载，不弹降级提示（hybrid 音轨提示由
+      // startHybridAudioEngine 负责，且按番剧只提示一次）
+      if (playbackMode?.kind === 'native') return
+      if (playbackMode?.kind === 'hybrid') return
 
       // external / 兜底路径：需要元数据来判定并提示
       let d = codecsMeta
@@ -524,6 +577,7 @@ export function usePlayerCore({
   }
 
   const destroyPlayerInstance = () => {
+    uninstallHybridAudio()
     uninstallProxyVideoEventBridge()
     if (_mobileTapHandler) {
       const video = art.value?.video
@@ -893,6 +947,13 @@ export function usePlayerCore({
       if (wasmProxyFactory) {
         // 代理模式：把 art 的 video:* 事件桥接为 $video(canvas) 上的合成 DOM 事件（libass 字幕等依赖）
         installProxyVideoEventBridge()
+      }
+
+      if (playbackMode?.kind === 'hybrid') {
+        // hybrid：原生画面 + WASM AC3 音频从动引擎（异步，失败不影响画面）
+        startHybridAudioEngine(targetVideoId, seq, {
+          audioCodecNeedsWasm: Boolean(playbackMode?.audioCodecNeedsWasm),
+        })
       }
 
       // 播放能力降级提示：wasm 代理已接管的不再打扰；无法覆盖的才弹窗引导弹弹play

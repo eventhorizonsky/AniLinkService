@@ -1,9 +1,12 @@
-// 播放模式决策：原生 <video> 直出 / mediabunny(WebCodecs + WASM) 代理 / 引导外部播放器。
+// 播放模式决策：原生 <video> 直出 / mediabunny(WebCodecs + WASM) 代理 / hybrid(原生画面
+// + WASM 音轨) / 引导外部播放器。
 //
-// 背景：服务端不转码、仅提供文件流。浏览器原生 <video> 只能播放“容器 + 编码”都可解的
-// 组合（MP4/WebM + h264/av1/vp9 + aac/opus/flac…）；而 MKV 容器、HEVC、AC3/EAC3/DTS、
-// TrueHD 等浏览器不能直解。mediabunny（解复用 + WebCodecs 视频 + @mediabunny/ac3 的
-// WASM 音频解码）可以覆盖其中大部分，无法覆盖的再走"引导外部播放器"弹窗。
+// 背景：服务端不转码、仅提供文件流。浏览器原生 <video> 能放"容器 + 编码"都可解的媒体；
+// MKV(matroska) 的 demuxer 与 WebM 同族，Chromium 系浏览器常能直接播放其中的常见编码
+// （h264/hevc+aac/ac3 视平台而定），因此按"原生尝试 + 运行时 error 兜底"处理，不做一刀切。
+// 原生解不了的编码（AC3/EAC3/DTS/TrueHD…）由 mediabunny 补充：WebCodecs 可用的安全上下文
+// 走整段 wasm 代理；WebCodecs 不可用（http 非安全上下文/Firefox）但原生能放画面时走
+// hybrid（原生画面 + @mediabunny/ac3 WASM 音轨从动）。彻底覆盖不了的走"引导外部播放器"。
 //
 // 说明：
 //  - 本项目只做使用方：不修改 mediabunny/@mediabunny/ac3 源码，
@@ -14,12 +17,14 @@ import { checkCodecSupport } from './codecSupport'
 
 const norm = (v) => String(v || '').trim().toLowerCase()
 
-// ffprobe format_name → 归类（native=浏览器 <video> 可直解；mb=mediabunny 可解复用）
+// ffprobe format_name → 归类（native=尝试交给原生 <video>；mb=mediabunny 可解复用）
 function classifyContainer(raw) {
   const s = norm(raw)
   if (!s) return { key: '', native: true, mb: true } // 未知容器按原生尝试（保持旧行为）
 
-  if (s.includes('matroska') || s === 'mkv' || s === 'mka') return { key: 'mkv', native: false, mb: true }
+  // matroska/webm demuxer 同族：Chromium 常可原生播放 MKV 内常见编码（如 h264/hevc+aac/ac3，
+  // 视平台与解码器而定），标记 native 后由播放层"尝试 + error 兜底"，避免把能放的画面降级
+  if (s.includes('matroska') || s === 'mkv' || s === 'mka') return { key: 'mkv', native: true, mb: true }
   if (s.includes('webm')) return { key: 'webm', native: true, mb: true }
   if (s.includes('mpegts')) return { key: 'ts', native: false, mb: true }
   // Ogg(Theora/Vorbis)：Chrome/Firefox 原生 <video> 可直接播放，保持原生直出（避免误路由到
@@ -105,12 +110,11 @@ export async function probeAudioDecodableInProxy(ffCodec) {
 /**
  * 决策入口。返回：
  * @returns {{
- *   kind: 'native' | 'wasm' | 'external',
+ *   kind: 'native' | 'wasm' | 'hybrid' | 'external',
  *   container: {key: string, native: boolean, mb: boolean},
  *   videoPlayable: boolean,   // wasm 路径下视频轨能否（WebCodecs）解码
- *   audioPlayable: boolean,   // wasm 路径下音频轨能否解码（含 WASM AC3）
+ *   audioPlayable: boolean,   // 音轨能否在浏览器内解码（原生或 WASM/WebAudio）
  *   audioCodecNeedsWasm: boolean,
- *   nativeVideoFallback: boolean, // wasm 解不了视频但原生 <video> 可放画面时回退原生
  *   reasons: string[],        // 人类可读的判定原因（供提示文案）
  * }}
  */
@@ -143,22 +147,20 @@ export async function decidePlaybackMode({ containerFormat, videoCodec, audioCod
   }
   if (!videoOk) {
     // wasm 解不了视频轨（典型：http 非安全上下文没有 WebCodecs，或浏览器不支持该编码的
-    // WebCodecs 解码）。若原生 <video> 能放该"容器+视频编码"（如 HEVC），必须回到 native：
-    // 否则会把原本能看画面的播放（NAS 等 http 部署很常见，原生 <video> 不要求安全上下文）
-    // 降级成"只有声音"，属于功能回归。native 下 AC3/EAC3 音轨可能无声，调用方据
-    // nativeVideoFallback 提示（只有 https/安全上下文才能画面与 AC3 声音兼得）。
-    const nativeVideoOk = container.native && checkCodecSupport({ videoCodec: video }).supported
-    if (nativeVideoOk) {
+    // WebCodecs 解码）。只要容器是原生容器（MP4/MOV/WebM/Ogg…），就走 hybrid：画面交给
+    // 原生 <video>，AC3/EAC3 等音轨由 wasmAudioEngine（@mediabunny/ac3 WASM）从动输出。
+    // 刻意不依赖 canPlayType 探测视频编码：Chrome 对 hvc1 常返回 ''（实际却能原生解码），
+    // 探测会把本可播放的画面误判成"仅音频"；原生真解不了时由 <video> 运行时 error 兜底。
+    if (container.native) {
       if (audioCodecNeedsWasm) {
-        reasons.push(`音频编码 ${audioCodec} 当前浏览器无法原生解码，画面已回退为原生播放`)
+        reasons.push(`音频 ${audioCodec} 使用 WASM(mediabunny) 解码，画面由原生播放`)
       }
       return {
-        kind: 'native',
+        kind: 'hybrid',
         container,
         videoPlayable: false,
         audioPlayable: audioOk,
         audioCodecNeedsWasm,
-        nativeVideoFallback: true,
         reasons,
       }
     }
