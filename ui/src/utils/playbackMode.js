@@ -115,6 +115,7 @@ export async function probeAudioDecodableInProxy(ffCodec) {
  *   videoPlayable: boolean,   // wasm 路径下视频轨能否（WebCodecs）解码
  *   audioPlayable: boolean,   // 音轨能否在浏览器内解码（原生或 WASM/WebAudio）
  *   audioCodecNeedsWasm: boolean,
+ *   nativeVideoUncertain: boolean, // hybrid 时原生探测判否（如 Edge 无 HEVC），需先弹引导
  *   reasons: string[],        // 人类可读的判定原因（供提示文案）
  * }}
  */
@@ -137,6 +138,11 @@ export async function decidePlaybackMode({ containerFormat, videoCodec, audioCod
 
   const video = norm(videoCodec)
   const audio = norm(audioCodec)
+  // 画面能力判定优先于 AC3/降级逻辑：
+  //  - videoNativeSupported：原生 <video> 对该视频编码的支持（canPlayType，能如实反映
+  //    Edge 等无 HEVC 能力的环境）；注意这里只看视频轨，容器按原生容器(mp4/mov/mkv/webm…)尝试；
+  //  - videoOk：mediabunny 路径（WebCodecs）能否解视频轨。
+  const videoNativeSupported = container.native && checkCodecSupport({ videoCodec: video }).supported
   const audioOk = await probeAudioDecodableInProxy(audio)
   const videoOk = await probeVideoDecodableByWebCodecs(video)
   const audioCodecNeedsWasm = WASM_AUDIO_CODECS.has(audio)
@@ -145,13 +151,17 @@ export async function decidePlaybackMode({ containerFormat, videoCodec, audioCod
     reasons.push(`音频编码 ${audioCodec} 当前浏览器无法解码`)
     return { kind: 'external', container, videoPlayable: videoOk, audioPlayable: false, audioCodecNeedsWasm, reasons }
   }
+
+  // 画面两条路都判否时的处理分两类：
+  //  - 容器可原生尝试（mp4/mov/mkv…）：hybrid 仍要"真的尝试"原生画面——canPlayType 对
+  //    HEVC 存在误报（某些 Chrome 实际可解但返回 ''），不能因探测判否就放弃播放；
+  //    探测判否（如 Edge 无 HEVC）通过 nativeVideoUncertain 交给播放层弹一次引导弹窗。
+  //  - 非原生容器（TS 等）且 WebCodecs 不可用：浏览器内确实没有画面路径 → external 引导。
   if (!videoOk) {
-    // wasm 解不了视频轨（典型：http 非安全上下文没有 WebCodecs，或浏览器不支持该编码的
-    // WebCodecs 解码）。只要容器是原生容器（MP4/MOV/WebM/Ogg…），就走 hybrid：画面交给
-    // 原生 <video>，AC3/EAC3 等音轨由 wasmAudioEngine（@mediabunny/ac3 WASM）从动输出。
-    // 刻意不依赖 canPlayType 探测视频编码：Chrome 对 hvc1 常返回 ''（实际却能原生解码），
-    // 探测会把本可播放的画面误判成"仅音频"；原生真解不了时由 <video> 运行时 error 兜底。
     if (container.native) {
+      if (!videoNativeSupported) {
+        reasons.push(`视频编码 ${videoCodec} 可能无法在当前浏览器直接播放`)
+      }
       if (audioCodecNeedsWasm) {
         reasons.push(`音频 ${audioCodec} 使用 WASM(mediabunny) 解码，画面由原生播放`)
       }
@@ -161,11 +171,14 @@ export async function decidePlaybackMode({ containerFormat, videoCodec, audioCod
         videoPlayable: false,
         audioPlayable: audioOk,
         audioCodecNeedsWasm,
+        nativeVideoUncertain: !videoNativeSupported,
         reasons,
       }
     }
-    reasons.push(`视频编码 ${videoCodec} 当前浏览器无法解码，将降级为仅音频`)
+    reasons.push(`视频编码 ${videoCodec} 当前浏览器无法解码`)
+    return { kind: 'external', container, videoPlayable: false, audioPlayable: audioOk, audioCodecNeedsWasm, reasons }
   }
+
   if (audioCodecNeedsWasm) {
     reasons.push(`音频 ${audioCodec} 使用 WASM(mediabunny+libavcodec) 解码`)
   }
@@ -173,5 +186,5 @@ export async function decidePlaybackMode({ containerFormat, videoCodec, audioCod
     reasons.push('容器或编码超出原生能力，改用 mediabunny 播放')
   }
 
-  return { kind: 'wasm', container, videoPlayable: videoOk, audioPlayable: true, audioCodecNeedsWasm, reasons }
+  return { kind: 'wasm', container, videoPlayable: true, audioPlayable: true, audioCodecNeedsWasm, reasons }
 }

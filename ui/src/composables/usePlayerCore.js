@@ -233,6 +233,38 @@ export function usePlayerCore({
     fireAndroidIntent(chooserUrl)
   }
 
+  /**
+   * 弹窗引导使用弹弹play（"判定为 external"与"hybrid 原生画面运行时失败"共用）。
+   * 手机端/PC 展示各自适用的链接；Android 额外提供"通过其他视频软件打开"平级按钮。
+   */
+  const showDdplayGuidance = (message, title = '浏览器可能无法播放该视频') => {
+    const links = isAndroidDevice()
+      ? [
+          { text: '弹弹play 官网', href: DANDPANPLAY_OFFICIAL_URL },
+          { text: 'Android 客户端（开源）', href: DANDPANPLAY_ANDROID_URL },
+        ]
+      : [{ text: '弹弹play 官网', href: DANDPANPLAY_OFFICIAL_URL }]
+    const actions = isAndroidDevice()
+      ? [{ text: '通过其他视频软件打开', value: 'other-player', color: 'primary' }]
+      : []
+
+    askAppConfirm({
+      title,
+      message,
+      confirmText: '通过弹弹play播放',
+      cancelText: '继续播放',
+      color: 'warning',
+      links,
+      actions,
+    }).then((choice) => {
+      if (choice === 'other-player') {
+        openWithOtherPlayer()
+      } else if (choice === true) {
+        openWithDdplay()
+      }
+    })
+  }
+
   const syncMobileClass = () => {
     if (!artRef.value) return
     const playerEl = artRef.value.querySelector('.art-video-player')
@@ -303,6 +335,94 @@ export function usePlayerCore({
   }
 
   /**
+   * 原生/hybrid 共用兜底：
+   *  - 运行时 error(MEDIA_ERR_SRC_NOT_SUPPORTED)：直接弹引导；
+   *  - 画面帧看门狗：Edge 等对 MKV+HEVC 会"静默失败"（error=null、readyState=4 但
+   *    解码不输出任何帧 → 黑屏）。用 requestVideoFrameCallback 探测：播放中超过阈值
+   *    没有新帧且时间在前进，视为解码无输出，弹引导。正常浏览器每帧都会回调，不受影响。
+   */
+  const showNativeVideoUnsupportedGuidance = () => {
+    const animeKey = String(getAnimeId() || '')
+    if (_codecPromptAnimeId === animeKey) return
+    _codecPromptAnimeId = animeKey
+    showDdplayGuidance(
+      '当前视频无法在当前浏览器中直接解码播放（可能为黑屏）。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。',
+    )
+  }
+
+  let _nativeVideoGuardCleanup = null
+  const uninstallNativeVideoGuard = () => {
+    if (_nativeVideoGuardCleanup) {
+      const cleanup = _nativeVideoGuardCleanup
+      _nativeVideoGuardCleanup = null
+      try {
+        cleanup()
+      } catch (error) {
+        console.warn('移除 video 兜底监听失败:', error)
+      }
+    }
+  }
+  const installNativeVideoGuard = ({ frameWatchdog = false } = {}) => {
+    uninstallNativeVideoGuard()
+    const el = art.value?.template?.$video
+    if (!el || typeof el.addEventListener !== 'function') {
+      return
+    }
+
+    const removers = []
+    let watchdogTimer = 0
+    const clearWatchdog = () => {
+      if (watchdogTimer) {
+        clearTimeout(watchdogTimer)
+        watchdogTimer = 0
+      }
+    }
+    const cleanup = () => {
+      clearWatchdog()
+      removers.forEach((fn) => fn())
+      removers.length = 0
+    }
+
+    // 1) 显式解码失败：所有原生/hybrid 场景都监听
+    const onError = () => {
+      if (el.error?.code === 4) {
+        showNativeVideoUnsupportedGuidance()
+      }
+    }
+    el.addEventListener('error', onError)
+    removers.push(() => el.removeEventListener('error', onError))
+
+    // 2) 画面帧看门狗：默认关闭。仅 matroska 容器启用（Chromium 对 MKV+HEVC 存在
+    //    "不报错但解码无输出"的静默失败）；且每段播放只在首次 playing 后探测一次，
+    //    不随 seek/暂停重复——运行时成本近零。
+    if (frameWatchdog && typeof el.requestVideoFrameCallback === 'function') {
+      let armedOnce = false
+      const onPlaying = () => {
+        if (armedOnce || el.paused || el.ended) return
+        armedOnce = true
+        let sawFrame = false
+        try {
+          el.requestVideoFrameCallback(() => {
+            sawFrame = true
+          })
+        } catch {
+          return // 该实现不可用则不再探测
+        }
+        watchdogTimer = setTimeout(() => {
+          watchdogTimer = 0
+          if (!sawFrame && !el.paused && !el.ended && el.readyState >= 3 && el.currentTime > 0.2) {
+            showNativeVideoUnsupportedGuidance()
+          }
+        }, 2500)
+      }
+      el.addEventListener('playing', onPlaying)
+      removers.push(() => el.removeEventListener('playing', onPlaying))
+    }
+
+    _nativeVideoGuardCleanup = cleanup
+  }
+
+  /**
    * hybrid 模式：原生 <video> 出画面，wasmAudioEngine(@mediabunny/ac3 WASM) 从动出音轨。
    * 异步启动：失败/不支持时只回退为原生画面播放（不阻塞、不打扰）。
    */
@@ -325,30 +445,56 @@ export function usePlayerCore({
       _wasmInfoAnimeId = animeKey
       showAppMessage(message, kind)
     }
+    // 原生画面运行时失败（如 Edge 无 HEVC 能力）→ 恢复改前的弹窗引导弹弹play（按番剧去重）
+    const showUnsupportedDdplay = () => {
+      if (_codecPromptAnimeId !== animeKey) {
+        _codecPromptAnimeId = animeKey
+        showDdplayGuidance(
+          '当前视频编码无法在浏览器中直接播放。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。',
+        )
+      }
+    }
+
     try {
       const artInstance = art.value
       const videoEl = artInstance?.template?.$video
       if (!videoEl || typeof videoEl.addEventListener !== 'function') {
         return
       }
+
+      // 同步先挂 error 监听：引擎是异步加载（首次含 ~1MB wasm chunk），若 <video> 在其
+      // 完成前就报 MEDIA_ERR_SRC_NOT_SUPPORTED(4)，引擎自身的监听会错过 → 提前兜底弹窗
+      const earlyErrorHandler = () => {
+        if (videoEl.error?.code === 4) {
+          showUnsupportedDdplay()
+        }
+      }
+      videoEl.addEventListener('error', earlyErrorHandler)
+
+      // 统一清理：无论引擎是否启动成功，都要移除上面的提前监听
+      const cleanups = [() => videoEl.removeEventListener('error', earlyErrorHandler)]
+
       const audioEngine = await createWasmAudioEngine({
         url: getStreamUrl(),
         video: videoEl,
         getVolume: () => Number(art.value?.volume ?? 0.5),
         isMuted: () => Boolean(art.value?.muted),
         getPlaybackRate: () => Number(art.value?.playbackRate ?? 1),
-        onVideoError: () => {
-          notifyOnce('浏览器无法原生解码该视频画面，已停止 WASM 音频；如需观看请使用弹弹play 客户端', 'warning')
-        },
+        onVideoError: showUnsupportedDdplay,
       })
+
       if (!audioEngine || seq !== playerRecreateSeq || !art.value) {
         audioEngine?.destroy?.()
         if (audioCodecNeedsWasm && seq === playerRecreateSeq) {
           notifyOnce('该音轨的 WASM 解码引擎未能启用，当前保持原生画面播放（音轨可能无声）', 'warning')
         }
+        _hybridAudioCleanup = () => cleanups.forEach((fn) => fn())
         return
       }
-      _hybridAudioCleanup = () => audioEngine.destroy()
+
+      cleanups.push(() => audioEngine.destroy())
+      _hybridAudioCleanup = () => cleanups.forEach((fn) => fn())
+      console.debug('[player] hybrid 音频引擎已启动')
       notifyOnce(
         audioCodecNeedsWasm
           ? '画面为原生播放，AC3/EAC3 音轨已启用浏览器内 WASM 解码'
@@ -480,10 +626,19 @@ export function usePlayerCore({
         }
         return
       }
-      // native / hybrid：画面由原生 <video> 承载，不弹降级提示（hybrid 音轨提示由
-      // startHybridAudioEngine 负责，且按番剧只提示一次）
+      // hybrid：画面由原生 <video> 承载（startHybridAudioEngine 负责音轨与运行时失败提示）。
+      // 若原生探测判否（nativeVideoUncertain，如 Edge 无 HEVC），先弹一次引导——但 hybrid
+      // 仍会"真的尝试"原生画面，用户可点"继续播放"；可解却误报的浏览器不受影响。
+      if (playbackMode?.kind === 'hybrid') {
+        if (playbackMode.nativeVideoUncertain && _codecPromptAnimeId !== animeKey) {
+          _codecPromptAnimeId = animeKey
+          showDdplayGuidance(
+            '当前视频编码可能无法在当前浏览器中直接播放。\n将先尝试原生播放；若画面异常，建议使用弹弹play客户端。',
+          )
+        }
+        return
+      }
       if (playbackMode?.kind === 'native') return
-      if (playbackMode?.kind === 'hybrid') return
 
       // external / 兜底路径：需要元数据来判定并提示
       let d = codecsMeta
@@ -510,32 +665,9 @@ export function usePlayerCore({
       }
       const reasonText = reasonParts.join('、')
 
-      // 手机端/PC 展示各自适用的链接；Android 额外提供"通过其他视频软件打开"平级按钮
-      const links = isAndroidDevice()
-        ? [
-            { text: '弹弹play 官网', href: DANDPANPLAY_OFFICIAL_URL },
-            { text: 'Android 客户端（开源）', href: DANDPANPLAY_ANDROID_URL },
-          ]
-        : [{ text: '弹弹play 官网', href: DANDPANPLAY_OFFICIAL_URL }]
-      const actions = isAndroidDevice()
-        ? [{ text: '通过其他视频软件打开', value: 'other-player', color: 'primary' }]
-        : []
-
-      askAppConfirm({
-        title: '浏览器可能无法播放该视频',
-        message: `当前视频/音频编码（${reasonText}）可能无法在浏览器中直接播放。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。`,
-        confirmText: '通过弹弹play播放',
-        cancelText: '继续播放',
-        color: 'warning',
-        links,
-        actions,
-      }).then((choice) => {
-        if (choice === 'other-player') {
-          openWithOtherPlayer()
-        } else if (choice === true) {
-          openWithDdplay()
-        }
-      })
+      showDdplayGuidance(
+        `当前视频/音频编码（${reasonText}）可能无法在浏览器中直接播放。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。`,
+      )
     } catch (e) {
       // 静默失败：拿不到编码信息时不打扰用户
       console.debug('编码探测失败:', e)
@@ -577,6 +709,7 @@ export function usePlayerCore({
   }
 
   const destroyPlayerInstance = () => {
+    uninstallNativeVideoGuard()
     uninstallHybridAudio()
     uninstallProxyVideoEventBridge()
     if (_mobileTapHandler) {
@@ -947,7 +1080,23 @@ export function usePlayerCore({
       if (wasmProxyFactory) {
         // 代理模式：把 art 的 video:* 事件桥接为 $video(canvas) 上的合成 DOM 事件（libass 字幕等依赖）
         installProxyVideoEventBridge()
+      } else {
+        // 原生/hybrid：真实 <video>，运行时失败(error/黑屏无帧)时引导弹弹play（探测不可靠的兜底）。
+        // 帧看门狗只对 matroska 容器启用（Chromium 对 MKV+HEVC 有"静默黑屏"缺陷）
+        const isMatroska = /matroska|\bmkv\b|mka/i.test(codecsMeta?.containerFormat || '')
+        installNativeVideoGuard({ frameWatchdog: isMatroska })
       }
+
+      // 诊断：模式决策结果与元数据（排查播放模式问题时临时开启）
+      console.debug('[player] 播放模式决策:', {
+        kind: playbackMode?.kind ?? null,
+        nativeVideoUncertain: playbackMode?.nativeVideoUncertain ?? false,
+        audioCodecNeedsWasm: playbackMode?.audioCodecNeedsWasm ?? false,
+        container: codecsMeta?.containerFormat ?? null,
+        videoCodec: codecsMeta?.videoCodec ?? null,
+        audioCodec: codecsMeta?.audioCodec ?? null,
+        secure: typeof window !== 'undefined' ? window.isSecureContext : null,
+      })
 
       if (playbackMode?.kind === 'hybrid') {
         // hybrid：原生画面 + WASM AC3 音频从动引擎（异步，失败不影响画面）
