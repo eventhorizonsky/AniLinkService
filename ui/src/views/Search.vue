@@ -101,11 +101,28 @@ const fetchLibrary = async (append = false) => {
   }
 }
 
-const libSearch = () => {
+// 最近一次实际按关键词发起的媒体库检索（区分「本页自搜」与「外部路由跳转」，避免重复请求）
+let libLastSearchKw = ''
+
+// 按给定关键词直接发起第一页检索，并同步输入框/分页状态
+const doLibrarySearch = (kw) => {
+  libLastSearchKw = kw
+  libKeyword.value = kw
   libPage.value = 1
-  const q = {}
-  if (libKeyword.value.trim()) q.q = libKeyword.value.trim()
-  router.push({ path: '/search', query: q })
+  fetchLibrary(false)
+}
+
+const libSearch = () => {
+  // 直接按输入框关键词发起请求，不能只依赖路由 watch：
+  // 同词重复搜索、清空后重搜等场景 URL 不会变化（vue-router 会去重相同地址导航），
+  // 只靠 URL 变化触发请求会让结果一直停留在上一次（第一次）搜索的内容上
+  const kw = libKeyword.value.trim()
+  doLibrarySearch(kw)
+  // 再把关键词同步到 URL，保持地址可分享、可回退（URL 与输入一致时无需重复 push）
+  const q = kw ? { q: kw } : {}
+  if ((route.query.q ?? '') !== kw) {
+    router.push({ path: '/search', query: q })
+  }
 }
 
 const libLoadMore = () => {
@@ -398,14 +415,20 @@ const loadFull = () => {
   }
 }
 
-const syncAndFetch = () => {
-  // 路由带 q 以路由为准；未带 q 时回退到上次会话的关键词
-  libKeyword.value = route.query.q !== undefined ? String(route.query.q) : savedLibKeyword
-  libPage.value = 1
-  fetchLibrary(false)
+// 外部跳转（顶部全局搜索框、推荐位/详情页「去媒体库搜索」等）携带 ?q= 进入：以路由词发起新检索。
+// - URL 无 q（回到 /search 不带参，如点击侧栏「发现」）：保留当前页面内容，不擅自清空或换词；
+// - q 与当前已展示结果的关键词一致（本页搜索框自推 URL / 浏览器回退到同一关键词）：跳过，避免重复请求；
+// - 其余情况视为一次新搜索：切到媒体库 Tab 并按新词请求
+const searchFromRoute = () => {
+  const q = route.query.q
+  if (q === undefined) return
+  const kw = String(q).trim()
+  if (kw === libLastSearchKw) return
+  if (activeTab.value !== 'library') switchTab('library')
+  doLibrarySearch(kw)
 }
 
-watch(() => route.query.q, () => syncAndFetch())
+watch(() => route.query.q, searchFromRoute)
 
 // 外部跳转可通过 ?tab=xxx（library/database/rank）直达对应 Tab（兼容 keep-alive 复用下的二次进入）；
 // 若同时携带 ?dbq= 则交给下方 dbq 逻辑统一处理并清理，避免此处提前清掉导致搜索不触发
@@ -435,16 +458,25 @@ onMounted(async () => {
 
   const snap = loadFull()
 
-  // 媒体库检索：有快照直接还原，避免回退后重新请求/从头开始
-  if (snap && Array.isArray(snap.library?.list) && snap.library.list.length) {
-    libKeyword.value = typeof snap.library.keyword === 'string' ? snap.library.keyword : ''
+  // 媒体库检索：
+  // 1) URL 带 ?q=（顶部全局搜索等直达）→ 以 URL 词为准发起新检索。即使存在会话快照，
+  //    也不能用快照里的旧列表/旧关键词覆盖当前词，否则换词后进入/刷新时仍会显示第一次搜索的结果；
+  // 2) 无 ?q= 且有完整快照 → 直接还原（返回/刷新后不重新请求，浏览位置不丢）；
+  // 3) 无 ?q= 且无可用快照 → 回退到会话记忆关键词（未搜索过则为空 = 浏览全部）
+  if (route.query.q !== undefined) {
+    if (activeTab.value !== 'library') switchTab('library')
+    doLibrarySearch(String(route.query.q).trim())
+  } else if (snap && Array.isArray(snap.library?.list) && snap.library.list.length) {
+    const kw = typeof snap.library.keyword === 'string' ? snap.library.keyword : ''
+    libLastSearchKw = kw
+    libKeyword.value = kw
     libList.value = snap.library.list
     libTotal.value = Number(snap.library.total || 0)
     libPage.value = Number(snap.library.page || 1)
     libHasMore.value = !!snap.library.hasMore
     libError.value = ''
   } else {
-    syncAndFetch()
+    doLibrarySearch(savedLibKeyword)
   }
 
   // 番剧资料库：还原季节数据/当前选择/结果列表
