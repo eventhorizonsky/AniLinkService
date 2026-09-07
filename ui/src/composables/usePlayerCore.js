@@ -319,11 +319,20 @@ export function usePlayerCore({
       return
     }
 
+    // 重入守卫：ArtPlayer 已在 $video(canvas) 上绑定"DOM 事件 → art.emit('video:*')"的
+    // 原生监听，若在 art 'video:*' 处理器里无条件 dispatchEvent，会形成
+    // emit → dispatchEvent → ArtPlayer 监听 → emit → … 的无限递归（栈溢出）。
+    // dispatchEvent 是同步的，ArtPlayer 的回发只发生在本次派发期间，故用同步标志截断。
+    let synthesizing = false
     const dispatch = (name) => () => {
+      if (synthesizing) return
       try {
+        synthesizing = true
         el.dispatchEvent(new Event(name))
       } catch {
         /* 忽略合成事件异常 */
+      } finally {
+        synthesizing = false
       }
     }
     const DOM_EVENTS = [
@@ -343,11 +352,7 @@ export function usePlayerCore({
     let ticking = false
     const tick = () => {
       if (!ticking || !art.value) return
-      try {
-        el.dispatchEvent(new Event('timeupdate'))
-      } catch {
-        /* 忽略 */
-      }
+      dispatch('timeupdate')()
       rafId = requestAnimationFrame(tick)
     }
     const startTick = () => {
@@ -397,14 +402,35 @@ export function usePlayerCore({
         if (!playbackMode.videoPlayable && _wasmInfoAnimeId !== animeKey) {
           _wasmInfoAnimeId = animeKey
           const videoName = codecsMeta?.videoCodec ? `（${codecsMeta.videoCodec}）` : ''
+          // 区分两种"视频不可解"：非安全上下文(http 访问局域网 IP)下 WebCodecs 被禁用，
+          // 与浏览器本身缺 HEVC 解码能力，给用户不同的指引
+          const insecureContext = typeof window !== 'undefined' && window.isSecureContext === false
+          const guidance = insecureContext
+            ? '当前为 http 非安全页面，浏览器禁用了 WebCodecs 视频解码；请改用 https 访问本站点。'
+            : '如需完整画面请使用弹弹play。'
           showAppMessage(
-            `当前浏览器无法解码该视频编码${videoName}，已降级为仅音频播放；如需完整画面请使用弹弹play。`,
+            `当前浏览器无法解码该视频编码${videoName}，已降级为仅音频播放；${guidance}`,
             'warning',
           )
         }
         return
       }
-      if (playbackMode?.kind === 'native') return
+      if (playbackMode?.kind === 'native') {
+        // wasm 解不了视频、画面回退为原生播放（如 http 非安全上下文无 WebCodecs）：
+        // 此时 AC3/EAC3 音轨在原生 <video> 下可能无声，提示一次"改用 https 可画面与声音兼得"
+        if (
+          playbackMode.nativeVideoFallback
+          && playbackMode.audioCodecNeedsWasm
+          && _wasmInfoAnimeId !== animeKey
+        ) {
+          _wasmInfoAnimeId = animeKey
+          showAppMessage(
+            '当前环境无法启用浏览器内完整解码，已按原生方式播放画面；AC3/EAC3 音轨可能无声，改用 https 访问本站点可同时获得画面与声音。',
+            'warning',
+          )
+        }
+        return
+      }
 
       // external / 兜底路径：需要元数据来判定并提示
       let d = codecsMeta

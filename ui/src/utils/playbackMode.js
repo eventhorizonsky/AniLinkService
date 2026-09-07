@@ -110,6 +110,7 @@ export async function probeAudioDecodableInProxy(ffCodec) {
  *   videoPlayable: boolean,   // wasm 路径下视频轨能否（WebCodecs）解码
  *   audioPlayable: boolean,   // wasm 路径下音频轨能否解码（含 WASM AC3）
  *   audioCodecNeedsWasm: boolean,
+ *   nativeVideoFallback: boolean, // wasm 解不了视频但原生 <video> 可放画面时回退原生
  *   reasons: string[],        // 人类可读的判定原因（供提示文案）
  * }}
  */
@@ -141,6 +142,26 @@ export async function decidePlaybackMode({ containerFormat, videoCodec, audioCod
     return { kind: 'external', container, videoPlayable: videoOk, audioPlayable: false, audioCodecNeedsWasm, reasons }
   }
   if (!videoOk) {
+    // wasm 解不了视频轨（典型：http 非安全上下文没有 WebCodecs，或浏览器不支持该编码的
+    // WebCodecs 解码）。若原生 <video> 能放该"容器+视频编码"（如 HEVC），必须回到 native：
+    // 否则会把原本能看画面的播放（NAS 等 http 部署很常见，原生 <video> 不要求安全上下文）
+    // 降级成"只有声音"，属于功能回归。native 下 AC3/EAC3 音轨可能无声，调用方据
+    // nativeVideoFallback 提示（只有 https/安全上下文才能画面与 AC3 声音兼得）。
+    const nativeVideoOk = container.native && checkCodecSupport({ videoCodec: video }).supported
+    if (nativeVideoOk) {
+      if (audioCodecNeedsWasm) {
+        reasons.push(`音频编码 ${audioCodec} 当前浏览器无法原生解码，画面已回退为原生播放`)
+      }
+      return {
+        kind: 'native',
+        container,
+        videoPlayable: false,
+        audioPlayable: audioOk,
+        audioCodecNeedsWasm,
+        nativeVideoFallback: true,
+        reasons,
+      }
+    }
     reasons.push(`视频编码 ${videoCodec} 当前浏览器无法解码，将降级为仅音频`)
   }
   if (audioCodecNeedsWasm) {
