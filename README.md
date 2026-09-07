@@ -105,6 +105,9 @@ https://www.dandanplay.com/
 - 网页端直接播放，弹幕和字幕自动就位；播放进度自动记录，支持断点续播。  
 - 内封/外挂字幕自动加载，并支持随时调整字幕延迟。  
 - 深度整合弹弹 play 官方生态，一键唤起客户端播放。  
+- 浏览器原生直放覆盖不了时自动降级：MKV 等容器与 AC3/EAC3（含平台差异的 HEVC）由
+  浏览器端 WASM（mediabunny + @mediabunny/ac3）解码播放，服务端零转码；相关第三方
+  组件的许可与分发义务见仓库根目录 `THIRD_PARTY_NOTICES.md`。
 - 提供多种主题，按需自由切换。
 
 <img src="doc/img/README/subtitle-management.png" alt="字幕管理" width="720" />

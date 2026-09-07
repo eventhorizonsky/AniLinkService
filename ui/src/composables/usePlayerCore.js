@@ -16,6 +16,28 @@ import { theme, accentKey } from './useTheme'
 import { getThemeColorPreset } from '../utils/themeColors'
 import { getMediaFileCodecs } from '../api/media'
 import { checkCodecSupport } from '../utils/codecSupport'
+import { decidePlaybackMode } from '../utils/playbackMode'
+
+// --- WASM(mediabunny) 播放后端：仅在需要时动态加载 ---
+// ArtPlayer 的 option.proxy 播放后端为仓库内 vendored fork（上游 MIT：
+// artplayer-proxy-mediabunny，见 ui/src/vendor/artplayer-proxy-mediabunny/README.md），
+// 它运行时复用顶层统一的 mediabunny 实例；AC3/EAC3 通过 @mediabunny/ac3(MPL-2.0,
+// libavcodec WASM) 官方 registerAc3Decoder() 注册到同一解码器注册表。
+// 本项目只作为使用方，不修改 mediabunny 本体（第三方声明见仓库根 THIRD_PARTY_NOTICES）。
+let wasmPlaybackModulesPromise = null
+const loadWasmPlaybackModules = () => {
+  if (!wasmPlaybackModulesPromise) {
+    wasmPlaybackModulesPromise = (async () => {
+      const [{ default: artplayerProxyMediabunny }, { registerAc3Decoder }] = await Promise.all([
+        import('../vendor/artplayer-proxy-mediabunny/index.js'),
+        import('@mediabunny/ac3'),
+      ])
+      registerAc3Decoder() // 注册后 mediabunny 解码 ac3/eac3 音轨自动走 WASM
+      return { artplayerProxyMediabunny }
+    })()
+  }
+  return wasmPlaybackModulesPromise
+}
 
 const MOBILE_VIEWPORT_MAX_WIDTH = 768
 const EPISODE_SELECTOR_TITLE_MAX_LEN = 28
@@ -81,6 +103,12 @@ export function usePlayerCore({
   let _mobileTapHandler = null
   // 编码不支持弹窗去重：同一番剧只提示一次（跨播放器重建保留，切分集不重复打扰）
   let _codecPromptAnimeId = null
+  // WASM 播放提示去重：同一番剧只提示一次
+  let _wasmInfoAnimeId = null
+  // 代理模式事件桥清理函数（libass 字幕等依赖 $video 上的 DOM 事件）
+  let _proxyVideoEventBridgeCleanup = null
+  // 媒体编码元数据缓存：videoId -> { videoCodec, audioCodec, containerFormat }
+  const _codecsCache = new Map()
   const isDesktopViewport = ref(true)
 
   const showDdplayButton = computed(() => {
@@ -272,26 +300,136 @@ export function usePlayerCore({
   }
 
   /**
-   * 探测浏览器对当前视频编码的支持情况。
-   * 直出播放时若视频/音频编码浏览器无法解码（如 HEVC、FLAC/AC3/DTS），
-   * 弹窗引导用户使用【通过弹弹play播放】。同一番剧只提示一次。
-   * 探测失败或编码未知时静默跳过，不影响播放。
+   * WASM(mediabunny) 代理模式的事件桥。
+   * 代理模式下 art.$video 是被替换成的 canvas（携带 video 语义的属性），引擎事件以
+   * 'video:*' 转发到 art，但不会触发 canvas 上的原生 DOM 事件。libass 字幕等消费者
+   * 依赖 video 元素的 DOM 事件（timeupdate/playing/pause/…），这里把它们合成到 $video 上。
    */
-  const checkUnsupportedCodec = async (videoId, seq) => {
+  const uninstallProxyVideoEventBridge = () => {
+    if (_proxyVideoEventBridgeCleanup) {
+      _proxyVideoEventBridgeCleanup()
+    }
+  }
+
+  const installProxyVideoEventBridge = () => {
+    uninstallProxyVideoEventBridge()
+    const artInstance = art.value
+    const el = artInstance?.video
+    if (!artInstance || !el || typeof el.dispatchEvent !== 'function') {
+      return
+    }
+
+    const dispatch = (name) => () => {
+      try {
+        el.dispatchEvent(new Event(name))
+      } catch {
+        /* 忽略合成事件异常 */
+      }
+    }
+    const DOM_EVENTS = [
+      'loadstart', 'durationchange', 'loadedmetadata', 'progress', 'loadeddata',
+      'canplay', 'canplaythrough', 'playing', 'waiting', 'seeking', 'seeked',
+      'ended', 'emptied', 'stalled', 'suspend', 'ratechange', 'volumechange',
+      'pause', 'play',
+    ]
+    const handlers = {}
+    DOM_EVENTS.forEach((name) => {
+      handlers[name] = dispatch(name)
+      artInstance.on(`video:${name}`, handlers[name])
+    })
+
+    // 播放期间以 rAF 高频派发 timeupdate，弥补引擎默认 250ms 间隔，保证字幕平滑
+    let rafId = 0
+    let ticking = false
+    const tick = () => {
+      if (!ticking || !art.value) return
+      try {
+        el.dispatchEvent(new Event('timeupdate'))
+      } catch {
+        /* 忽略 */
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+    const startTick = () => {
+      if (!ticking) {
+        ticking = true
+        rafId = requestAnimationFrame(tick)
+      }
+    }
+    const stopTick = () => {
+      ticking = false
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+        rafId = 0
+      }
+    }
+    handlers._play = startTick
+    handlers._pause = stopTick
+    artInstance.on('video:play', startTick)
+    artInstance.on('video:playing', startTick)
+    artInstance.on('video:pause', stopTick)
+    artInstance.on('video:ended', stopTick)
+
+    _proxyVideoEventBridgeCleanup = () => {
+      stopTick()
+      DOM_EVENTS.forEach((name) => artInstance.off(`video:${name}`, handlers[name]))
+      artInstance.off('video:play', startTick)
+      artInstance.off('video:playing', startTick)
+      artInstance.off('video:pause', stopTick)
+      artInstance.off('video:ended', stopTick)
+      _proxyVideoEventBridgeCleanup = null
+    }
+  }
+
+  /**
+   * 播放能力探测与降级提示。
+   * 三种模式（见 utils/playbackMode.js 的 decidePlaybackMode）：
+   *  - native：原 ArtPlayer <video> 直出，本函数不打扰；
+   *  - wasm：mediabunny+WASM 代理接管（AC3/EAC3/MKV 等可解），通常不打扰；
+   *    仅当浏览器连视频轨都无法解码（如 Edge 无 HEVC 能力）时提示一次"已降级仅音频"；
+   *  - external：mediabunny 也覆盖不了（如 DTS/TrueHD、AVI 等），弹窗引导弹弹play。
+   */
+  const checkUnsupportedCodec = async (videoId, seq, { playbackMode = null, codecsMeta = null } = {}) => {
     try {
-      const res = await getMediaFileCodecs(videoId)
-      if (seq !== playerRecreateSeq) return
-      const d = res?.data
+      const animeKey = String(getAnimeId() || '')
+
+      if (playbackMode?.kind === 'wasm') {
+        if (!playbackMode.videoPlayable && _wasmInfoAnimeId !== animeKey) {
+          _wasmInfoAnimeId = animeKey
+          const videoName = codecsMeta?.videoCodec ? `（${codecsMeta.videoCodec}）` : ''
+          showAppMessage(
+            `当前浏览器无法解码该视频编码${videoName}，已降级为仅音频播放；如需完整画面请使用弹弹play。`,
+            'warning',
+          )
+        }
+        return
+      }
+      if (playbackMode?.kind === 'native') return
+
+      // external / 兜底路径：需要元数据来判定并提示
+      let d = codecsMeta
+      if (!d) {
+        const res = await getMediaFileCodecs(videoId)
+        if (seq !== playerRecreateSeq) return
+        d = res?.data
+      }
       if (!d) return
+
       const { supported, unsupportedParts } = checkCodecSupport({
         videoCodec: d.videoCodec,
         audioCodec: d.audioCodec,
       })
-      if (supported) return
+      const containerUnsupportedMsg = (playbackMode?.reasons || []).find((r) => r.includes('容器')) || ''
+      if (supported && !containerUnsupportedMsg) return
 
-      const animeKey = String(getAnimeId() || '')
       if (_codecPromptAnimeId === animeKey) return
       _codecPromptAnimeId = animeKey
+
+      const reasonParts = [...unsupportedParts]
+      if (containerUnsupportedMsg) {
+        reasonParts.push(containerUnsupportedMsg)
+      }
+      const reasonText = reasonParts.join('、')
 
       // 手机端/PC 展示各自适用的链接；Android 额外提供"通过其他视频软件打开"平级按钮
       const links = isAndroidDevice()
@@ -306,7 +444,7 @@ export function usePlayerCore({
 
       askAppConfirm({
         title: '浏览器可能无法播放该视频',
-        message: `当前视频/音频编码（${unsupportedParts.join('、')}）可能无法在浏览器中直接播放。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。`,
+        message: `当前视频/音频编码（${reasonText}）可能无法在浏览器中直接播放。\n建议使用弹弹play客户端播放，以获得最佳画质与流畅度。`,
         confirmText: '通过弹弹play播放',
         cancelText: '继续播放',
         color: 'warning',
@@ -360,6 +498,7 @@ export function usePlayerCore({
   }
 
   const destroyPlayerInstance = () => {
+    uninstallProxyVideoEventBridge()
     if (_mobileTapHandler) {
       const video = art.value?.video
       if (video) video.removeEventListener('click', _mobileTapHandler, true)
@@ -535,8 +674,30 @@ export function usePlayerCore({
       const restoreFullscreenWeb = Boolean(prevArt && prevArt.fullscreenWeb)
       const restoreFullscreen = !restoreFullscreenWeb && Boolean(prevArt && prevArt.fullscreen)
 
-      // 优先获取播放器必需数据：字幕；弹幕改为异步注入，避免阻塞首帧播放
-      const subtitles = await subtitle.fetchSubtitles(targetVideoId)
+      // 优先获取播放器必需数据：字幕 + 编码/容器元数据（并行，命中缓存则不再请求）；
+      // 弹幕改为异步注入，避免阻塞首帧播放
+      const [subtitles, codecsBody] = await Promise.all([
+        subtitle.fetchSubtitles(targetVideoId),
+        _codecsCache.has(targetVideoId)
+          ? Promise.resolve(null)
+          : getMediaFileCodecs(targetVideoId)
+              .then((r) => r?.data ?? null)
+              .catch(() => null),
+      ])
+      let codecsMeta = _codecsCache.get(targetVideoId) || null
+      if (!codecsMeta) {
+        const fetchedMeta = codecsBody && (codecsBody.videoCodec || codecsBody.audioCodec || codecsBody.containerFormat)
+          ? {
+              videoCodec: codecsBody.videoCodec,
+              audioCodec: codecsBody.audioCodec,
+              containerFormat: codecsBody.containerFormat,
+            }
+          : null
+        if (fetchedMeta) {
+          _codecsCache.set(targetVideoId, fetchedMeta)
+          codecsMeta = fetchedMeta
+        }
+      }
       const routeSelectedTrack = subtitles.find((item) => String(item?.id || '') === String(route.query.subtitleId || '')) || null
       const subtitlesForLibass = subtitles.filter(subtitle.isLibassSubtitleTrack)
       const subtitlesForNative = subtitles.filter(subtitle.isNativeArtplayerSubtitleTrack)
@@ -558,13 +719,62 @@ export function usePlayerCore({
         return
       }
 
+      // 播放模式决策：native(原 ArtPlayer <video>) / wasm(mediabunny+WASM 代理) / external(引导弹弹play)
+      let playbackMode = null
+      if (codecsMeta) {
+        try {
+          playbackMode = await decidePlaybackMode(codecsMeta)
+        } catch (error) {
+          console.debug('[player] 播放模式判定失败，按原生播放处理:', error)
+        }
+      }
+      if (seq !== playerRecreateSeq) {
+        return
+      }
+
+      // wasm 代理：动态加载插件与 AC3 WASM 解码器（仅使用方调用其官方 API）
+      let wasmProxyFactory = null
+      if (playbackMode?.kind === 'wasm') {
+        try {
+          wasmProxyFactory = (await loadWasmPlaybackModules()).artplayerProxyMediabunny
+        } catch (error) {
+          console.error('[player] WASM 播放后端加载失败，回退原生播放:', error)
+          showAppMessage('WASM 解码后端加载失败，已回退原生播放', 'error')
+          // 保留容器原因：原生 <video> 覆盖不了的资源（MKV/TS 等）此时会静默黑屏，
+          // 不能让 checkUnsupportedCodec 因"编码全支持"而跳过引导弹弹play
+          playbackMode = {
+            kind: 'external',
+            reasons: codecsMeta?.containerFormat
+              ? [`容器格式 ${codecsMeta.containerFormat} 浏览器无法直接播放`]
+              : [],
+          }
+        }
+      }
+      if (seq !== playerRecreateSeq) {
+        return
+      }
+
       destroyPlayerInstance()
 
+      // wasm 代理模式下 ArtPlayer 原生字幕（依赖 textTracks）不可渲染：仅保留 libass(ASS/SSA)
+      const proxyActive = Boolean(wasmProxyFactory)
+      const effectiveUseNativeSubtitle = useNativeSubtitle && !proxyActive
+      const effectiveNativeSubtitleOption = proxyActive ? null : nativeSubtitleOption
+      let effectiveLibassTracks = subtitlesForLibass
+      let effectiveActiveSubtitle = activeSubtitleTrack
+      if (proxyActive && useNativeSubtitle) {
+        effectiveActiveSubtitle = subtitlesForLibass[0] || null
+        if (!effectiveActiveSubtitle && subtitles.length > 0) {
+          console.warn('[subtitle] WASM 代理模式不支持 SRT/VTT 原生字幕渲染:', subtitles.map((s) => s.format))
+          showAppMessage('该资源字幕为 SRT/VTT，WASM 播放模式下暂不支持渲染；可选用弹弹play，或将字幕转为 ASS 格式', 'warning')
+        }
+      }
+
       const danmakuOptions = danmaku.buildDanmakuOptions([], mobile)
-      const subtitlePlugin = useNativeSubtitle
+      const subtitlePlugin = effectiveUseNativeSubtitle
         ? null
-        : subtitle.buildSubtitlePlugin(subtitlesForLibass, activeSubtitleTrack)
-      const subtitleSettings = subtitle.buildSubtitleSettings(subtitles, String(activeSubtitleTrack?.id || ''))
+        : subtitle.buildSubtitlePlugin(effectiveLibassTracks, effectiveActiveSubtitle)
+      const subtitleSettings = subtitle.buildSubtitleSettings(subtitles, String(effectiveActiveSubtitle?.id || ''))
       const episodeControls = buildEpisodeControls(mobile)
 
       // 播放器主题色跟随当前主题色预设
@@ -601,8 +811,19 @@ export function usePlayerCore({
         airplay: !mobile,
         theme: playerAccent,
         lang: 'zh-cn',
-        ...(useNativeSubtitle ? { subtitleOffset: true } : {}),
-        ...(nativeSubtitleOption ? { subtitle: nativeSubtitleOption } : {}),
+        ...(effectiveUseNativeSubtitle ? { subtitleOffset: true } : {}),
+        ...(effectiveNativeSubtitleOption ? { subtitle: effectiveNativeSubtitleOption } : {}),
+        // 原生 <video> 无法覆盖（MKV 容器 / AC3/EAC3 / HEVC 等）时切到 mediabunny(WASM) 播放后端
+        ...(wasmProxyFactory
+          ? {
+              proxy: wasmProxyFactory({
+                volume: 0.5,
+                autoplay: false,
+                poster: '',
+                loadTimeout: 60000,
+              }),
+            }
+          : {}),
         moreVideoAttr: {
           crossOrigin: 'anonymous',
         },
@@ -643,8 +864,22 @@ export function usePlayerCore({
       // 创建后立即按容器宽度应用控件自适应 class，避免首帧闪变
       syncNarrowClasses()
 
-      // 探测浏览器编码支持：不支持时弹窗引导使用弹弹play（异步，不阻塞播放）
-      checkUnsupportedCodec(targetVideoId, seq)
+      if (wasmProxyFactory) {
+        // 代理模式：把 art 的 video:* 事件桥接为 $video(canvas) 上的合成 DOM 事件（libass 字幕等依赖）
+        installProxyVideoEventBridge()
+      }
+
+      // 播放能力降级提示：wasm 代理已接管的不再打扰；无法覆盖的才弹窗引导弹弹play
+      checkUnsupportedCodec(targetVideoId, seq, { playbackMode, codecsMeta })
+
+      // wasm 代理已生效的信息提示（同番剧一次）
+      if (wasmProxyFactory && playbackMode?.audioCodecNeedsWasm) {
+        const animeKey = String(getAnimeId() || '')
+        if (_wasmInfoAnimeId !== animeKey) {
+          _wasmInfoAnimeId = animeKey
+          showAppMessage('检测到 AC3/EAC3 音轨，已启用浏览器内 WASM 解码播放', 'info')
+        }
+      }
 
       // 监听播放器事件
       art.value.on('ready', async () => {

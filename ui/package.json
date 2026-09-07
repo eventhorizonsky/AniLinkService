@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "@mediabunny/ac3": "^1.55.7",
     "artplayer": "^5.4.0",
     "artplayer-plugin-danmuku": "^5.2.0",
     "artplayer-plugin-vtt-thumbnail": "^1.1.0",
@@ -17,6 +18,7 @@
     "dompurify": "^3.4.13",
     "libass-wasm": "^4.1.0",
     "marked": "^18.0.9",
+    "mediabunny": "^1.55.7",
     "qrcode": "^1.5.4",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0",
