@@ -5,7 +5,9 @@
  * AniLinkService 本地改动（详见本目录 README.md）:
  *   - 不再内联 mediabunny：mediabunny 改为运行时 import，复用 ui 顶层统一依赖实例，
  *     使 @mediabunny/ac3 的 registerAc3Decoder() 能注册进同一解码器注册表（AC3/EAC3 可解）；
- *   - 移除 m3u8/HLS 专属控制 UI（m3u8.js 未随附）。
+ *   - 移除 m3u8/HLS 专属控制 UI（m3u8.js 未随附）；
+ *   - 音量曲线与原生 <video>.volume 对齐（上游 updateGain() 用 v * v，会让 WASM 音轨在
+ *     同一滑块位置比原生音轨低 20*log10(v) dB，50% 处即 -6 dB；详见 updateGain() 注释）。
  */
 /**
  * Audio Engine for MediaBunny
@@ -76,8 +78,23 @@ export default class AudioEngine {
   updateGain() {
     if (!this.gainNode)
       return
+
     const v = this.muted ? 0 : this.volume
-    this.gainNode.gain.value = v * v
+
+    // 本地改动：增益取线性音量，与原生 <video>.volume 的语义一致。
+    // 上游这里是 `gain.value = v * v`（感知型曲线），而播放器音量滑块驱动的是
+    // 原生的 video.volume（线性），于是同一条音轨只要走 WASM（AC3/EAC3/DTS 等）就会
+    // 比原生播放低 20*log10(v) dB——默认音量 0.5 时正好低 6 dB，听感即"AC3 音量偏小"。
+    // 这里顺带用短时间常数做斜坡，避免拖动音量条/静音切换时的阶跃爆音。
+    const gain = this.gainNode.gain
+    const now = this.audioContext.currentTime
+    gain.cancelScheduledValues(now)
+    if (v === 0) {
+      gain.setValueAtTime(0, now) // 静音要立即生效，不做淡出尾巴
+    }
+    else {
+      gain.setTargetAtTime(v, now, 0.02)
+    }
   }
 
   stopQueuedNodes() {

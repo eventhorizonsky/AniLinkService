@@ -20,7 +20,11 @@ npm 上的 `artplayer-proxy-mediabunny@1.2.0` 发布产物会把所用到的 **m
    `registerAc3Decoder()`（`@mediabunny/ac3`，MPL-2.0）即可让 AC3/EAC3 走 WASM 解码。
 2. **移除 m3u8/HLS 专属控制 UI**（`m3u8.js` 及其在 `index.js` 的挂载）：AniLink 只播文件直链，
    不需要 HLS 清晰度/音轨切换面板。
-3. 其余改动以「外置 mediabunny / 移除 m3u8」为目标，引擎/事件桥逻辑尽量与上游 `src/` 保持一致。
+3. **音量曲线对齐原生语义**（`AudioEngine.js` 的 `updateGain()`）：上游用 `gain = v * v`，
+   而播放器音量滑块实际驱动的是原生 `<video>.volume`（线性）。因此凡走 WASM 解码的音轨
+   （AC3/EAC3 等）在同一滑块位置都比原生音轨低 `20*log10(v)` dB（默认音量 0.5 时 -6 dB），
+   表现为"AC3 音量偏小"。现改为线性 `gain = v`，并用 20ms 时间常数做斜坡以避免阶跃爆音。
+4. 其余改动以「外置 mediabunny / 移除 m3u8」为目标，引擎/事件桥逻辑尽量与上游 `src/` 保持一致。
    如后续本地调整过引擎逻辑，请先与上游逐文件核对差异（`git diff --no-index <上游目录> 本目录`），
    并同步更新本清单与仓库根 `THIRD_PARTY_NOTICES.md`（涉及源码级修改时需保留对应许可声明）。
 
