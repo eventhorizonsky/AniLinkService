@@ -122,7 +122,7 @@
 
       <!-- 吐槽 -->
       <div v-else class="mpt-pane mpt-comments">
-        <EpisodeComments :anime-id="animeId" :episode-number="currentEpisodeNumber" />
+        <EpisodeComments :anime-id="animeId" :episode-number="currentEpisodePosition" />
       </div>
     </div>
   </div>
@@ -133,6 +133,7 @@ import { ref } from 'vue'
 import EpisodeComments from './EpisodeComments.vue'
 import { DEFAULT_POSTER } from '../../utils/constants'
 import { sanitizeHtml } from '../../utils/sanitize'
+import { mainEpisodePosition } from '../../utils/episodes'
 
 const props = defineProps({
   anime: { type: Object, required: true },
@@ -146,7 +147,7 @@ const props = defineProps({
   staffList: { type: Array, default: () => [] },
   copyrightText: { type: String, default: '' },
   currentEpisodeId: { type: [String, Number], default: '' },
-  currentEpisodeNumber: { type: [String, Number], default: '' },
+  currentEpisodePosition: { type: [String, Number], default: '' },
   mainEpisodes: { type: Array, default: () => [] },
   specialEpisodes: { type: Array, default: () => [] },
   watchedEpisodeNumbers: { type: Set, default: () => new Set() },
@@ -157,8 +158,9 @@ const props = defineProps({
 })
 
 const isWatchedEpisode = (ep) => {
-  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) return false
-  return props.watchedEpisodeNumbers.has(String(ep.episodeNumber))
+  const pos = mainEpisodePosition(ep, props.anime?.episodes)
+  if (pos == null) return false
+  return props.watchedEpisodeNumbers.has(String(pos))
 }
 
 const tabs = [

@@ -11,6 +11,9 @@ importers:
       '@mdi/font':
         specifier: ^7.4.47
         version: 7.4.47
+      '@mediabunny/ac3':
+        specifier: ^1.55.7
+        version: 1.55.7(mediabunny@1.55.7)
       artplayer:
         specifier: ^5.4.0
         version: 5.4.0
@@ -22,7 +25,7 @@ importers:
         version: 1.1.0
       axios:
         specifier: ^1.7.9
-        version: 1.13.4
+        version: 1.13.4(debug@4.4.3)
       dompurify:
         specifier: ^3.4.13
         version: 3.4.13
@@ -32,6 +35,9 @@ importers:
       marked:
         specifier: ^18.0.9
         version: 18.0.9
+      mediabunny:
+        specifier: ^1.55.7
+        version: 1.55.7
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -253,6 +259,11 @@ packages:
   '@mdi/font@7.4.47':
     resolution: {integrity: sha512-43MtGpd585SNzHZPcYowu/84Vz2a2g31TvPMTm9uTiCSWzaheQySUcSyUH/46fPnuPQWof2yd0pGBtzee/IQWw==}
 
+  '@mediabunny/ac3@1.55.7':
+    resolution: {integrity: sha512-HZDafm+IJxxP6Fk2yuK8a99CA3nUjHuqiOz0vKat7h/snsEqs8Y13yVmX5+4orlyA3ICbYitG3owiNxEzzoevA==}
+    peerDependencies:
+      mediabunny: ^1.0.0
+
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -375,6 +386,12 @@ packages:
     resolution: {integrity: sha512-bwspbWB04XJpeElvsp+DCylKfF4trJDa2Y9Go8O6A7YLX2LIKGcNK/CYImJN6ZP4DcuOHB4Utl3iCbnR62DudA==}
     cpu: [x64]
     os: [win32]
+
+  '@types/dom-mediacapture-transform@0.1.12':
+    resolution: {integrity: sha512-d7/QsLRwF864A5mgIM/YrfiglHoYn7zgCcAoJgW404r+2DwnNr7EBbLnCWpmOMgH8y0te73L1AV6H1bmauaWFw==}
+
+  '@types/dom-webcodecs@0.1.13':
+    resolution: {integrity: sha512-O5hkiFIcjjszPIYyUSyvScyvrBoV3NOEEZx/pMlsu44TKzWNkLVBBxnxJz42in5n3QIolYOcBYFCPZZ0h8SkwQ==}
 
   '@types/estree@1.0.7':
     resolution: {integrity: sha512-w28IoSUCJpidD/TGviZwwMJckNESJZXFu7NBZ5YJ4mEUnNraUn9Pm8HSZm/jDF1pDWYKspWE7oVphigUPRakIQ==}
@@ -819,6 +836,9 @@ packages:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
 
+  mediabunny@1.55.7:
+    resolution: {integrity: sha512-Sb/vI8frRiDPbPUwl3hz0n69NSe9yt4Nydcv5yxi8Rdgk0BgnujEGjZqE+uCTehFbafcqIu6gDAok8ln98dcqg==}
+
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
@@ -1257,6 +1277,10 @@ snapshots:
 
   '@mdi/font@7.4.47': {}
 
+  '@mediabunny/ac3@1.55.7(mediabunny@1.55.7)':
+    dependencies:
+      mediabunny: 1.55.7
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -1329,6 +1353,12 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.40.2':
     optional: true
 
+  '@types/dom-mediacapture-transform@0.1.12':
+    dependencies:
+      '@types/dom-webcodecs': 0.1.13
+
+  '@types/dom-webcodecs@0.1.13': {}
+
   '@types/estree@1.0.7': {}
 
   '@types/trusted-types@2.0.7':
@@ -1395,7 +1425,7 @@ snapshots:
 
   '@vue/shared@3.5.13': {}
 
-  '@vuetify/loader-shared@2.1.2(vue@3.5.13)(vuetify@3.11.8(vite-plugin-vuetify@2.1.3)(vue@3.5.13))':
+  '@vuetify/loader-shared@2.1.2(vue@3.5.13)(vuetify@3.11.8)':
     dependencies:
       upath: 2.0.1
       vue: 3.5.13
@@ -1435,9 +1465,9 @@ snapshots:
       postcss: 8.5.6
       postcss-value-parser: 4.2.0
 
-  axios@1.13.4:
+  axios@1.13.4(debug@4.4.3):
     dependencies:
-      follow-redirects: 1.15.11
+      follow-redirects: 1.15.11(debug@4.4.3)
       form-data: 4.0.5
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -1609,7 +1639,9 @@ snapshots:
       locate-path: 5.0.0
       path-exists: 4.0.0
 
-  follow-redirects@1.15.11: {}
+  follow-redirects@1.15.11(debug@4.4.3):
+    optionalDependencies:
+      debug: 4.4.3
 
   form-data@4.0.5:
     dependencies:
@@ -1755,6 +1787,11 @@ snapshots:
   marked@18.0.9: {}
 
   math-intrinsics@1.1.0: {}
+
+  mediabunny@1.55.7:
+    dependencies:
+      '@types/dom-mediacapture-transform': 0.1.12
+      '@types/dom-webcodecs': 0.1.13
 
   merge2@1.4.1: {}
 
@@ -1999,7 +2036,7 @@ snapshots:
 
   vite-plugin-vuetify@2.1.3(vite@6.3.5(jiti@1.21.7)(lightningcss@1.30.2))(vue@3.5.13)(vuetify@3.11.8):
     dependencies:
-      '@vuetify/loader-shared': 2.1.2(vue@3.5.13)(vuetify@3.11.8(vite-plugin-vuetify@2.1.3)(vue@3.5.13))
+      '@vuetify/loader-shared': 2.1.2(vue@3.5.13)(vuetify@3.11.8)
       debug: 4.4.3
       upath: 2.0.1
       vite: 6.3.5(jiti@1.21.7)(lightningcss@1.30.2)

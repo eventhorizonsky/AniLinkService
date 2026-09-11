@@ -26,3 +26,27 @@ export const getAnimeWatchedEpisodes = (animeId) =>
 
 export const pullBangumiCollections = () =>
   axios.post(`${API_BASE}/bangumi/sync/pull-collections`).then((r) => r.data)
+
+// ============ Bangumi 动画排行榜（发现页第三 Tab，仅动画） ============
+// 参考 czy0729/Bangumi 客户端实现：后端按所配置的 next API 基址（官方或镜像）调用
+// 开放条目浏览 /p1/subjects（匿名可用，无需登录态），支持平台/年份/月份/
+// 来源/题材/地区/受众(公共标签)等组合筛选并分页返回。
+// 条目卡片点击后跳转到本服务详情页（bgmMode），由
+// /api/animes/bangumi/{bgmtvSubjectId}/raw-json 代理弹弹 /api/v2/bangumi/bgmtv/{id} 获取详情。
+
+export const getBgmRankSubjects = (params) =>
+  axios.get(`${API_BASE}/bangumi/rank/subjects`, { params }).then((r) => r.data)
+
+// ============ 猜你喜欢（全站个性化推荐，需绑定 Bangumi） ============
+// 算法参考 czy0729/Bangumi 客户端：每次生成实时重拉用户收藏（v0 分状态分页），
+// 逐条目取官方推荐（next /p1/subjects/{id}/recs），按 10 个可开关维度加权评分，
+// 结果落库；异步执行，进度经 /status 轮询。
+
+export const getBangumiRecommendStatus = () =>
+  axios.get(`${API_BASE}/bangumi/recommend/status`).then((r) => r.data)
+
+export const generateBangumiRecommend = (data) =>
+  axios.post(`${API_BASE}/bangumi/recommend/generate`, data || {}).then((r) => r.data)
+
+export const getBangumiRecommendResult = () =>
+  axios.get(`${API_BASE}/bangumi/recommend/result`).then((r) => r.data)

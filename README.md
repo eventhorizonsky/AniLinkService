@@ -105,6 +105,9 @@ https://www.dandanplay.com/
 - 网页端直接播放，弹幕和字幕自动就位；播放进度自动记录，支持断点续播。  
 - 内封/外挂字幕自动加载，并支持随时调整字幕延迟。  
 - 深度整合弹弹 play 官方生态，一键唤起客户端播放。  
+- 浏览器原生直放覆盖不了时自动降级：MKV 等容器与 AC3/EAC3（含平台差异的 HEVC）由
+  浏览器端 WASM（mediabunny + @mediabunny/ac3）解码播放，服务端零转码；相关第三方
+  组件的许可与分发义务见仓库根目录 `THIRD_PARTY_NOTICES.md`。
 - 提供多种主题，按需自由切换。
 
 <img src="doc/img/README/subtitle-management.png" alt="字幕管理" width="720" />
@@ -112,7 +115,8 @@ https://www.dandanplay.com/
 **打通 Bangumi**  
 - 详情页与播放页自动聚合番剧评分及单集吐槽。  
 - 绑定 Bangumi 账号后，播放过程自动打标，追番状态实时同步。  
-- 支持一键导入 Bangumi 追番清单，轻松迁移。
+- 支持一键导入 Bangumi 追番清单，轻松迁移。  
+- 发现页「猜你喜欢」基于你的收藏实时生成个性化推荐，帮你找到下一部想看的动画（算法参考 [czy0729/Bangumi](https://github.com/czy0729/Bangumi)）。
 
 <img src="doc/img/README/comments.png" alt="评论区" width="720" />
 
@@ -350,3 +354,4 @@ README 只保留项目概览和常用启动方式；更详细的部署、配置�
 - artplayer-plugin-danmuku: https://github.com/zhw2590582/ArtPlayer/tree/master/packages/artplayer-plugin-danmuku
 - jlibtorrent: https://github.com/frostwire/frostwire-jlibtorrent
 - bangumi: https://bangumi.tv/dev
+- czy0729/Bangumi（「猜你喜欢」推荐算法参考）: https://github.com/czy0729/Bangumi

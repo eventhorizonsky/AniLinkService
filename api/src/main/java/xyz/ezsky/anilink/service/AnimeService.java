@@ -463,49 +463,6 @@ public class AnimeService {
     }
 
     /**
-     * 通过 Bangumi subjectId 匹配本地番剧。
-     * 先在本地番剧库查找；查不到再调用弹弹 bgmtv 接口查询并入库。
-     * 该方法是用户点击时才触发（单次请求），避免同步时批量调用触发风控。
-     *
-     * @param subjectId Bangumi subject ID
-     * @return 匹配到的本地 Anime；查不到对应番剧时返回 null
-     */
-    public Anime matchAnimeByBangumiSubjectId(Long subjectId) {
-        if (subjectId == null) {
-            log.info("[match] subjectId 为 null，无法匹配");
-            return null;
-        }
-        log.info("[match] matchAnimeByBangumiSubjectId 开始 subjectId={}", subjectId);
-
-        // 1. 先查本地番剧库
-        Optional<Anime> local = animeRepository.findAll().stream()
-                .filter(a -> subjectId.equals(a.getBangumiSubjectId()))
-                .findFirst();
-        if (local.isPresent()) {
-            log.info("[match] 本地按 subjectId 命中 animeId={} title={}",
-                    local.get().getAnimeId(), local.get().getTitle());
-            return local.get();
-        }
-        log.info("[match] 本地按 subjectId 未命中，调弹弹 bgmtv subjectId={}", subjectId);
-
-        // 2. 调弹弹 bgmtv 接口按 subjectId 获取番剧，直接用其 animeId 绑定（不要求本地已存在）
-        String rawJson = getRawJsonByBangumiSubjectId(subjectId);
-        if (rawJson == null) {
-            log.warn("[match] 弹弹 bgmtv 返回 null subjectId={}", subjectId);
-            return null;
-        }
-        Long animeId = extractAnimeIdFromBangumiResponse(rawJson);
-        log.info("[match] 弹弹 bgmtv 提取 animeId={}，直接用于绑定", animeId);
-        if (animeId == null) {
-            return null;
-        }
-        // 直接返回含 animeId 的记录用于绑定，标题保持追番原有标题
-        Anime remote = new Anime();
-        remote.setAnimeId(animeId);
-        return remote;
-    }
-
-    /**
      * 将 Bangumi subjectId 关联到本地番剧记录（若尚未关联）。
      *
      * @param animeId   本地番剧 ID

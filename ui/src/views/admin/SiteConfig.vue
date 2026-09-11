@@ -427,13 +427,12 @@ onMounted(() => {
               />
 
               <v-divider class="my-4" />
-
               <h3 class="text-h6 mb-4 text-primary font-weight-medium">
                 <v-icon start color="primary">mdi-server-network</v-icon>
                 Bangumi API 镜像配置
               </h3>
               <p class="text-body-2 text-medium-emphasis mb-4">
-                分别配置 api.bgm.tv 与 next.bgm.tv 的镜像地址；留空则使用官方地址。
+                分别配置 api.bgm.tv 与 next.bgm.tv 的镜像地址；留空使用官方地址。
               </p>
               <v-text-field
                 v-model="form.bangumiMirrorBaseUrl"
@@ -441,8 +440,8 @@ onMounted(() => {
                 prepend-inner-icon="mdi-web"
                 variant="outlined"
                 color="primary"
-                placeholder="https://api.bgm.tv"
-                hint="例如 https://mirror.example.com，留空则使用官方地址"
+                placeholder="https://api.bangumi.pro"
+                hint="如 https://api.bangumi.pro；留空用官方"
                 persistent-hint
                 class="mb-3"
               />
@@ -452,8 +451,8 @@ onMounted(() => {
                 prepend-inner-icon="mdi-web"
                 variant="outlined"
                 color="primary"
-                placeholder="https://next.bgm.tv"
-                hint="例如 https://next.bangumi.pro，用于 next.bgm.tv (p1) 接口，如单集吐槽"
+                placeholder="https://next.bangumi.pro"
+                hint="如 https://next.bangumi.pro；留空用官方"
                 persistent-hint
                 class="mb-3"
               />

@@ -38,6 +38,11 @@ const routes = [
         component: () => import('../views/Search.vue')
       },
       {
+        path: 'recommend',
+        // 「猜你喜欢」已并入发现页 Tab，旧直达链接（书签/历史）跳转到对应 Tab
+        redirect: () => ({ name: 'Search', query: { tab: 'recommend' } })
+      },
+      {
         path: 'schedule',
         name: 'Schedule',
         component: () => import('../views/Schedule.vue')

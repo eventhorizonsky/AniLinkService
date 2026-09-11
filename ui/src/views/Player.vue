@@ -86,7 +86,7 @@
           <div v-else class="episode-panel-comments">
             <EpisodeComments
               :anime-id="animeId"
-              :episode-number="currentEpisodeNumber"
+              :episode-number="currentEpisodePosition"
             />
           </div>
         </div>
@@ -105,7 +105,7 @@
           :staff-list="staffList"
           :copyright-text="copyrightText"
           :current-episode-id="episodeId"
-          :current-episode-number="currentEpisodeNumber"
+          :current-episode-position="currentEpisodePosition"
           :main-episodes="mainEpisodes"
           :special-episodes="specialEpisodes"
           :watched-episode-numbers="watchedEpisodeNumbers"
@@ -153,6 +153,7 @@ import {
   formatEpisodeDate,
   buildPlayableEpisodeKeys,
   getEpisodeResources,
+  mainEpisodePosition,
 } from '../utils/episodes'
 import EpisodeComments from '../components/anime/EpisodeComments.vue'
 import MobilePlayerTabs from '../components/anime/MobilePlayerTabs.vue'
@@ -229,11 +230,12 @@ const displayedEpisodes = computed(() => {
   return [...eps].sort((a, b) => new Date(a.airDate) - new Date(b.airDate))
 })
 
-const currentEpisodeNumber = computed(() => {
+const currentEpisodePosition = computed(() => {
   const currentEp = animeData.value?.episodes?.find(
     ep => String(ep.episodeId) === String(episodeId.value)
   )
-  return currentEp?.episodeNumber != null ? String(currentEp.episodeNumber) : ''
+  const pos = mainEpisodePosition(currentEp, animeData.value?.episodes)
+  return pos != null ? String(pos) : ''
 })
 
 const canPlayEpisode = (ep) => {
@@ -248,8 +250,9 @@ const { watchedEpisodeNumbers, refresh: refreshWatchedEpisodes, markWatchedLocal
 )
 
 const isWatchedEpisode = (ep) => {
-  if (!ep || ep.episodeNumber === undefined || ep.episodeNumber === null) return false
-  return watchedEpisodeNumbers.value.has(String(ep.episodeNumber))
+  const pos = mainEpisodePosition(ep, animeData.value?.episodes)
+  if (pos == null) return false
+  return watchedEpisodeNumbers.value.has(String(pos))
 }
 
 const {
@@ -299,11 +302,13 @@ const syncEpisodeWatchedToBangumi = async () => {
   const key = `${animeId.value}:${episodeId.value}`
   if (key === _lastSyncedKey) return
 
-  // 找到当前播放的剧集
+  // 找到当前播放的剧集（按正片序列位置同步，而非 episodeNumber 标签）
   const currentEp = animeData.value?.episodes?.find(
     ep => String(ep.episodeId) === String(episodeId.value)
   )
-  if (!currentEp?.episodeNumber) return
+  // 非正片（特典/短片等）不参与 Bangumi 剧集同步
+  const episodePos = mainEpisodePosition(currentEp, animeData.value?.episodes)
+  if (episodePos == null) return
 
   // 播放 >= 80% 才同步
   const currentTime = art.value?.currentTime || 0
@@ -314,13 +319,13 @@ const syncEpisodeWatchedToBangumi = async () => {
 
   // 立即在本地标记"看过"，选集面板实时响应（乐观标记与后端数据合并展示，不会被刷新抹掉）
   if (userInfo.value?.bangumiBound) {
-    markWatchedLocally(currentEp.episodeNumber)
+    markWatchedLocally(episodePos)
   }
 
   try {
     await syncEpisodeWatched({
       animeId: animeId.value,
-      episodeNumber: String(currentEp.episodeNumber)
+      episodeNumber: String(episodePos)
     })
     // 稍后从服务端核对一次，将后端已写入的结果合并进来
     setTimeout(() => refreshWatchedEpisodes(), 3000)
@@ -880,6 +885,43 @@ onBeforeUnmount(() => {
     --art-state-size: 60px;
     --art-settings-icon-size: 20px;
   }
+}
+
+/* 播放器控件随【播放器容器宽度】自适应（由 usePlayerCore 根据容器宽度切换 class）：
+   - player-controls-narrow（容器 < 971px）：启用紧凑控件尺寸。
+     侧边栏 + 选集面板等 chrome 会把中宽视口下的播放器压到 709–905px，
+     而完整控件栏需要约 971px，必须压缩尺寸才能完整显示。
+   - player-controls-emitter-off（容器 < 800px）：折叠弹幕输入框，
+     保留弹幕开关与设置入口，为左右控件腾出约 260px。
+   - player-controls-mini（容器 < 750px）：隐藏上/下集快捷按钮，
+     仍可通过"分集"菜单切换剧集。
+   - player-controls-tiny（容器 < 730px）：隐藏时间显示与音量按钮，
+     进度条悬停仍可查看时间，音量可用键盘 / 手势调节。 */
+.artplayer-container :deep(.art-video-player.player-controls-narrow) {
+  --art-control-height: 38px;
+  --art-control-icon-size: 28px;
+  --art-bottom-height: 76px;
+  --art-bottom-offset: 14px;
+  --art-padding: 8px;
+  --art-bottom-gap: 3px;
+  --art-state-size: 60px;
+  --art-settings-icon-size: 20px;
+}
+
+/* 折叠弹幕输入框仅限非全屏场景：全屏时播放器宽度充足，
+   必须保留发送弹幕的输入框（即使 class 在切换全屏的瞬间尚未移除）。 */
+.artplayer-container :deep(.art-video-player.player-controls-emitter-off:not(.art-fullscreen):not(.art-fullscreen-web):not(:fullscreen):not(:-webkit-full-screen) .apd-emitter) {
+  display: none !important;
+}
+
+.artplayer-container :deep(.art-video-player.player-controls-mini .art-controls-left [data-index="9"]),
+.artplayer-container :deep(.art-video-player.player-controls-mini .art-controls-left [data-index="11"]) {
+  display: none;
+}
+
+.artplayer-container :deep(.art-video-player.player-controls-tiny .art-control-time),
+.artplayer-container :deep(.art-video-player.player-controls-tiny .art-controls-left [data-index="20"]) {
+  display: none;
 }
 
 /* Responsive */

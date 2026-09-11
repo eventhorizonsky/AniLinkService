@@ -377,14 +377,9 @@ public class BangumiSyncService {
                 }
             }
 
-            // Fallback to the legacy ep-based mapping when order matching fails.
-            Long legacyId = getBangumiEpisodeId(subjectId, episodeNumber);
-            if (legacyId == null) {
-                return null;
-            }
-            ObjectNode legacyNode = objectMapper.createObjectNode();
-            legacyNode.put("id", legacyId);
-            return legacyNode;
+            // 纯按 episodes 数组的索引顺序匹配，不回退到 ep/集数标签匹配，
+            // 避免在正片编号不从 1 开始的番剧里把"位置"误当成"集数"使用。
+            return null;
         } catch (Exception e) {
             log.warn("Bangumi episode order mapping failed for subjectId={}, episodeNumber={}: {}",
                     subjectId, episodeNumber, e.getMessage());
@@ -810,11 +805,17 @@ public class BangumiSyncService {
             return;
         }
 
-        // 3. 获取 Bangumi 剧集 ID
-        Long bangumiEpisodeId = getBangumiEpisodeId(subjectId, episodeNumber);
-        if (bangumiEpisodeId == null) {
+        // 3. 按 episodes 数组中的索引顺序匹配 Bangumi 剧集 ID（与获取单集吐槽保持一致），
+        //    而非按 ep/集数字段匹配。
+        JsonNode matchedEpisode = resolveBangumiEpisode(subjectId, episodeNumber);
+        if (matchedEpisode == null) {
             log.warn("Bangumi episode sync skipped: cannot map episodeNumber={} for subjectId={}",
                     episodeNumber, subjectId);
+            return;
+        }
+        Long bangumiEpisodeId = matchedEpisode.path("id").asLong(-1);
+        if (bangumiEpisodeId <= 0) {
+            log.warn("Bangumi episode sync skipped: matched episode has no id for subjectId={}", subjectId);
             return;
         }
 
@@ -1003,61 +1004,6 @@ public class BangumiSyncService {
             }
         } catch (Exception e) {
             log.warn("Bangumi batch mark error for subjectId={}: {}", subjectId, e.getMessage());
-        }
-    }
-
-    /**
-     * 获取 Bangumi 剧集 ID（带缓存）。
-     * 通过 Bangumi API 获取条目所有本篇剧集，按集数匹配。
-     */
-    private Long getBangumiEpisodeId(Long subjectId, String episodeNumber) {
-        String cacheKey = subjectId + ":" + episodeNumber;
-
-        // 检查缓存
-        CachedEpisodeId cached = episodeIdCache.get(cacheKey);
-        if (cached != null && !cached.isExpired()) {
-            return cached.episodeId;
-        }
-
-        // 缓存未命中或已过期，从 API 获取
-        try {
-            ResponseEntity<String> response = bangumiApiService.getEpisodes(subjectId, 0, 200, 0);
-            if (!response.getStatusCode().is2xxSuccessful() || !StringUtils.hasText(response.getBody())) {
-                log.warn("Bangumi getEpisodes failed: HTTP {} for subjectId={}",
-                        response.getStatusCode().value(), subjectId);
-                return null;
-            }
-
-            JsonNode root = objectMapper.readTree(response.getBody());
-            JsonNode data = root.get("data");
-            if (data == null || !data.isArray()) {
-                log.warn("Bangumi getEpisodes returned unexpected format for subjectId={}", subjectId);
-                return null;
-            }
-
-            // 遍历剧集，建立 ep → id 映射并填充缓存
-            Long matchedId = null;
-            for (JsonNode ep : data) {
-                int epNum = ep.get("ep").asInt(-1);
-                long epId = ep.get("id").asLong(-1);
-                if (epNum > 0 && epId > 0) {
-                    String key = subjectId + ":" + epNum;
-                    episodeIdCache.put(key, new CachedEpisodeId(epId));
-                    if (String.valueOf(epNum).equals(episodeNumber)) {
-                        matchedId = epId;
-                    }
-                }
-            }
-
-            if (matchedId == null) {
-                log.debug("Bangumi episode mapping not found: subjectId={}, episodeNumber={} ({} episodes loaded)",
-                        subjectId, episodeNumber, data.size());
-            }
-            return matchedId;
-        } catch (Exception e) {
-            log.warn("Bangumi episode mapping failed for subjectId={}, episodeNumber={}: {}",
-                    subjectId, episodeNumber, e.getMessage());
-            return null;
         }
     }
 }

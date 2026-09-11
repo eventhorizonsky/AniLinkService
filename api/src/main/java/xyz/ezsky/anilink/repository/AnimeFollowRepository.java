@@ -31,7 +31,12 @@ public interface AnimeFollowRepository extends JpaRepository<AnimeFollow, Long> 
      * 根据用户ID和状态查询追番记录（按更新时间倒序）
      */
     List<AnimeFollow> findByUserIdAndStatusOrderByUpdatedAtDesc(Long userId, String status);
-    
+
+    /**
+     * 根据用户ID和状态查询追番记录（分页，按更新时间倒序）
+     */
+    Page<AnimeFollow> findByUserIdAndStatusOrderByUpdatedAtDesc(Long userId, String status, Pageable pageable);
+
     /**
      * 检查用户是否追番过某个番剧
      */
@@ -46,6 +51,11 @@ public interface AnimeFollowRepository extends JpaRepository<AnimeFollow, Long> 
      * 根据用户ID查询指定多个状态的追番（按更新时间倒序）
      */
     List<AnimeFollow> findByUserIdAndStatusInOrderByUpdatedAtDesc(Long userId, List<String> statuses);
+
+    /**
+     * 根据用户ID查询指定多个状态的追番（分页，按更新时间倒序）
+     */
+    Page<AnimeFollow> findByUserIdAndStatusInOrderByUpdatedAtDesc(Long userId, List<String> statuses, Pageable pageable);
 
     /**
      * 根据用户ID和标题关键词查询追番列表（分页，按更新时间倒序）
@@ -66,10 +76,22 @@ public interface AnimeFollowRepository extends JpaRepository<AnimeFollow, Long> 
             Long userId, String status, String keyword);
 
     /**
+     * 根据用户ID、状态和标题关键词查询追番列表（分页，按更新时间倒序）
+     */
+    Page<AnimeFollow> findByUserIdAndStatusAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
+            Long userId, String status, String keyword, Pageable pageable);
+
+    /**
      * 根据用户ID、多个状态和标题关键词查询追番列表（按更新时间倒序）
      */
     List<AnimeFollow> findByUserIdAndStatusInAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
             Long userId, List<String> statuses, String keyword);
+
+    /**
+     * 根据用户ID、多个状态和标题关键词查询追番列表（分页，按更新时间倒序）
+     */
+    Page<AnimeFollow> findByUserIdAndStatusInAndAnimeTitleContainingIgnoreCaseOrderByUpdatedAtDesc(
+            Long userId, List<String> statuses, String keyword, Pageable pageable);
 
     /**
      * 根据用户ID删除所有追番记录

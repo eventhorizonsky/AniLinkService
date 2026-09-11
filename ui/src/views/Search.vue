@@ -1,17 +1,46 @@
+<script>
+// 组件名：供路由层 keep-alive（include）命中缓存，详情返回后还原整个发现页状态
+export default { name: 'Search' }
+</script>
+
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  watch
+} from 'vue'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { getAnimeList, getSeasonList, getSeasonAnime, searchDandanAnimes } from '../api/anime'
 import { formatAnimeType } from '../utils/animeType'
 import { formatScore } from '../utils/format'
-import { useIsMobile } from '../composables/useIsMobile'
 import AnimeCard from '../components/AnimeCard.vue'
+import BangumiRankTab from '../components/rank/BangumiRankTab.vue'
+import RecommendTab from '../components/recommend/RecommendTab.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { isMobile } = useIsMobile(768)
 
-const activeTab = ref('library')
+const DISCOVER_STATE_KEY = 'anilink.discover.state'
+const VALID_TABS = ['library', 'database', 'rank', 'recommend']
+
+// 离开/刷新后的兜底状态：Tab 与媒体库检索关键词
+const savedState = (() => {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(DISCOVER_STATE_KEY) || 'null')
+    return o && typeof o === 'object' ? o : null
+  } catch {
+    return null
+  }
+})()
+
+// 路由 ?tab=xxx（如详情页引导"前往番剧资料库"）优先，其次会话记忆，最后默认媒体库
+const routeTab = VALID_TABS.includes(route.query.tab) ? route.query.tab : null
+const activeTab = ref(routeTab || (savedState && VALID_TABS.includes(savedState.tab) ? savedState.tab : 'library'))
+const savedLibKeyword = typeof savedState?.libKeyword === 'string' ? savedState.libKeyword : ''
 
 // ===================== Library =====================
 const libLoading = ref(false)
@@ -24,6 +53,19 @@ const libPage = ref(1)
 const libHasMore = ref(false)
 const libScrollEl = ref(null)
 const libPageSize = 24
+
+// Tab 与媒体库关键词状态兜底（依赖上述 ref，须在其声明之后）
+const persistDiscover = () => {
+  try {
+    sessionStorage.setItem(
+      DISCOVER_STATE_KEY,
+      JSON.stringify({ tab: activeTab.value, libKeyword: libKeyword.value })
+    )
+  } catch {
+    /* ignore */
+  }
+}
+watch([activeTab, () => libKeyword.value], persistDiscover)
 
 // 请求序号，防止快速切换关键词时过期响应覆盖新数据
 let libFetchSeq = 0
@@ -59,22 +101,131 @@ const fetchLibrary = async (append = false) => {
   }
 }
 
-const libSearch = () => {
+// 最近一次实际按关键词发起的媒体库检索（区分「本页自搜」与「外部路由跳转」，避免重复请求）
+let libLastSearchKw = ''
+
+// 按给定关键词直接发起第一页检索，并同步输入框/分页状态
+const doLibrarySearch = (kw) => {
+  libLastSearchKw = kw
+  libKeyword.value = kw
   libPage.value = 1
-  const q = {}
-  if (libKeyword.value.trim()) q.q = libKeyword.value.trim()
-  router.push({ path: '/search', query: q })
+  fetchLibrary(false)
+}
+
+const libSearch = () => {
+  // 直接按输入框关键词发起请求，不能只依赖路由 watch：
+  // 同词重复搜索、清空后重搜等场景 URL 不会变化（vue-router 会去重相同地址导航），
+  // 只靠 URL 变化触发请求会让结果一直停留在上一次（第一次）搜索的内容上
+  const kw = libKeyword.value.trim()
+  doLibrarySearch(kw)
+  // 再把关键词同步到 URL，保持地址可分享、可回退（URL 与输入一致时无需重复 push）
+  const q = kw ? { q: kw } : {}
+  if ((route.query.q ?? '') !== kw) {
+    router.push({ path: '/search', query: q })
+  }
+}
+
+const libLoadMore = () => {
+  if (libLoadingMore.value || !libHasMore.value) return
+  libPage.value += 1
+  fetchLibrary(true)
 }
 
 const libOuterEl = ref(null)
 
-const onLibScroll = () => {
-  const el = isMobile.value ? libOuterEl.value : libScrollEl.value
-  if (!el || libLoadingMore.value || !libHasMore.value) return
-  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
-    libPage.value++
-    fetchLibrary(true)
+// ===== 滚动位置管理（按 Tab 分别记忆，恢复由父组件直接操作滚动元素，不依赖子组件生命周期）=====
+const tabScroll = { library: 0, database: 0, rank: 0, recommend: 0 }
+
+const scrollEl = () => document.querySelector('.app-content') || libOuterEl.value
+const rkBodyEl = () => document.querySelector('.rk-body')
+const recBodyEl = () => document.querySelector('.rec-body')
+// 各 Tab 的真实滚轴：排行榜/猜你喜欢/媒体库/资料库都可能走各自内部的滚动容器
+// （.rk-body/.rec-body/.scroll-area），内层不可滚（如内容不满、空态）时才回落到外层 .app-content
+const scrollerFor = (tab) => {
+  if (tab === 'rank') {
+    const r = rkBodyEl()
+    return r && r.scrollHeight > r.clientHeight + 2 ? r : scrollEl()
   }
+  if (tab === 'recommend') {
+    const r = recBodyEl()
+    return r && r.scrollHeight > r.clientHeight + 2 ? r : scrollEl()
+  }
+  const inner = tab === 'library' ? libScrollEl.value : dbScrollEl.value
+  if (inner && inner.scrollHeight > inner.clientHeight + 2) return inner
+  return scrollEl()
+}
+
+// 记录滚动（0 不覆盖：路由切走时元素可能已被置顶/摘走，0 不是真实位置）
+const captureCurrentScroll = () => {
+  const tab = activeTab.value
+  const el = scrollerFor(tab)
+  if (el && el.scrollTop > 0) {
+    tabScroll[tab] = el.scrollTop
+    saveFull()
+  }
+}
+
+const applyTo = (el, pos) => {
+  if (el.scrollHeight >= pos + el.clientHeight) {
+    el.scrollTop = pos
+    return Math.abs(el.scrollTop - pos) < 4
+  }
+  el.scrollTop = Math.min(pos, Math.max(0, el.scrollHeight - el.clientHeight))
+  return false
+}
+
+// 恢复滚动：轮询重试直到内容（含懒加载封面）高度足够并成功落位
+const restoreTabScroll = async (tab) => {
+  const pos = tabScroll[tab] || 0
+  if (!pos) return
+  for (let i = 0; i < 24; i++) {
+    await new Promise((r) => setTimeout(r, 150))
+    const el = scrollerFor(tab)
+    if (!el) continue
+    if (applyTo(el, pos)) {
+      updateBackTop()
+      return
+    }
+  }
+}
+
+// ===== 回到顶部悬浮按钮（作用于当前 Tab 的真实滚动容器） =====
+const backTopVisible = ref(false)
+
+const updateBackTop = () => {
+  const el = scrollerFor(activeTab.value)
+  backTopVisible.value = !!el && el.scrollTop > 320
+}
+
+const goBackTop = () => {
+  const el = scrollerFor(activeTab.value)
+  if (!el) return
+  if (tabScroll[activeTab.value]) tabScroll[activeTab.value] = 0
+  el.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// 任意内部/外层滚动（捕获阶段）都能实时记录当前 Tab 的真实位置
+const onDocScrollCapture = (e) => {
+  const tab = activeTab.value
+  const t = e.target
+  if (!(t instanceof Element)) return
+  const el = scrollerFor(tab)
+  if (el && (t === el || (t.classList && (t.classList.contains('rk-body') || t.classList.contains('rec-body') || t.classList.contains('scroll-area'))))) {
+    const top = t.scrollTop
+    if (top > 0) {
+      tabScroll[tab] = top
+      saveFull()
+    }
+  }
+  updateBackTop()
+}
+
+const switchTab = (tab) => {
+  captureCurrentScroll()
+  activeTab.value = tab
+  restoreTabScroll(tab)
+  saveFull()
+  updateBackTop()
 }
 
 // ===================== Database =====================
@@ -84,6 +235,7 @@ const dbSeasons = ref([])
 const dbYear = ref(null)
 const dbMonth = ref(null)
 const dbList = ref([])
+const dbScrollEl = ref(null)
 
 const dbYears = computed(() => [...new Set(dbSeasons.value.map(s => s.year))].sort((a, b) => b - a))
 const dbMonths = computed(() => {
@@ -178,6 +330,25 @@ const dbClearSearch = () => {
   dbSearchError.value = ''
 }
 
+// 路由 ?dbq=xxx 直达资料库搜索（如追番页未绑定条目的兜底跳转）
+const applyDbQuery = (q) => {
+  if (typeof q !== 'string' || !q.trim()) return
+  const kw = q.trim()
+  if (kw === dbKeyword.value) return
+  dbKeyword.value = kw
+  dbSearch()
+}
+
+// 外部快捷跳转（?tab= / ?dbq=）在落地生效后，把这些一次性参数从 URL 移除，
+// 避免 URL 残留导致用户切换 Tab / 进入其他页面返回时被强制切回资料库 Tab 或再次触发搜索
+const clearShortcutQuery = () => {
+  const query = { ...route.query }
+  let changed = false
+  if (query.tab !== undefined) { delete query.tab; changed = true }
+  if (query.dbq !== undefined) { delete query.dbq; changed = true }
+  if (changed) router.replace({ path: route.path, query })
+}
+
 // Season label
 const seasonLabels = { 1:'冬季', 4:'春季', 7:'夏季', 10:'秋季' }
 const seasonLabel = computed(() => {
@@ -186,23 +357,176 @@ const seasonLabel = computed(() => {
   return `${dbYear.value}年${s}`
 })
 
-const syncAndFetch = () => {
-  libKeyword.value = String(route.query.q || '')
-  libPage.value = 1
-  fetchLibrary(false)
+// ===== 完整会话快照：切路由返回/重挂载后还原 Tab、关键词、列表、分页与滚动（不重新请求） =====
+const FULL_KEY = 'anilink.discover.full.v1'
+let saveTimer = 0
+const saveFull = () => {
+  if (saveTimer) return
+  saveTimer = setTimeout(() => {
+    saveTimer = 0
+    try {
+      sessionStorage.setItem(
+        FULL_KEY,
+        JSON.stringify({
+          tab: activeTab.value,
+          library: {
+            keyword: libKeyword.value,
+            list: libList.value.slice(0, 800),
+            total: libTotal.value,
+            page: libPage.value,
+            hasMore: libHasMore.value
+          },
+          database: {
+            keyword: dbKeyword.value,
+            seasons: dbSeasons.value.slice(0, 400),
+            year: dbYear.value,
+            month: dbMonth.value,
+            list: dbList.value.slice(0, 800),
+            searchResults: dbSearchResults.value.slice(0, 800)
+          },
+          scrolls: { ...tabScroll }
+        })
+      )
+    } catch {
+      /* ignore */
+    }
+  }, 350)
+}
+watch(
+  [
+    () => libList.value,
+    () => libTotal.value,
+    () => libHasMore.value,
+    () => dbKeyword.value,
+    () => dbSeasons.value,
+    () => dbYear.value,
+    () => dbMonth.value,
+    () => dbList.value,
+    () => dbSearchResults.value
+  ],
+  saveFull
+)
+const loadFull = () => {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(FULL_KEY) || 'null')
+    return o && typeof o === 'object' ? o : null
+  } catch {
+    return null
+  }
 }
 
-watch(() => route.query.q, () => syncAndFetch())
+// 外部跳转（顶部全局搜索框、推荐位/详情页「去媒体库搜索」等）携带 ?q= 进入：以路由词发起新检索。
+// - URL 无 q（回到 /search 不带参，如点击侧栏「发现」）：保留当前页面内容，不擅自清空或换词；
+// - q 与当前已展示结果的关键词一致（本页搜索框自推 URL / 浏览器回退到同一关键词）：跳过，避免重复请求；
+// - 其余情况视为一次新搜索：切到媒体库 Tab 并按新词请求
+const searchFromRoute = () => {
+  const q = route.query.q
+  if (q === undefined) return
+  const kw = String(q).trim()
+  if (kw === libLastSearchKw) return
+  if (activeTab.value !== 'library') switchTab('library')
+  doLibrarySearch(kw)
+}
 
-onMounted(() => {
-  syncAndFetch()
-  fetchSeasons()
+watch(() => route.query.q, searchFromRoute)
+
+// 外部跳转可通过 ?tab=xxx（library/database/rank）直达对应 Tab（兼容 keep-alive 复用下的二次进入）；
+// 若同时携带 ?dbq= 则交给下方 dbq 逻辑统一处理并清理，避免此处提前清掉导致搜索不触发
+watch(
+  () => route.query.tab,
+  (t) => {
+    if (!VALID_TABS.includes(t)) return
+    if (t !== activeTab.value) switchTab(t)
+    if (route.query.dbq === undefined) clearShortcutQuery()
+  }
+)
+
+// 外部跳转可通过 ?dbq=xxx 直达资料库搜索（追番页未绑定条目的兜底跳转），
+// 搜索触发后把 ?tab=/?dbq= 一次性参数移除，返回时不会被强制切回资料库
+watch(
+  () => route.query.dbq,
+  (q) => {
+    if (q === undefined) return
+    applyDbQuery(q)
+    clearShortcutQuery()
+  }
+)
+
+onMounted(async () => {
   libOuterEl.value = document.querySelector('.app-content')
-  libOuterEl.value?.addEventListener('scroll', onLibScroll, { passive: true })
+  document.addEventListener('scroll', onDocScrollCapture, { capture: true, passive: true })
+
+  const snap = loadFull()
+
+  // 媒体库检索：
+  // 1) URL 带 ?q=（顶部全局搜索等直达）→ 以 URL 词为准发起新检索。即使存在会话快照，
+  //    也不能用快照里的旧列表/旧关键词覆盖当前词，否则换词后进入/刷新时仍会显示第一次搜索的结果；
+  // 2) 无 ?q= 且有完整快照 → 直接还原（返回/刷新后不重新请求，浏览位置不丢）；
+  // 3) 无 ?q= 且无可用快照 → 回退到会话记忆关键词（未搜索过则为空 = 浏览全部）
+  if (route.query.q !== undefined) {
+    if (activeTab.value !== 'library') switchTab('library')
+    doLibrarySearch(String(route.query.q).trim())
+  } else if (snap && Array.isArray(snap.library?.list) && snap.library.list.length) {
+    const kw = typeof snap.library.keyword === 'string' ? snap.library.keyword : ''
+    libLastSearchKw = kw
+    libKeyword.value = kw
+    libList.value = snap.library.list
+    libTotal.value = Number(snap.library.total || 0)
+    libPage.value = Number(snap.library.page || 1)
+    libHasMore.value = !!snap.library.hasMore
+    libError.value = ''
+  } else {
+    doLibrarySearch(savedLibKeyword)
+  }
+
+  // 番剧资料库：还原季节数据/当前选择/结果列表
+  if (snap && Array.isArray(snap.database?.seasons) && snap.database.seasons.length) {
+    dbSeasons.value = snap.database.seasons
+    dbKeyword.value = typeof snap.database.keyword === 'string' ? snap.database.keyword : ''
+    dbSearchResults.value = Array.isArray(snap.database.searchResults) ? snap.database.searchResults : []
+    dbSearched.value = dbSearchResults.value.length > 0
+    const y = Number(snap.database.year)
+    const m = Number(snap.database.month)
+    const hasList = Array.isArray(snap.database.list) && snap.database.list.length
+    if (hasList && y && dbYears.value.includes(y)) {
+      dbYear.value = y
+      dbMonth.value = m
+      dbList.value = snap.database.list
+    } else {
+      const latest = dbSeasons.value.reduce((a, b) =>
+        b.year > a.year || (b.year === a.year && b.month > a.month) ? b : a)
+      dbYear.value = latest.year
+      dbMonth.value = latest.month
+      if (!hasList) fetchSeasonAnime()
+    }
+  } else {
+    fetchSeasons()
+  }
+
+  if (snap?.scrolls && typeof snap.scrolls === 'object') {
+    Object.assign(tabScroll, { library: 0, database: 0, rank: 0 }, snap.scrolls)
+  }
+  restoreTabScroll(activeTab.value)
+  // 首次挂载也响应 ?dbq=（追番页兜底跳转直达资料库搜索）；
+  // 处理完快捷参数后即从 URL 移除，避免切换 Tab / 离开返回时被强制带回或再次触发搜索
+  if (route.query.dbq !== undefined) applyDbQuery(route.query.dbq)
+  clearShortcutQuery()
+})
+
+// keep-alive 停用/复用：离开前记录各 Tab 真实滚动位置，回来由 restoreTabScroll 恢复
+// （onBeforeRouteLeave 在路由切换前执行，此时容器尚未被其它页置顶，能拿到真实位置）
+onBeforeRouteLeave(() => {
+  captureCurrentScroll()
+})
+onDeactivated(captureCurrentScroll)
+onActivated(() => {
+  restoreTabScroll(activeTab.value)
+  updateBackTop()
 })
 
 onBeforeUnmount(() => {
-  libOuterEl.value?.removeEventListener('scroll', onLibScroll)
+  captureCurrentScroll()
+  document.removeEventListener('scroll', onDocScrollCapture, { capture: true })
   libOuterEl.value = null
 })
 </script>
@@ -212,16 +536,22 @@ onBeforeUnmount(() => {
     <!-- ====== 页面头部 ====== -->
     <div class="page-head">
       <h2><i class="mdi mdi-compass"></i> 发现</h2>
-      <span class="sub">浏览媒体库与番剧资料库</span>
+      <span class="sub">浏览媒体库、番剧资料库与 Bangumi 排行榜，登录并绑定后解锁「猜你喜欢」</span>
     </div>
 
     <!-- ====== Tab Bar ====== -->
     <div class="discover-tabs">
-      <button class="discover-tab" :class="{ active: activeTab === 'library' }" @click="activeTab = 'library'">
+      <button class="discover-tab" :class="{ active: activeTab === 'library' }" @click="switchTab('library')">
         <i class="mdi mdi-filmstrip-box-multiple"></i>媒体库检索
       </button>
-      <button class="discover-tab" :class="{ active: activeTab === 'database' }" @click="activeTab = 'database'">
+      <button class="discover-tab" :class="{ active: activeTab === 'database' }" @click="switchTab('database')">
         <i class="mdi mdi-database-search"></i>番剧资料库
+      </button>
+      <button class="discover-tab" :class="{ active: activeTab === 'rank' }" @click="switchTab('rank')">
+        <i class="mdi mdi-equalizer"></i>排行榜
+      </button>
+      <button class="discover-tab" :class="{ active: activeTab === 'recommend' }" @click="switchTab('recommend')">
+        <i class="mdi mdi-heart-outline"></i>猜你喜欢
       </button>
     </div>
 
@@ -246,7 +576,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div ref="libScrollEl" class="scroll-area" @scroll="onLibScroll">
+      <div ref="libScrollEl" class="scroll-area">
         <div v-if="libLoading" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
         <div v-else-if="libError" class="empty-block error"><i class="mdi mdi-alert-circle"></i>{{ libError }}</div>
         <div v-else-if="!libHasResult && libKeyword" class="empty-block">
@@ -276,8 +606,19 @@ onBeforeUnmount(() => {
               </template>
             </AnimeCard>
           </div>
-          <div v-if="libLoadingMore" class="load-more"><i class="mdi mdi-loading mdi-spin"></i> 加载更多...</div>
-          <div v-else-if="!libHasMore && libList.length > libPageSize" class="load-more load-done">— 已加载全部 {{ libTotal }} 条 —</div>
+          <div v-if="libHasMore || libList.length > libPageSize" class="load-more">
+            <span v-if="libHasMore" class="load-more-info">已加载 <strong>{{ libList.length }}</strong> / {{ libTotal }} 条</span>
+            <button
+              v-if="libHasMore"
+              class="load-more-btn"
+              :disabled="libLoadingMore"
+              @click="libLoadMore"
+            >
+              <i v-if="libLoadingMore" class="mdi mdi-loading mdi-spin"></i>
+              {{ libLoadingMore ? '加载中...' : '加载更多' }}
+            </button>
+            <div v-else class="load-more load-done">— 已加载全部 {{ libTotal }} 条 —</div>
+          </div>
         </template>
       </div>
     </div>
@@ -326,7 +667,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="scroll-area">
+      <div ref="dbScrollEl" class="scroll-area">
         <div v-if="dbSearching" class="sk-grid"><div v-for="i in 12" :key="i" class="sk-card"></div></div>
 
         <div v-else-if="dbKeyword && dbSearchResults.length" class="br-grid">
@@ -393,6 +734,29 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </div>
+
+    <!-- ============================ RANK (Bangumi 动画排行榜) ============================ -->
+    <div v-show="activeTab === 'rank'" class="tab-content">
+      <!-- keep-alive：切走/返回后保留筛选与页码；列表浏览位置由发现页父组件统一记录并恢复 -->
+      <keep-alive>
+        <BangumiRankTab v-if="activeTab === 'rank'" />
+      </keep-alive>
+    </div>
+
+    <!-- ============================ RECOMMEND (猜你喜欢) ============================ -->
+    <div v-show="activeTab === 'recommend'" class="tab-content">
+      <!-- keep-alive：切走/返回后保留结果与生成进度；滚动位置由发现页父组件统一记录并恢复 -->
+      <keep-alive>
+        <RecommendTab v-if="activeTab === 'recommend'" />
+      </keep-alive>
+    </div>
+
+    <!-- ===== 回到顶部（随当前活动 Tab 的真实滚动容器联动） ===== -->
+    <transition name="backtop">
+      <button v-if="backTopVisible" class="discover-backtop" title="回到顶部" @click="goBackTop">
+        <i class="mdi mdi-arrow-up"></i>
+      </button>
+    </transition>
   </div>
 </template>
 
@@ -603,9 +967,26 @@ onBeforeUnmount(() => {
 
 /* ========================= LOAD MORE ========================= */
 .load-more {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 14px 0 4px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px 0 6px; font-size: 0.8rem; color: var(--anime-text-secondary); flex-shrink: 0;
 }
+.load-more-info { font-size: 0.76rem; color: var(--anime-text-secondary); }
+.load-more-info strong { color: var(--anime-text-main); font-weight: 700; }
+.load-more-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(var(--al-accent-rgb), 0.55);
+  background: var(--al-bg);
+  color: var(--anime-accent-red);
+  border-radius: 999px;
+  padding: 8px 28px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.load-more-btn:hover:not(:disabled) { background: var(--anime-accent-red); color: #fff; border-color: var(--anime-accent-red); }
+.load-more-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .load-done { color: var(--al-gray-faint); font-size: 0.74rem; }
 
 /* ========================= SKELETON ========================= */
@@ -634,6 +1015,51 @@ onBeforeUnmount(() => {
   .discover-tabs { width: 100%; }
   .discover-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 0.76rem; gap: 3px; }
   .toolbar { padding: 10px 12px; }
+}
+
+/* ========================= BACK TO TOP ========================= */
+.discover-backtop {
+  position: fixed;
+  right: 28px;
+  bottom: 30px;
+  z-index: 900;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--al-border-panel, rgba(128, 128, 128, 0.25));
+  background: var(--al-bg, #fff);
+  color: var(--anime-accent-red, #e0544d);
+  font-size: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s, transform 0.2s;
+  font-family: inherit;
+}
+.discover-backtop:hover {
+  background: var(--anime-accent-red, #e0544d);
+  color: #fff;
+  transform: translateY(-2px);
+}
+.backtop-enter-active,
+.backtop-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.backtop-enter-from,
+.backtop-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+@media (max-width: 768px) {
+  .discover-backtop {
+    right: 16px;
+    bottom: 20px;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
 }
 </style>
 

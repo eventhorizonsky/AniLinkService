@@ -17,12 +17,18 @@ export const removeFollow = (animeId) =>
 export const getActiveFollows = (params) =>
   axios.get(`${API_BASE}/follows/active`, { params }).then((r) => r.data)
 
+// 服务端分页版本（追番页用），返回 PageVO
+export const getActiveFollowsPage = (params) =>
+  axios.get(`${API_BASE}/follows/active/page`, { params }).then((r) => r.data)
+
 export const getFollowsByStatus = (status, params) =>
   axios.get(`${API_BASE}/follows/status/${status}`, { params }).then((r) => r.data)
+
+// 服务端分页版本（追番页用），返回 PageVO
+export const getFollowsByStatusPage = (status, params) =>
+  axios.get(`${API_BASE}/follows/status/${status}/page`, { params }).then((r) => r.data)
 
 export const getFollows = (params) => axios.get(`${API_BASE}/follows`, { params }).then((r) => r.data)
 
 export const bindFollow = (id, data) =>
   axios.put(`${API_BASE}/follows/${id}/bind`, data).then((r) => r.data)
-
-export const matchFollow = (id) => axios.post(`${API_BASE}/follows/${id}/match`).then((r) => r.data)
