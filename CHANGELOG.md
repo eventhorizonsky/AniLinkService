@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.3.0...v1.4.0) (2026-09-11)
+
+
+### Features
+
+* hybrid 播放——原生画面 + WASM(AC3) 音频从动，MKV 按原生尝试 ([72cb6cf](https://github.com/eventhorizonsky/AniLinkService/commit/72cb6cf066ca282f5cfc9b501663ce7be13bccc4))
+* 优化加载更多功能，改为点击按钮加载，更新相关样式和逻辑 ([d2537e4](https://github.com/eventhorizonsky/AniLinkService/commit/d2537e44d385ec08b8df534d63014542d7aa4992))
+* 发现页新增 Bangumi 动画排行榜，bgmMode 详情兜底引导，页面状态/滚动统一接管 ([6530f5b](https://github.com/eventhorizonsky/AniLinkService/commit/6530f5b06422df2761c406a5521238c455c7ccae))
+* 完善解码降级引导——画面能力判定前置、原生失败兜底弹窗与 MKV 专用帧看门狗 ([e1a7de5](https://github.com/eventhorizonsky/AniLinkService/commit/e1a7de5419417d7dff794268f103c342fef1ea3d))
+* 支持 AC3/EAC3 音轨：mediabunny+WASM 浏览器内解码，原生直放覆盖不了时自动降级 ([b23dcb7](https://github.com/eventhorizonsky/AniLinkService/commit/b23dcb70de42e296604bf71f04fd2c4441abd9f1))
+* 新增基于 Bangumi 收藏的「猜你喜欢」个性化推荐 ([4c0b873](https://github.com/eventhorizonsky/AniLinkService/commit/4c0b873c74c40be1709dbb8cdc33d87596cfbdb2))
+* 更新 Bangumi 详情页路由，携带条目名称作为搜索关键词；优化外部跳转参数处理 ([2090f3f](https://github.com/eventhorizonsky/AniLinkService/commit/2090f3f39880c20c298d8244ef75201fbeb87a67))
+* 添加 mainEpisodePosition 函数以统一剧集位置计算，更新相关组件以使用该函数 ([77d9c6d](https://github.com/eventhorizonsky/AniLinkService/commit/77d9c6d30a6fa8986997ff0e45869b864fdac517))
+* 调整音量曲线以对齐原生 &lt;video&gt;.volume 语义，避免 AC3 音量偏小 ([3afbeb8](https://github.com/eventhorizonsky/AniLinkService/commit/3afbeb8017704031eabecaa567f68999de023903))
+* 追番页服务端分页与返回状态还原，未绑定条目改为详情页内自动/手动绑定，移除自动匹配接口 ([5cc5686](https://github.com/eventhorizonsky/AniLinkService/commit/5cc56867de8e87a674f4c51af14eaf20dd6ae52f))
+
+
+### Bug Fixes
+
+* 修复 wasm 代理播放的栈溢出与 http 下 HEVC 画面回归 ([8e84e88](https://github.com/eventhorizonsky/AniLinkService/commit/8e84e88306d5c32d9cb9573e4470367cabb14aca))
+* 修复播放页控件栏在中宽视口下溢出无法完整显示 ([78ed35b](https://github.com/eventhorizonsky/AniLinkService/commit/78ed35bc1a768a74ccccdcf14c4ea7e9afbede91))
+* 修复移动端的关键词二次检索问题 ([7325976](https://github.com/eventhorizonsky/AniLinkService/commit/732597689879df5cd3510bf56dc1d1ca815c9e0c))
+
 ## [1.3.0](https://github.com/eventhorizonsky/AniLinkService/compare/v1.2.0...v1.3.0) (2026-08-30)
 
 
